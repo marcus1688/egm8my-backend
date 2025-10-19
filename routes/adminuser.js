@@ -105,35 +105,35 @@ function formatTimeFromSeconds(seconds) {
     .padStart(2, "0")}M ${secs.toString().padStart(2, "0")}S`;
 }
 
-async function verifyRecaptcha(token) {
-  const client = new RecaptchaEnterpriseServiceClient({
-    keyFilename: "./config/google-credentials.json",
-  });
-  const projectID = "emtech168-1735545760936";
-  const recaptchaKey = "6LdfhakqAAAAAOosjyCGQ8EyriEVzn6EoK55wrLO";
-  const projectPath = client.projectPath(projectID);
-  try {
-    const request = {
-      assessment: {
-        event: {
-          token: token,
-          siteKey: recaptchaKey,
-        },
-      },
-      parent: projectPath,
-    };
-    const [response] = await client.createAssessment(request);
-    if (!response.tokenProperties.valid) {
-      console.log(`Token invalid: ${response.tokenProperties.invalidReason}`);
-      return false;
-    }
-    const score = response.riskAnalysis.score;
-    return score > 0.5;
-  } catch (error) {
-    console.error("reCAPTCHA verification failed:", error);
-    return false;
-  }
-}
+// async function verifyRecaptcha(token) {
+//   const client = new RecaptchaEnterpriseServiceClient({
+//     keyFilename: "./config/google-credentials.json",
+//   });
+//   const projectID = "emtech168-1735545760936";
+//   const recaptchaKey = "6LdfhakqAAAAAOosjyCGQ8EyriEVzn6EoK55wrLO";
+//   const projectPath = client.projectPath(projectID);
+//   try {
+//     const request = {
+//       assessment: {
+//         event: {
+//           token: token,
+//           siteKey: recaptchaKey,
+//         },
+//       },
+//       parent: projectPath,
+//     };
+//     const [response] = await client.createAssessment(request);
+//     if (!response.tokenProperties.valid) {
+//       console.log(`Token invalid: ${response.tokenProperties.invalidReason}`);
+//       return false;
+//     }
+//     const score = response.riskAnalysis.score;
+//     return score > 0.5;
+//   } catch (error) {
+//     console.error("reCAPTCHA verification failed:", error);
+//     return false;
+//   }
+// }
 
 router.use(express.json());
 
