@@ -1310,208 +1310,208 @@ router.get(
   }
 );
 
-const fetchAcceptedBetsCron = () => {
-  cron.schedule("*/1 * * * *", async () => {
-    try {
-      const today = moment
-        .utc()
-        .add(8, "hours")
-        .startOf("day")
-        .format("YYYY-MM-DD");
-      const yesterday = moment
-        .utc()
-        .add(8, "hours")
-        .subtract(1, "days")
-        .startOf("day")
-        .format("YYYY-MM-DD");
+// const fetchAcceptedBetsCron = () => {
+//   cron.schedule("*/1 * * * *", async () => {
+//     try {
+//       const today = moment
+//         .utc()
+//         .add(8, "hours")
+//         .startOf("day")
+//         .format("YYYY-MM-DD");
+//       const yesterday = moment
+//         .utc()
+//         .add(8, "hours")
+//         .subtract(1, "days")
+//         .startOf("day")
+//         .format("YYYY-MM-DD");
 
-      // Get data from last 3 days to ensure we catch all settled bets
-      const threeDaysAgo = moment
-        .utc()
-        .add(8, "hours")
-        .subtract(7, "days")
-        .startOf("day")
-        .format("YYYY-MM-DD");
+//       // Get data from last 3 days to ensure we catch all settled bets
+//       const threeDaysAgo = moment
+//         .utc()
+//         .add(8, "hours")
+//         .subtract(7, "days")
+//         .startOf("day")
+//         .format("YYYY-MM-DD");
 
-      const payload = {
-        betting_dates: {
-          from: threeDaysAgo,
-          to: today,
-        },
-        mid: alipayUsername,
-        pw: alipayPassword,
-      };
+//       const payload = {
+//         betting_dates: {
+//           from: threeDaysAgo,
+//           to: today,
+//         },
+//         mid: alipayUsername,
+//         pw: alipayPassword,
+//       };
 
-      const response = await axios.post(
-        `${alipayAPIURL}wallet_member_query_bet_detail`,
-        payload,
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      );
+//       const response = await axios.post(
+//         `${alipayAPIURL}wallet_member_query_bet_detail`,
+//         payload,
+//         {
+//           headers: {
+//             "Content-Type": "application/json",
+//           },
+//         }
+//       );
 
-      if (response.data.status.success !== true) {
-        console.error("❌ Failed to fetch betting data from AP95");
-        return;
-      }
+//       if (response.data.status.success !== true) {
+//         console.error("❌ Failed to fetch betting data from AP95");
+//         return;
+//       }
 
-      const bets = response.data.bets || [];
+//       const bets = response.data.bets || [];
 
-      if (bets.length === 0) {
-        return;
-      }
+//       if (bets.length === 0) {
+//         return;
+//       }
 
-      // Separate bets by status
-      const acceptedBets = bets.filter((bet) => bet.status === "A");
-      const settledBets = bets.filter((bet) => bet.status === "P");
+//       // Separate bets by status
+//       const acceptedBets = bets.filter((bet) => bet.status === "A");
+//       const settledBets = bets.filter((bet) => bet.status === "P");
 
-      // Get unique mids for user lookup
-      const allMids = [...new Set(bets.map((bet) => bet.mid))];
+//       // Get unique mids for user lookup
+//       const allMids = [...new Set(bets.map((bet) => bet.mid))];
 
-      // Batch query users
-      const users = await User.find({
-        alipayGameID: { $in: allMids },
-      })
-        .select("username alipayGameID")
-        .lean();
+//       // Batch query users
+//       const users = await User.find({
+//         alipayGameID: { $in: allMids },
+//       })
+//         .select("username alipayGameID")
+//         .lean();
 
-      const midToUsernameMap = new Map(
-        users.map((user) => [user.alipayGameID, user.username])
-      );
+//       const midToUsernameMap = new Map(
+//         users.map((user) => [user.alipayGameID, user.username])
+//       );
 
-      let newBetsCount = 0;
-      let updatedBetsCount = 0;
-      let skippedBetsCount = 0;
+//       let newBetsCount = 0;
+//       let updatedBetsCount = 0;
+//       let skippedBetsCount = 0;
 
-      // PART 1: Process ACCEPTED bets (status = 'A') - Create new records
-      if (acceptedBets.length > 0) {
-        // Batch check for existing tranIds to improve performance
-        const acceptedTranIds = acceptedBets.map((bet) => bet.bd_id.toString());
-        const existingBets = await LotteryAP95Modal.find({
-          tranId: { $in: acceptedTranIds },
-        })
-          .select("tranId")
-          .lean();
+//       // PART 1: Process ACCEPTED bets (status = 'A') - Create new records
+//       if (acceptedBets.length > 0) {
+//         // Batch check for existing tranIds to improve performance
+//         const acceptedTranIds = acceptedBets.map((bet) => bet.bd_id.toString());
+//         const existingBets = await LotteryAP95Modal.find({
+//           tranId: { $in: acceptedTranIds },
+//         })
+//           .select("tranId")
+//           .lean();
 
-        const existingTranIdsSet = new Set(
-          existingBets.map((bet) => bet.tranId)
-        );
+//         const existingTranIdsSet = new Set(
+//           existingBets.map((bet) => bet.tranId)
+//         );
 
-        // Prepare new bet records
-        const newBetRecords = [];
+//         // Prepare new bet records
+//         const newBetRecords = [];
 
-        for (const bet of acceptedBets) {
-          const username = midToUsernameMap.get(bet.mid);
+//         for (const bet of acceptedBets) {
+//           const username = midToUsernameMap.get(bet.mid);
 
-          if (!username) {
-            continue;
-          }
+//           if (!username) {
+//             continue;
+//           }
 
-          // Check if bet already exists using tranId (bd_id)
-          if (existingTranIdsSet.has(bet.bd_id.toString())) {
-            skippedBetsCount++;
-            continue; // Skip if already exists
-          }
+//           // Check if bet already exists using tranId (bd_id)
+//           if (existingTranIdsSet.has(bet.bd_id.toString())) {
+//             skippedBetsCount++;
+//             continue; // Skip if already exists
+//           }
 
-          // Prepare new bet record
-          const newBetRecord = {
-            tranId: bet.bd_id.toString(), // bd_id as tranId (unique)
-            betamount: bet.accepted_amount || 0, // accepted_amount
-            settleamount: 0, // Will be updated when settled
-            username: username, // Found from User schema
-            bet: true, // Always true
-            resultDate: new Date(bet.result_date), // result_date
-            betDate: new Date(bet.betting_date), // betting_date
-          };
+//           // Prepare new bet record
+//           const newBetRecord = {
+//             tranId: bet.bd_id.toString(), // bd_id as tranId (unique)
+//             betamount: bet.accepted_amount || 0, // accepted_amount
+//             settleamount: 0, // Will be updated when settled
+//             username: username, // Found from User schema
+//             bet: true, // Always true
+//             resultDate: new Date(bet.result_date), // result_date
+//             betDate: new Date(bet.betting_date), // betting_date
+//           };
 
-          newBetRecords.push(newBetRecord);
-        }
+//           newBetRecords.push(newBetRecord);
+//         }
 
-        // Batch insert new bet records
-        if (newBetRecords.length > 0) {
-          try {
-            const insertResult = await LotteryAP95Modal.insertMany(
-              newBetRecords,
-              {
-                ordered: false, // Continue inserting even if some fail due to duplicates
-              }
-            );
-            newBetsCount = insertResult.length;
-          } catch (insertError) {
-            // Handle duplicate key errors gracefully
-            if (insertError.code === 11000) {
-              // Some bets were inserted, some were duplicates
-              const insertedCount = insertError.insertedDocs
-                ? insertError.insertedDocs.length
-                : 0;
-              newBetsCount = insertedCount;
-            } else {
-              console.error(`❌ Error inserting bets:`, insertError.message);
-            }
-          }
-        }
-      }
+//         // Batch insert new bet records
+//         if (newBetRecords.length > 0) {
+//           try {
+//             const insertResult = await LotteryAP95Modal.insertMany(
+//               newBetRecords,
+//               {
+//                 ordered: false, // Continue inserting even if some fail due to duplicates
+//               }
+//             );
+//             newBetsCount = insertResult.length;
+//           } catch (insertError) {
+//             // Handle duplicate key errors gracefully
+//             if (insertError.code === 11000) {
+//               // Some bets were inserted, some were duplicates
+//               const insertedCount = insertError.insertedDocs
+//                 ? insertError.insertedDocs.length
+//                 : 0;
+//               newBetsCount = insertedCount;
+//             } else {
+//               console.error(`❌ Error inserting bets:`, insertError.message);
+//             }
+//           }
+//         }
+//       }
 
-      // PART 2: Process SETTLED bets (status = 'P') - Update existing records
-      if (settledBets.length > 0) {
-        for (const bet of settledBets) {
-          const username = midToUsernameMap.get(bet.mid);
+//       // PART 2: Process SETTLED bets (status = 'P') - Update existing records
+//       if (settledBets.length > 0) {
+//         for (const bet of settledBets) {
+//           const username = midToUsernameMap.get(bet.mid);
 
-          if (!username) {
-            continue;
-          }
+//           if (!username) {
+//             continue;
+//           }
 
-          const updatedBet = await LotteryAP95Modal.findOneAndUpdate(
-            {
-              tranId: bet.bd_id.toString(),
-            },
-            {
-              $set: {
-                settleamount: bet.winning_amount || 0, // winning_amount
-                settle: true, // Set settle to true when status = 'P'
-              },
-            },
-            {
-              new: true, // Return updated document
-            }
-          );
+//           const updatedBet = await LotteryAP95Modal.findOneAndUpdate(
+//             {
+//               tranId: bet.bd_id.toString(),
+//             },
+//             {
+//               $set: {
+//                 settleamount: bet.winning_amount || 0, // winning_amount
+//                 settle: true, // Set settle to true when status = 'P'
+//               },
+//             },
+//             {
+//               new: true, // Return updated document
+//             }
+//           );
 
-          if (updatedBet) {
-            updatedBetsCount++;
-          } else {
-            try {
-              const newSettledBet = new LotteryAP95Modal({
-                tranId: bet.bd_id.toString(),
-                betamount: bet.accepted_amount || 0, // Use accepted_amount from settled bet data
-                settleamount: bet.winning_amount || 0, // winning_amount
-                username: username,
-                bet: true,
-                settle: true, // Mark as settled since status = 'P'
-                resultDate: new Date(bet.result_date),
-                betDate: new Date(bet.betting_date),
-              });
+//           if (updatedBet) {
+//             updatedBetsCount++;
+//           } else {
+//             try {
+//               const newSettledBet = new LotteryAP95Modal({
+//                 tranId: bet.bd_id.toString(),
+//                 betamount: bet.accepted_amount || 0, // Use accepted_amount from settled bet data
+//                 settleamount: bet.winning_amount || 0, // winning_amount
+//                 username: username,
+//                 bet: true,
+//                 settle: true, // Mark as settled since status = 'P'
+//                 resultDate: new Date(bet.result_date),
+//                 betDate: new Date(bet.betting_date),
+//               });
 
-              await newSettledBet.save();
-              newBetsCount++; // Count as new bet
-            } catch (saveError) {
-              if (saveError.code === 11000) {
-              } else {
-                console.error(
-                  `❌ Error creating settled bet ${bet.bd_id}:`,
-                  saveError.message
-                );
-              }
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error("❌ Error in complete lottery cron:", error.message);
-    }
-  });
-};
+//               await newSettledBet.save();
+//               newBetsCount++; // Count as new bet
+//             } catch (saveError) {
+//               if (saveError.code === 11000) {
+//               } else {
+//                 console.error(
+//                   `❌ Error creating settled bet ${bet.bd_id}:`,
+//                   saveError.message
+//                 );
+//               }
+//             }
+//           }
+//         }
+//       }
+//     } catch (error) {
+//       console.error("❌ Error in complete lottery cron:", error.message);
+//     }
+//   });
+// };
 module.exports = router;
 
 module.exports.fetchAcceptedBetsCron = fetchAcceptedBetsCron;

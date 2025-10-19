@@ -158,7 +158,8 @@ const xss = require("xss-clean");
 const allowedOrigins = [
   "https://mysteryclub88.com",
   "https://www.mysteryclub88.com",
-  "https://www.oc7.me",
+  "https://www.egm8my.vip",
+  "https://www.egm8my.com",
   "capacitor://localhost",
   "ionic://localhost",
   "file://",
@@ -920,56 +921,56 @@ app.use(GameStatusRouter);
 app.use(sportCMD368Router);
 // app.use(sportSabaRouter);
 
-cron.schedule(
-  "0 0 * * *", // runs at 00:00 (12 AM) every day
-  async () => {
-    try {
-      console.log("began process valid turnover storing");
-      const response = await axios.post(
-        `${process.env.BASE_URL}admin/api/getAllValidTurnoverForRebate`,
-        {
-          date: "yesterday",
-        }
-      );
-      if (response.data.success) {
-        console.log("Turnover data fetched successfully:", {
-          time: moment().format("YYYY-MM-DD HH:mm:ss"),
-        });
-      }
-    } catch (error) {
-      console.error("Error in getAllValidTurnoverForRebate:", error.message);
-    }
-  },
-  {
-    timezone: "Asia/Shanghai", // Set your desired timezone
-  }
-);
+// cron.schedule(
+//   "0 0 * * *", // runs at 00:00 (12 AM) every day
+//   async () => {
+//     try {
+//       console.log("began process valid turnover storing");
+//       const response = await axios.post(
+//         `${process.env.BASE_URL}admin/api/getAllValidTurnoverForRebate`,
+//         {
+//           date: "yesterday",
+//         }
+//       );
+//       if (response.data.success) {
+//         console.log("Turnover data fetched successfully:", {
+//           time: moment().format("YYYY-MM-DD HH:mm:ss"),
+//         });
+//       }
+//     } catch (error) {
+//       console.error("Error in getAllValidTurnoverForRebate:", error.message);
+//     }
+//   },
+//   {
+//     timezone: "Asia/Shanghai", // Set your desired timezone
+//   }
+// );
 
-cron.schedule(
-  "5 0 * * *",
-  async () => {
-    try {
-      console.log("began proces getallturnover forrebate");
-      const response = await axios.post(
-        `${process.env.BASE_URL}admin/api/getAllTurnoverForRebate`,
-        {
-          date: "yesterday",
-        }
-      );
-      if (response.data.success) {
-        console.log("Turnover data fetched successfully:", {
-          price: response.data.data,
-          time: moment().format("YYYY-MM-DD HH:mm:ss"),
-        });
-      }
-    } catch (error) {
-      console.error("Error in getallturnover:", error.message);
-    }
-  },
-  {
-    timezone: "Asia/Shanghai",
-  }
-);
+// cron.schedule(
+//   "5 0 * * *",
+//   async () => {
+//     try {
+//       console.log("began proces getallturnover forrebate");
+//       const response = await axios.post(
+//         `${process.env.BASE_URL}admin/api/getAllTurnoverForRebate`,
+//         {
+//           date: "yesterday",
+//         }
+//       );
+//       if (response.data.success) {
+//         console.log("Turnover data fetched successfully:", {
+//           price: response.data.data,
+//           time: moment().format("YYYY-MM-DD HH:mm:ss"),
+//         });
+//       }
+//     } catch (error) {
+//       console.error("Error in getallturnover:", error.message);
+//     }
+//   },
+//   {
+//     timezone: "Asia/Shanghai",
+//   }
+// );
 
 if (process.env.NODE_ENV !== "development") {
   fetchAcceptedBetsCron();

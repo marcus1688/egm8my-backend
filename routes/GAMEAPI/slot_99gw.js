@@ -1847,25 +1847,25 @@ const fetchAndProcessGW99Data = async () => {
   }
 };
 
-const startGW99Cron = () => {
-  const cron = require("node-cron");
+// const startGW99Cron = () => {
+//   const cron = require("node-cron");
 
-  cron.schedule("*/5 * * * *", async () => {
-    console.log("🎰 Running GW99 5-minute data fetch...");
+//   cron.schedule("*/5 * * * *", async () => {
+//     console.log("🎰 Running GW99 5-minute data fetch...");
 
-    try {
-      const result = await fetchAndProcessGW99Data();
+//     try {
+//       const result = await fetchAndProcessGW99Data();
 
-      if (result.success) {
-        console.log(`✅ GW99 Cron: ${result.totalRecords} records processed`);
-      } else {
-        console.log(`❌ GW99 Cron failed: ${result.message}`);
-      }
-    } catch (error) {
-      console.error("❌ GW99 Cron error:", error.message);
-    }
-  });
-};
+//       if (result.success) {
+//         console.log(`✅ GW99 Cron: ${result.totalRecords} records processed`);
+//       } else {
+//         console.log(`❌ GW99 Cron failed: ${result.message}`);
+//       }
+//     } catch (error) {
+//       console.error("❌ GW99 Cron error:", error.message);
+//     }
+//   });
+// };
 
 module.exports = router;
 module.exports.startGW99Cron = startGW99Cron;

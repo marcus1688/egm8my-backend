@@ -1788,22 +1788,22 @@ const fetchAndProcessLionKingData = async () => {
   }
 };
 
-const startLionKingCron = () => {
-  const cron = require("node-cron");
+// const startLionKingCron = () => {
+//   const cron = require("node-cron");
 
-  cron.schedule("*/5 * * * *", async () => {
-    try {
-      const result = await fetchAndProcessLionKingData();
+//   cron.schedule("*/5 * * * *", async () => {
+//     try {
+//       const result = await fetchAndProcessLionKingData();
 
-      if (result.success) {
-      } else {
-        console.log(`❌ LionKing Cron failed: ${result.message}`);
-      }
-    } catch (error) {
-      console.error("❌ LionKing Cron error:", error.message);
-    }
-  });
-};
+//       if (result.success) {
+//       } else {
+//         console.log(`❌ LionKing Cron failed: ${result.message}`);
+//       }
+//     } catch (error) {
+//       console.error("❌ LionKing Cron error:", error.message);
+//     }
+//   });
+// };
 
 module.exports = router;
 module.exports.startLionKingCron = startLionKingCron;

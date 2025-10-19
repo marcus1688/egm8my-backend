@@ -28,37 +28,37 @@ function getNextRunTime(hour, minute) {
 }
 
 // 每天12点Agent PT
-if (process.env.NODE_ENV !== "development") {
-  cron.schedule(
-    "0 0 * * *", // 修改为凌晨0点(午夜12点)，并修正了cron表达式格式
-    async () => {
-      try {
-        console.log(
-          `Starting Agent PT calculation: ${new Date().toISOString()}`
-        );
-        await calculateAgentPT();
-        console.log(
-          `Agent PT calculation completed successfully: ${new Date().toISOString()}`
-        );
-      } catch (error) {
-        console.error(
-          `Agent PT calculation error: ${new Date().toISOString()}`,
-          error
-        );
-      }
-    },
-    {
-      scheduled: true,
-      timezone: "Asia/Kuala_Lumpur",
-    }
-  );
-  console.log(
-    `Agent PT calculation scheduled for 12:00 AM daily (Asia/Kuala_Lumpur). Next run: ${getNextRunTime(
-      0,
-      0
-    )}`
-  );
-}
+// if (process.env.NODE_ENV !== "development") {
+//   cron.schedule(
+//     "0 0 * * *", // 修改为凌晨0点(午夜12点)，并修正了cron表达式格式
+//     async () => {
+//       try {
+//         console.log(
+//           `Starting Agent PT calculation: ${new Date().toISOString()}`
+//         );
+//         await calculateAgentPT();
+//         console.log(
+//           `Agent PT calculation completed successfully: ${new Date().toISOString()}`
+//         );
+//       } catch (error) {
+//         console.error(
+//           `Agent PT calculation error: ${new Date().toISOString()}`,
+//           error
+//         );
+//       }
+//     },
+//     {
+//       scheduled: true,
+//       timezone: "Asia/Kuala_Lumpur",
+//     }
+//   );
+//   console.log(
+//     `Agent PT calculation scheduled for 12:00 AM daily (Asia/Kuala_Lumpur). Next run: ${getNextRunTime(
+//       0,
+//       0
+//     )}`
+//   );
+// }
 
 const calculateAgentPT = async () => {
   try {
