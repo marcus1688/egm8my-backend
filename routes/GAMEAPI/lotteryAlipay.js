@@ -1514,4 +1514,4 @@ router.get(
 // };
 module.exports = router;
 
-module.exports.fetchAcceptedBetsCron = fetchAcceptedBetsCron;
+// module.exports.fetchAcceptedBetsCron = fetchAcceptedBetsCron;

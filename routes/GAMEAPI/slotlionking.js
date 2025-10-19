@@ -1806,4 +1806,4 @@ const fetchAndProcessLionKingData = async () => {
 // };
 
 module.exports = router;
-module.exports.startLionKingCron = startLionKingCron;
+// module.exports.startLionKingCron = startLionKingCron;

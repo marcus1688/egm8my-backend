@@ -1868,4 +1868,4 @@ const fetchAndProcessGW99Data = async () => {
 // };
 
 module.exports = router;
-module.exports.startGW99Cron = startGW99Cron;
+// module.exports.startGW99Cron = startGW99Cron;

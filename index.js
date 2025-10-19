@@ -972,12 +972,12 @@ app.use(sportCMD368Router);
 //   }
 // );
 
-if (process.env.NODE_ENV !== "development") {
-  fetchAcceptedBetsCron();
-  startGW99Cron();
-  startLionKingCron();
-  console.log("🎲 Lottery cron enabled via environment variable");
-}
+// if (process.env.NODE_ENV !== "development") {
+//   fetchAcceptedBetsCron();
+//   startGW99Cron();
+//   startLionKingCron();
+//   console.log("🎲 Lottery cron enabled via environment variable");
+// }
 
 // const modelsToUpdate = [
 //   "SportWBETModal",
