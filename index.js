@@ -160,6 +160,7 @@ const allowedOrigins = [
   "https://www.mysteryclub88.com",
   "https://www.egm8my.vip",
   "https://www.egm8my.com",
+  "https://egm8my-frontend.vercel.app",
   "capacitor://localhost",
   "ionic://localhost",
   "file://",
