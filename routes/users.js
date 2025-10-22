@@ -4231,6 +4231,84 @@ router.post("/api/updateSocialMedia", authenticateToken, async (req, res) => {
   }
 });
 
+// Update DOB
+router.post("/api/updateDOB", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "User not found",
+          zh: "找不到用户",
+          ms: "Pengguna tidak dijumpai",
+        },
+      });
+    }
+
+    const { dob } = req.body;
+
+    if (!dob) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "Date of birth is required",
+          zh: "需要提供出生日期",
+          ms: "Tarikh lahir diperlukan",
+        },
+      });
+    }
+
+    // 验证用户必须年满18岁
+    const birthDate = new Date(dob);
+    const today = new Date();
+    const age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+
+    if (
+      monthDiff < 0 ||
+      (monthDiff === 0 && today.getDate() < birthDate.getDate())
+    ) {
+      age--;
+    }
+
+    if (age < 18) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "You must be at least 18 years old",
+          zh: "您必须年满18岁",
+          ms: "Anda mesti berumur sekurang-kurangnya 18 tahun",
+        },
+      });
+    }
+
+    user.dob = dob;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: {
+        en: "Update successful",
+        zh: "更新成功",
+        ms: "Kemas kini berjaya",
+      },
+    });
+  } catch (error) {
+    console.error("Update DOB error:", error);
+    res.status(500).json({
+      success: false,
+      message: {
+        en: "Internal server error",
+        zh: "服务器内部错误",
+        ms: "Ralat pelayan dalaman",
+      },
+    });
+  }
+});
+
 // Admin Get Summary Report
 router.get(
   "/admin/api/summary-report",
