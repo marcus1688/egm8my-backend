@@ -162,7 +162,7 @@ const allowedOrigins = [
   "https://www.egm8sg.vip",
   "https://www.egm8my.com",
   "https://egm8my-frontend.vercel.app",
-  "https://egm8sg-frontend.vercel.app/",
+  "https://egm8sg-frontend.vercel.app",
   "capacitor://localhost",
   "ionic://localhost",
   "file://",
