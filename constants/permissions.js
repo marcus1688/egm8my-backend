@@ -31,6 +31,13 @@ const modulePermissions = {
       { value: "luckydraw", label: "Lucky Draw" },
     ],
   },
+  egm8my: {
+    label: "EGM8MY",
+    permissions: [
+      { value: "rescuesetting", label: "Resuce Setting" },
+      { value: "rescuereport", label: "Rescue Report" },
+    ],
+  },
   agent: {
     label: "Agent",
     permissions: [

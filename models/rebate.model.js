@@ -12,6 +12,9 @@ const rebateLogSchema = new mongoose.Schema(
     totalwithdraw: {
       type: Number,
     },
+    totalbonus: {
+      type: Number,
+    },
     totalwinlose: {
       type: Number,
     },
@@ -69,6 +72,18 @@ const rebateLogSchema = new mongoose.Schema(
     lottery: {
       type: Number,
       default: 0,
+    },
+    claimed: {
+      type: Boolean,
+      default: false,
+    },
+    claimedBy: {
+      type: String,
+      default: null,
+    },
+    claimedAt: {
+      type: Date,
+      default: null,
     },
   },
   {

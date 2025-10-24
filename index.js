@@ -156,7 +156,7 @@ const mongoSanitize = require("express-mongo-sanitize");
 const xss = require("xss-clean");
 
 global.AGENT_COMMISSION_PROMOTION_ID = "68fabc976cfe394ec64f37e2";
-global.REBATE_PROMOTION_ID = "68909e951af19dfb128af5be";
+global.REBATE_PROMOTION_ID = "68fb42b060c7d4ae7ab6aac9";
 
 const allowedOrigins = [
   "https://mysteryclub88.com",
