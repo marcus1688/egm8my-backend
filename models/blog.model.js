@@ -4,23 +4,18 @@ const BlogSchema = new mongoose.Schema(
   {
     title: {
       type: String,
-      required: true,
     },
     titleCN: {
       type: String,
-      required: true,
     },
     description: {
       type: String,
-      required: true,
     },
     descriptionCN: {
       type: String,
-      required: true,
     },
     content: {
       type: String,
-      required: true,
     },
     contentCN: {
       type: String,
