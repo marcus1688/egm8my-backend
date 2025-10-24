@@ -65,6 +65,10 @@ const agentCommissionReportSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    bonusTransactionId: {
+      type: String,
+      default: null,
+    },
     agentUsername: {
       type: String,
     },
@@ -110,7 +114,18 @@ const agentCommissionReportSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-
+    totalDeposit: {
+      type: Number,
+      default: 0,
+    },
+    totalWithdraw: {
+      type: Number,
+      default: 0,
+    },
+    totalBonus: {
+      type: Number,
+      default: 0,
+    },
     commissionAmount: {
       type: Number,
       required: true,
@@ -121,14 +136,29 @@ const agentCommissionReportSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "approved", "rejected"],
+      enum: ["pending", "approved", "rejected", "cancel"],
       default: "pending",
     },
     formula: {
       type: String,
     },
+    formulazh: {
+      type: String,
+    },
     remark: {
       type: String,
+    },
+    claimed: {
+      type: Boolean,
+      default: false,
+    },
+    claimedBy: {
+      type: String,
+      default: null,
+    },
+    claimedAt: {
+      type: Date,
+      default: null,
     },
   },
   {

@@ -6,9 +6,10 @@ const {
   AgentCommission,
   AgentCommissionReport,
 } = require("../models/agent.model");
-const { User, GameDataValidLog } = require("../models/users.model");
+const { User } = require("../models/users.model");
 const Deposit = require("../models/deposit.model");
 const Withdraw = require("../models/withdraw.model");
+const Bonus = require("../models/bonus.model");
 const { authenticateAdminToken } = require("../auth/adminAuth");
 const { authenticateToken } = require("../auth/auth");
 // const BetRecord = require("../models/betrecord.model");
@@ -16,158 +17,73 @@ const UserWalletLog = require("../models/userwalletlog.model");
 const { LEVEL_REQUIREMENTS } = require("../config/agentConfig");
 const { updateKioskBalance } = require("../services/kioskBalanceService");
 const kioskbalance = require("../models/kioskbalance.model");
-const Bonus = require("../models/bonus.model");
-const axios = require("axios");
+const cron = require("node-cron");
+const Promotion = require("../models/promotion.model");
+const { v4: uuidv4 } = require("uuid");
+const { adminUser, adminLog } = require("../models/adminuser.model");
 
-let scheduledJob = null;
+const USER_TIMEZONE = "Asia/Kuala_Lumpur";
+const DB_TIMEZONE = "UTC";
 
-// UTC Server
-// const setScheduledJob = async (schedule) => {
-//   const { type, weekDay, monthDay, hour, minute } = schedule;
-//   let serverHour = (parseInt(hour) - 8 + 24) % 24;
-//   let serverMinute = parseInt(minute);
-//   let serverWeekDay = parseInt(weekDay);
-//   if (parseInt(hour) < 8) {
-//     if (serverWeekDay === 0) {
-//       serverWeekDay = 6;
-//     } else {
-//       serverWeekDay = serverWeekDay - 1;
-//     }
-//   }
-//   if (scheduledJob) {
-//     console.log(`Cancelling existing commission schedule job`);
-//     scheduledJob.cancel();
-//   }
-//   const commission = await AgentCommission.findOne();
-//   if (!commission) return;
-//   let cronExpression;
-//   if (type === "weekly") {
-//     cronExpression = `${serverMinute} ${serverHour} * * ${serverWeekDay}`;
-//   } else {
-//     cronExpression = `${serverMinute} ${serverHour} ${monthDay} * *`;
-//   }
-//   scheduledJob = nodeSchedule.scheduleJob(cronExpression, async () => {
-//     try {
-//       console.log(
-//         `Running commission calculation at ${new Date().toISOString()}`
-//       );
-//       await runCommissionCalculation();
-//       await AgentCommission.findOneAndUpdate({}, { lastRunTime: new Date() });
-//       console.log(
-//         `Commission calculation completed successfully at ${new Date().toISOString()}`
-//       );
-//     } catch (error) {
-//       console.error(
-//         `Commission calculation error at ${new Date().toISOString()}:`,
-//         error
-//       );
-//     }
-//   });
-//   console.log(
-//     `Next commission calculation scheduled for: ${scheduledJob.nextInvocation()}`
-//   );
-// };
-
-const setScheduledJob = async (schedule) => {
-  const { type, weekDay, monthDay, hour, minute } = schedule;
-  // For Malaysia Time (UTC+8), no need to adjust the hour
-  let serverHour = parseInt(hour);
-  let serverMinute = parseInt(minute);
-  let serverWeekDay = parseInt(weekDay);
-
-  // Remove the weekday adjustment that was related to the timezone conversion
-  // The original code had this adjustment for crossing midnight in UTC when converting from Malaysia time
-
-  if (scheduledJob) {
-    console.log(`Cancelling existing commission schedule job`);
-    scheduledJob.cancel();
+function getNextRunTime(hour, minute, dayOfWeek) {
+  const now = moment().tz(USER_TIMEZONE);
+  const nextRun = moment()
+    .tz(USER_TIMEZONE)
+    .hour(hour)
+    .minute(minute)
+    .second(0);
+  const currentDay = now.day();
+  const daysUntilMonday = (dayOfWeek - currentDay + 7) % 7;
+  nextRun.add(daysUntilMonday, "days");
+  if (nextRun.isBefore(now)) {
+    nextRun.add(7, "days");
   }
+  return nextRun.format("YYYY-MM-DD HH:mm:ss");
+}
 
-  const commission = await AgentCommission.findOne();
-  if (!commission) return;
-
-  let cronExpression;
-  if (type === "weekly") {
-    cronExpression = `${serverMinute} ${serverHour} * * ${serverWeekDay}`;
-  } else {
-    cronExpression = `${serverMinute} ${serverHour} ${monthDay} * *`;
-  }
-
-  scheduledJob = nodeSchedule.scheduleJob(cronExpression, async () => {
-    try {
-      console.log(
-        `Running commission calculation at ${new Date().toISOString()}`
-      );
-      await runCommissionCalculation();
-      await AgentCommission.findOneAndUpdate({}, { lastRunTime: new Date() });
-      console.log(
-        `Commission calculation completed successfully at ${new Date().toISOString()}`
-      );
-    } catch (error) {
-      console.error(
-        `Commission calculation error at ${new Date().toISOString()}:`,
-        error
-      );
+// 每周1早上6点Commission
+if (process.env.NODE_ENV !== "development") {
+  cron.schedule(
+    "0 6 * * 1",
+    async () => {
+      try {
+        const currentTime = moment()
+          .tz(USER_TIMEZONE)
+          .format("YYYY-MM-DD HH:mm:ss");
+        console.log(
+          `Running commission calculation at ${currentTime} (${USER_TIMEZONE})`
+        );
+        await runCommissionCalculation();
+        await AgentCommission.findOneAndUpdate({}, { lastRunTime: new Date() });
+        console.log(
+          `Commission calculation completed successfully at ${moment()
+            .tz(USER_TIMEZONE)
+            .format("YYYY-MM-DD HH:mm:ss")}`
+        );
+      } catch (error) {
+        console.error(
+          `Commission calculation error at ${new Date().toISOString()}:`,
+          error
+        );
+      }
+    },
+    {
+      scheduled: true,
+      timezone: USER_TIMEZONE,
     }
-  });
-
-  console.log(
-    `Next commission calculation scheduled for: ${scheduledJob.nextInvocation()}`
   );
-};
+  console.log(
+    `Commission job scheduled for every Monday 6:00 AM (${USER_TIMEZONE}). Next run: ${getNextRunTime(
+      6,
+      0,
+      1
+    )}`
+  );
+}
 
 function roundToTwoDecimals(num) {
   return Math.round(num * 100) / 100;
 }
-
-// User Claim Commission
-router.post("/api/claim-commission", authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: {
-          en: "User not found",
-          zh: "找不到用户",
-          ms: "Pengguna tidak dijumpai",
-        },
-      });
-    }
-
-    if (user.wallet > 1) {
-      return res.json({
-        success: false,
-        message: {
-          en: "Your wallet balance must be less than MYR 1 to claim commission",
-          zh: "您的钱包余额必须少于MYR 1才能领取佣金",
-          ms: "Baki dompet anda mestilah kurang daripada MYR 1 untuk menuntut komisen",
-        },
-      });
-    }
-
-    const result = await calculateUserTurnoverCommission(userId);
-    return res.json({
-      success: result.success,
-      message: result.message,
-      data: {
-        amount: result.amount,
-      },
-    });
-  } catch (error) {
-    console.error("Error claiming commission:", error);
-    return res.status(500).json({
-      success: false,
-      message: {
-        en: "Failed to claim commission",
-        zh: "领取佣金失败",
-        ms: "Gagal menuntut komisen",
-      },
-      error: error.message,
-    });
-  }
-});
 
 // User Get Agent Commission Report
 router.get(
@@ -176,25 +92,21 @@ router.get(
   async (req, res) => {
     try {
       const { startDate, endDate } = req.query;
-
       const userId = req.user.userId;
 
       const queryFilter = {
         agentId: userId,
+        claimed: true,
       };
 
       if (startDate && endDate) {
         queryFilter.createdAt = {
           $gte: moment
-            .tz(startDate, "Asia/Kuala_Lumpur")
+            .tz(startDate, USER_TIMEZONE)
             .startOf("day")
             .utc()
             .toDate(),
-          $lte: moment
-            .tz(endDate, "Asia/Kuala_Lumpur")
-            .endOf("day")
-            .utc()
-            .toDate(),
+          $lte: moment.tz(endDate, USER_TIMEZONE).endOf("day").utc().toDate(),
         };
       }
 
@@ -204,18 +116,7 @@ router.get(
 
       res.json({
         success: true,
-        data: reports.map((report) => ({
-          downlineUsername: report.downlineUsername,
-          // downlineFullname: report.downlineFullname,
-          calculationType: report.calculationType,
-          categoryTurnover: report.categoryTurnover,
-          totalTurnover: report.totalTurnover,
-          commissionAmount: report.commissionAmount,
-          formula: report.formula,
-          status: report.status,
-          createdAt: report.createdAt,
-          remark: report.remark,
-        })),
+        data: reports,
       });
     } catch (error) {
       console.error("Error fetching user commission report:", error);
@@ -335,7 +236,7 @@ router.get("/api/get-downlines", authenticateToken, async (req, res) => {
       const directDownlines = await User.find({
         "referralBy.user_id": parentId,
       }).select(
-        " fullname createdAt status lastLogin lastdepositdate viplevel totalturnover username"
+        "createdAt status lastLogin lastdepositdate viplevel totalturnover totaldeposit username"
       );
 
       let allDownlines = [];
@@ -400,8 +301,8 @@ router.get("/api/team-stats", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const agentCommission = await AgentCommission.findOne();
-    const maxDownline = parseInt(agentCommission.maxDownline);
-    // const maxDownline = parseInt(1);
+    // const maxDownline = parseInt(agentCommission.maxDownline);
+    const maxDownline = parseInt(1);
 
     async function getDownlineUsers(parentId, currentLevel = 1, maxLevel) {
       if (currentLevel > maxLevel) return [];
@@ -535,18 +436,6 @@ router.post(
 
       await commission.save();
 
-      if (isActive) {
-        await setScheduledJob({
-          type,
-          weekDay,
-          monthDay,
-          hour,
-          minute,
-        });
-      } else if (scheduledJob) {
-        scheduledJob.cancel();
-      }
-
       res.status(200).json({
         success: true,
         message: {
@@ -597,7 +486,6 @@ router.get(
   async (req, res) => {
     try {
       const { startDate, endDate } = req.query;
-
       const dateFilter = {};
 
       if (startDate && endDate) {
@@ -700,24 +588,192 @@ router.get(
   }
 );
 
+// Admin Claim Commission for Agent
+router.post(
+  "/admin/api/claim-commission",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { agentUsername, commissionReportId } = req.body;
+      const userId = req.user.userId;
+      const adminuser = await adminUser.findById(userId);
+
+      if (!adminuser) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Admin User not found",
+            zh: "未找到管理员用户",
+          },
+        });
+      }
+
+      const commissionReport = await AgentCommissionReport.findById(
+        commissionReportId
+      );
+      if (!commissionReport) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Commission record not found",
+            zh: "佣金记录未找到",
+          },
+        });
+      }
+
+      if (commissionReport.claimed) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Commission already claimed",
+            zh: "佣金已被领取",
+          },
+        });
+      }
+
+      const agent = await User.findOne({ username: agentUsername });
+      if (!agent) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Agent not found",
+            zh: "代理未找到",
+          },
+        });
+      }
+
+      const kioskSettings = await kioskbalance.findOne({});
+      if (kioskSettings && kioskSettings.status) {
+        const kioskResult = await updateKioskBalance(
+          "subtract",
+          commissionReport.commissionAmount,
+          {
+            username: agentUsername,
+            transactionType: "agent commission claim",
+            remark: `Manual commission claim by ${adminuser.username}`,
+            processBy: adminuser.username,
+          }
+        );
+        if (!kioskResult.success) {
+          return res.status(200).json({
+            success: false,
+            message: {
+              en: "Failed to update kiosk balance",
+              zh: "更新Kiosk余额失败",
+            },
+          });
+        }
+      }
+
+      agent.wallet += parseFloat(commissionReport.commissionAmount);
+      await agent.save();
+
+      const transactionId = uuidv4();
+      const promotion = await Promotion.findById(
+        global.AGENT_COMMISSION_PROMOTION_ID
+      );
+
+      const NewBonusTransaction = new Bonus({
+        transactionId: transactionId,
+        userId: agent._id,
+        username: agent.username,
+        fullname: agent.fullname,
+        transactionType: "bonus",
+        processBy: adminuser.username,
+        amount: parseFloat(commissionReport.commissionAmount),
+        walletamount: agent.wallet,
+        status: "approved",
+        method: "manual",
+        remark: commissionReport.remark,
+        promotionname: promotion.maintitle,
+        promotionnameEN: promotion.maintitleEN,
+        promotionId: promotion._id,
+        processtime: "00:00:00",
+      });
+      await NewBonusTransaction.save();
+
+      const walletLog = new UserWalletLog({
+        userId: agent._id,
+        transactionid: NewBonusTransaction.transactionId,
+        transactiontime: new Date(),
+        transactiontype: "commission",
+        amount: parseFloat(commissionReport.commissionAmount),
+        status: "approved",
+        promotionnameEN: commissionReport.remark,
+      });
+      await walletLog.save();
+
+      commissionReport.claimed = true;
+      commissionReport.claimedBy = adminuser.username;
+      commissionReport.claimedAt = new Date();
+      commissionReport.bonusTransactionId = NewBonusTransaction._id;
+      await commissionReport.save();
+
+      res.status(200).json({
+        success: true,
+        message: {
+          en: `Commission claimed successfully for ${agentUsername}`,
+          zh: `${agentUsername} 的佣金已成功领取`,
+        },
+      });
+    } catch (error) {
+      console.error("Error claiming commission:", error);
+      res.status(500).json({
+        success: false,
+        message: {
+          en: "Internal server error",
+          zh: "服务器内部错误",
+        },
+      });
+    }
+  }
+);
+
+// Admin Manual Commission Calculation (If Needed)
+// router.post(
+//   "/api/commission-calculate/manual",
+
+//   async (req, res) => {
+//     try {
+//       await runCommissionCalculation();
+//       await AgentCommission.findOneAndUpdate(
+//         {},
+//         {
+//           lastRunTime: new Date(),
+//         },
+//         {
+//           upsert: true,
+//         }
+//       );
+//       res.json({
+//         success: true,
+//         message: {
+//           en: "Commission calculation completed successfully",
+//           zh: "佣金计算完成",
+//         },
+//       });
+//     } catch (error) {
+//       console.error("Error running manual commission calculation:", error);
+//       res.status(500).json({
+//         success: false,
+//         message: {
+//           en: "Failed to run commission calculation",
+//           zh: "佣金计算失败",
+//         },
+//         error: error.message,
+//       });
+//     }
+//   }
+// );
+
 async function runCommissionCalculation() {
   try {
     const commission = await AgentCommission.findOne();
-    if (!commission || !commission.isActive) return;
-
+    if (!commission) return;
     if (commission.calculationType === "turnover") {
       await calculateTurnoverCommission();
     } else {
       await calculateWinLoseCommission();
-    }
-    if (commission.isActive) {
-      await setScheduledJob({
-        type: commission.type,
-        weekDay: commission.weekDay,
-        monthDay: commission.monthDay,
-        hour: commission.hour,
-        minute: commission.minute,
-      });
     }
   } catch (error) {
     console.error("Commission calculation error:", error);
@@ -727,166 +783,311 @@ async function runCommissionCalculation() {
 
 const calculateWinLoseCommission = async () => {
   try {
+    console.log("======= 开始计算代理佣金 =======");
     const commission = await AgentCommission.findOne();
     const maxLevel = parseInt(commission.maxDownline);
-
     const weekStart = moment()
-      .utc()
-      //       // .subtract(1, "week")
+      .tz(USER_TIMEZONE)
+      .subtract(1, "week")
       .startOf("isoWeek")
-      .subtract(8, "hours")
-      .toDate();
-
-    const weekEnd = moment()
       .utc()
-      //       // .subtract(1, "week")
-      .endOf("isoWeek")
-      .subtract(8, "hours")
       .toDate();
-
-    const transactionUsers = await Deposit.aggregate([
-      {
-        $match: {
-          createdAt: { $gte: weekStart, $lte: weekEnd },
-          status: "approved",
-          reverted: false,
-        },
-      },
-      {
-        $group: {
-          _id: "$userId",
-          totalDeposit: { $sum: "$amount" },
-        },
-      },
-    ]);
-
-    const userIds = transactionUsers.map((u) => u._id);
-    const withdrawals = await Withdraw.aggregate([
-      {
-        $match: {
-          userid: { $in: userIds },
-          createdAt: { $gte: weekStart, $lte: weekEnd },
-          status: "approved",
-          reverted: false,
-        },
-      },
-      {
-        $group: {
-          _id: "$userid",
-          totalWithdraw: { $sum: "$amount" },
-        },
-      },
-    ]);
-
-    const withdrawMap = new Map(
-      withdrawals.map((w) => [w._id.toString(), w.totalWithdraw])
+    const weekEnd = moment()
+      .tz(USER_TIMEZONE)
+      .subtract(1, "week")
+      .endOf("isoWeek")
+      .utc()
+      .toDate();
+    console.log(
+      `计算日期范围: ${weekStart.toISOString()} 到 ${weekEnd.toISOString()}`
     );
-
-    const userNetAmounts = transactionUsers.map((user) => ({
-      userId: user._id,
-      netAmount:
-        user.totalDeposit - (withdrawMap.get(user._id.toString()) || 0),
-    }));
-
-    const users = await User.find({
-      _id: { $in: userIds },
-    }).select("username referralBy");
-
-    const userMap = new Map(users.map((u) => [u._id.toString(), u]));
-
-    const referrerMap = new Map();
-
-    users.forEach((user) => {
-      if (user.referralBy && user.referralBy.user_id) {
-        const referrerId = user.referralBy.user_id.toString();
-        if (!referrerMap.has(referrerId)) {
-          referrerMap.set(referrerId, []);
-        }
-        referrerMap.get(referrerId).push({
-          userId: user._id,
-          username: user.username,
-          level: 1,
-        });
-      }
-    });
-
-    const commissionResults = new Map();
-
-    for (const [referrerId, directDownlines] of referrerMap.entries()) {
-      let totalCommission = 0;
-      let formulaString = "";
-      const downlineDetails = [];
-
-      const calculateLevelCommission = (downlines, level) => {
-        if (level > maxLevel) return;
-        for (const downline of downlines) {
-          const userNetAmount =
-            userNetAmounts.find(
-              (u) => u.userId.toString() === downline.userId.toString()
-            )?.netAmount || 0;
-
-          if (userNetAmount > 0) {
-            const percentage = commission.winLoseCommission[level] || 0;
-            const commissionAmount = (userNetAmount * percentage) / 100;
-
-            totalCommission += commissionAmount;
-            formulaString += `${
-              downline.username
-            }(L${level}): ${userNetAmount} * ${percentage}% = ${commissionAmount.toFixed(
-              2
-            )}\n`;
-
-            downlineDetails.push({
-              level,
-              username: downline.username,
-              netAmount: userNetAmount,
-              commission: commissionAmount,
-            });
-          }
-          const nextLevelDownlines =
-            referrerMap.get(downline.userId.toString()) || [];
-          calculateLevelCommission(nextLevelDownlines, level + 1);
-        }
-      };
-      calculateLevelCommission(directDownlines, 1);
-      if (totalCommission > 0) {
-        commissionResults.set(referrerId, {
-          totalCommission,
-          formula: formulaString,
-          downlineDetails,
-        });
-      }
-    }
-
-    const agentUsers = await User.find({
-      _id: { $in: Array.from(commissionResults.keys()) },
-    }).select("username _id");
-
-    const agentMap = new Map(
-      agentUsers.map((agent) => [agent._id.toString(), agent.username])
+    const agents = await User.find({
+      "referrals.0": { $exists: true },
+      $or: [{ positionTaking: { $exists: false } }, { positionTaking: 0 }],
+    }).select("_id username fullname referrals");
+    console.log(
+      `找到 ${agents.length} 个符合条件的代理（不包括positionTaking > 0的代理）`
     );
-
-    const reports = [];
-    for (const [referrerId, result] of commissionResults) {
-      reports.push(
-        AgentCommissionReport.create({
-          agentId: referrerId,
-          agentUsername: agentMap.get(referrerId),
-          calculationType: "winlose",
-          commissionAmount: roundToTwoDecimals(result.totalCommission),
-          formula: result.formula,
-          downlineDetailWinLoss: result.downlineDetails,
-          status: "approved",
-          remark: `${moment(weekStart).format("YYYY-MM-DD")} to ${moment(
-            weekEnd
-          ).format("YYYY-MM-DD")}`,
-        })
+    for (const agent of agents) {
+      console.log(`\n处理代理: ${agent.username}`);
+      if (!agent.referrals || agent.referrals.length === 0) {
+        console.log(`  代理 ${agent.username} 没有下线，跳过`);
+        continue;
+      }
+      const downlineIds = agent.referrals
+        .map((ref) => ref.user_id)
+        .filter((id) => id);
+      console.log(`  找到 ${downlineIds.length} 个下线`);
+      const downlineUsers = await User.find({
+        _id: { $in: downlineIds },
+      }).select("_id username wallet");
+      const downlineWalletMap = new Map();
+      downlineUsers.forEach((user) => {
+        downlineWalletMap.set(user._id.toString(), user.wallet || 0);
+      });
+      const deposits = await Deposit.aggregate([
+        {
+          $match: {
+            userId: { $in: downlineIds },
+            createdAt: { $gte: weekStart, $lte: weekEnd },
+            status: "approved",
+            reverted: false,
+          },
+        },
+        {
+          $group: {
+            _id: "$userId",
+            totalDeposit: { $sum: "$amount" },
+            username: { $first: "$username" },
+          },
+        },
+      ]);
+      const withdrawals = await Withdraw.aggregate([
+        {
+          $match: {
+            userId: { $in: downlineIds },
+            createdAt: { $gte: weekStart, $lte: weekEnd },
+            status: "approved",
+            reverted: false,
+          },
+        },
+        {
+          $group: {
+            _id: "$userId",
+            totalWithdraw: { $sum: "$amount" },
+            username: { $first: "$username" },
+          },
+        },
+      ]);
+      const bonuses = await Bonus.aggregate([
+        {
+          $match: {
+            userId: { $in: downlineIds },
+            createdAt: { $gte: weekStart, $lte: weekEnd },
+            status: "approved",
+            reverted: false,
+          },
+        },
+        {
+          $group: {
+            _id: "$userId",
+            totalBonus: { $sum: "$amount" },
+            username: { $first: "$username" },
+          },
+        },
+      ]);
+      const downlineData = {};
+      let totalAgentDeposit = 0;
+      let totalAgentWithdraw = 0;
+      let totalAgentBonus = 0;
+      let netWinlose = 0;
+      deposits.forEach((deposit) => {
+        const userId = deposit._id.toString();
+        if (!downlineData[userId]) {
+          downlineData[userId] = {
+            userId,
+            username: deposit.username,
+            totalDeposit: 0,
+            totalWithdraw: 0,
+            totalBonus: 0,
+          };
+        }
+        downlineData[userId].totalDeposit = deposit.totalDeposit;
+        totalAgentDeposit += deposit.totalDeposit;
+      });
+      withdrawals.forEach((withdraw) => {
+        const userId = withdraw._id.toString();
+        if (!downlineData[userId]) {
+          downlineData[userId] = {
+            userId,
+            username: withdraw.username,
+            totalDeposit: 0,
+            totalWithdraw: 0,
+            totalBonus: 0,
+          };
+        }
+        downlineData[userId].totalWithdraw = withdraw.totalWithdraw;
+        totalAgentWithdraw += withdraw.totalWithdraw;
+      });
+      bonuses.forEach((bonus) => {
+        const userId = bonus._id.toString();
+        if (!downlineData[userId]) {
+          downlineData[userId] = {
+            userId,
+            username: bonus.username,
+            totalDeposit: 0,
+            totalWithdraw: 0,
+            totalBonus: 0,
+          };
+        }
+        downlineData[userId].totalBonus = bonus.totalBonus;
+        totalAgentBonus += bonus.totalBonus;
+      });
+      netWinlose = totalAgentDeposit - totalAgentWithdraw;
+      const commissionPercentage = parseFloat(
+        commission.winLoseCommission[1] || 0
       );
+      let commissionAmount = netWinlose * (commissionPercentage / 100);
+      const finalCommissionAmount = commissionAmount > 0 ? commissionAmount : 0;
+      let formula = `Calculation Date: ${moment(weekStart)
+        .tz(USER_TIMEZONE)
+        .format("YYYY-MM-DD")} to ${moment(weekEnd)
+        .tz(USER_TIMEZONE)
+        .format("YYYY-MM-DD")}\n\n`;
+
+      let formulazh = `計算日期：${moment(weekStart)
+        .tz(USER_TIMEZONE)
+        .format("YYYY-MM-DD")} 至 ${moment(weekEnd)
+        .tz(USER_TIMEZONE)
+        .format("YYYY-MM-DD")}\n\n`;
+
+      Object.values(downlineData).forEach((data) => {
+        formula += `Downline: ${data.username}\n`;
+        formula += `  Deposit: ${data.totalDeposit.toFixed(2)}\n`;
+        formula += `  Withdraw: ${data.totalWithdraw.toFixed(2)}\n`;
+        formula += `  Bonus: ${data.totalBonus.toFixed(2)}\n`;
+        formula += `  Wallet: ${(
+          downlineWalletMap.get(data.userId) || 0
+        ).toFixed(2)}\n`;
+        formula += `  Net Amount: ${(
+          data.totalDeposit - data.totalWithdraw
+        ).toFixed(2)}\n\n`;
+
+        formulazh += `下線：${data.username}\n`;
+        formulazh += `  存款：${data.totalDeposit.toFixed(2)}\n`;
+        formulazh += `  提款：${data.totalWithdraw.toFixed(2)}\n`;
+        formulazh += `  獎金：${data.totalBonus.toFixed(2)}\n`;
+        formulazh += `  錢包：${(
+          downlineWalletMap.get(data.userId) || 0
+        ).toFixed(2)}\n`;
+        formulazh += `  淨金額：${(
+          data.totalDeposit - data.totalWithdraw
+        ).toFixed(2)}\n\n`;
+      });
+
+      formula += `Summary:\n`;
+      formula += `  Total Deposit: ${totalAgentDeposit.toFixed(2)}\n`;
+      formula += `  Total Withdraw: ${totalAgentWithdraw.toFixed(2)}\n`;
+      formula += `  Total Bonus: ${totalAgentBonus.toFixed(2)}\n`;
+      formula += `  Net Win/Loss: ${netWinlose.toFixed(2)}\n`;
+      formula += `  Commission Rate: ${commissionPercentage}%\n`;
+      formula += `  Commission Calculation: ${netWinlose.toFixed(
+        2
+      )} × ${commissionPercentage}% = ${commissionAmount.toFixed(2)}\n`;
+      if (netWinlose < 0) {
+        formula += `  Note: Net Win/Loss is negative, no commission will be paid.\n`;
+      }
+
+      formulazh += `摘要：\n`;
+      formulazh += `  總存款：${totalAgentDeposit.toFixed(2)}\n`;
+      formulazh += `  總提款：${totalAgentWithdraw.toFixed(2)}\n`;
+      formulazh += `  總獎金：${totalAgentBonus.toFixed(2)}\n`;
+      formulazh += `  淨盈虧：${netWinlose.toFixed(2)}\n`;
+      formulazh += `  佣金比例：${commissionPercentage}%\n`;
+      formulazh += `  佣金計算：${netWinlose.toFixed(
+        2
+      )} × ${commissionPercentage}% = ${commissionAmount.toFixed(2)}\n`;
+      if (netWinlose < 0) {
+        formulazh += `  注意：淨盈虧為負數，不支付佣金。\n`;
+      }
+
+      console.log(`  总存款: ${totalAgentDeposit.toFixed(2)}`);
+      console.log(`  总提款: ${totalAgentWithdraw.toFixed(2)}`);
+      console.log(`  总奖金: ${totalAgentBonus.toFixed(2)}`);
+      console.log(`  净盈亏: ${netWinlose.toFixed(2)}`);
+      console.log(`  佣金比例: ${commissionPercentage}%`);
+      console.log(`  佣金计算: ${commissionAmount.toFixed(2)}`);
+      if (netWinlose < 0) {
+        console.log(`  注意: 净盈亏为负数，不支付佣金`);
+      }
+      if (Object.keys(downlineData).length > 0) {
+        const agentUser = await User.findById(agent._id);
+        if (!agentUser) {
+          console.log(`Agent not found: ${agent.username}`);
+          continue;
+        }
+
+        const shouldClaim = finalCommissionAmount > 0 && agentUser.wallet > 5;
+        const transactionId = uuidv4();
+        let bonusTransactionId = null;
+        console.log(`  已为代理 ${agent.username} 创建佣金报告`);
+        if (finalCommissionAmount > 0) {
+          const commissionAmount = parseFloat(finalCommissionAmount.toFixed(2));
+          if (!shouldClaim) {
+            const promotion = await Promotion.findById(
+              global.AGENT_COMMISSION_PROMOTION_ID
+            );
+            await updateAgentWallet(
+              agent._id.toString(),
+              commissionAmount,
+              `${moment(weekStart)
+                .tz(USER_TIMEZONE)
+                .format("DD/MM/YYYY")} - ${moment(weekEnd)
+                .tz(USER_TIMEZONE)
+                .format("DD/MM/YYYY")}`,
+              transactionId
+            );
+
+            const NewBonusTransaction = new Bonus({
+              transactionId: transactionId,
+              userId: agent._id,
+              username: agent.username,
+              fullname: agent.fullname,
+              transactionType: "bonus",
+              processBy: "system",
+              amount: commissionAmount,
+              walletamount: agent.wallet + commissionAmount,
+              status: "approved",
+              method: "auto",
+              remark: `${moment(weekStart)
+                .tz(USER_TIMEZONE)
+                .format("DD/MM/YYYY")} - ${moment(weekEnd)
+                .tz(USER_TIMEZONE)
+                .format("DD/MM/YYYY")}`,
+              promotionname: promotion.maintitle,
+              promotionnameEN: promotion.maintitleEN,
+              promotionId: promotion._id,
+              processtime: "00:00:00",
+            });
+            await NewBonusTransaction.save();
+            bonusTransactionId = NewBonusTransaction._id;
+            console.log(`  已更新代理 ${agent.username} 的钱包余额`);
+          } else {
+            console.log(
+              `  Commission pending for ${agent.username}: ${commissionAmount} (wallet: ${agent.wallet})`
+            );
+          }
+        } else {
+          console.log(`  佣金金额为零或负数，不更新钱包余额`);
+        }
+        await AgentCommissionReport.create({
+          agentId: agent._id,
+          bonusTransactionId: bonusTransactionId,
+          agentUsername: agent.username,
+          agentFullname: agent.fullname,
+          calculationType: "winlose",
+          totalDeposit: totalAgentDeposit.toFixed(2),
+          totalWithdraw: totalAgentWithdraw.toFixed(2),
+          totalBonus: totalAgentBonus.toFixed(2),
+          totalWinLoss: netWinlose.toFixed(2),
+          commissionAmount: finalCommissionAmount.toFixed(2),
+          formula: formula,
+          formulazh: formulazh,
+          status: "approved",
+          remark: `${moment(weekStart)
+            .tz(USER_TIMEZONE)
+            .format("DD/MM/YYYY")} - ${moment(weekEnd)
+            .tz(USER_TIMEZONE)
+            .format("DD/MM/YYYY")}`,
+          claimed: !shouldClaim,
+          claimedBy: shouldClaim ? null : "auto",
+          claimedAt: shouldClaim ? null : new Date(),
+        });
+      }
     }
-    await Promise.all(reports);
-    console.log("Commission calculation completed successfully");
+    console.log("\n======= 代理佣金计算完成 =======");
   } catch (error) {
-    console.error("Error calculating winlose commission:", error);
+    console.error("计算代理佣金时出错:", error);
     throw error;
   }
 };
@@ -895,30 +1096,28 @@ const calculateTurnoverCommission = async () => {
   console.log("====== STARTING TURNOVER COMMISSION CALCULATION ======");
 
   const mockTurnoverData = {
-    test1: {
-      "25-04-2025": {
-        "Slot Games": 600000,
-        Lottery: 6000,
+    60175194357: {
+      "11-03-2025": {
+        "Slot Games": 5000,
+        Others: 6000,
         "Live Casino": 4850,
         Sports: 2220,
-        Fishing: 1000,
-        "E-Sports": 4500,
       },
-      "26-04-2025": {
+      "13-03-2025": {
         "Slot Games": 5000,
         Others: 6000,
         "Live Casino": 4850,
         Sports: 2220,
       },
     },
-    test2: {
-      "25-04-2025": {
+    60169928784: {
+      "10-03-2025": {
         "Slot Games": 5000,
         Others: 6000,
         "Live Casino": 4850,
         Sports: 2220,
       },
-      "26-04-2025": {
+      "16-03-2025": {
         "Slot Games": 5000,
         Others: 6000,
         "Live Casino": 4850,
@@ -946,7 +1145,7 @@ const calculateTurnoverCommission = async () => {
     console.log("Fetching commission settings...");
     const commission = await AgentCommission.findOne();
     console.log("Commission settings found:", commission ? "Yes" : "No");
-    if (!commission || !commission.isActive) {
+    if (!commission) {
       console.log(
         "No commission settings or commission not active, exiting function"
       );
@@ -959,8 +1158,18 @@ const calculateTurnoverCommission = async () => {
       JSON.stringify(commission.commissionPercentages, null, 2)
     );
     console.log("Calculating date range for previous week...");
-    const weekStart = moment().subtract(1, "week").startOf("isoWeek").toDate();
-    const weekEnd = moment().subtract(1, "week").endOf("isoWeek").toDate();
+    const weekStart = moment()
+      .tz(USER_TIMEZONE)
+      .subtract(1, "week")
+      .startOf("isoWeek")
+      .utc()
+      .toDate();
+    const weekEnd = moment()
+      .tz(USER_TIMEZONE)
+      .subtract(1, "week")
+      .endOf("isoWeek")
+      .utc()
+      .toDate();
     console.log(
       `Date range: ${weekStart.toISOString()} to ${weekEnd.toISOString()}`
     );
@@ -1047,22 +1256,10 @@ const calculateTurnoverCommission = async () => {
         categoryTurnover,
         levelData,
       } = commissionData;
-
-      const cappedCommission = Math.min(totalCommission, 1000);
-
       console.log(`\n   Processing agent: ${agent.username} (${agentId})`);
       console.log(
         `   Total commission: ${roundToTwoDecimals(totalCommission)}`
       );
-
-      if (totalCommission > 1000) {
-        console.log(
-          `   Commission capped at 1000 (original: ${roundToTwoDecimals(
-            totalCommission
-          )})`
-        );
-      }
-
       if (totalCommission > 0) {
         try {
           const allDownlines = {};
@@ -1079,7 +1276,7 @@ const calculateTurnoverCommission = async () => {
               categoryTurnover: downlineData.categoryTurnover,
               totalTurnover: downlineData.totalTurnover,
               downlineLevel: downlineData.level,
-              commissionAmount: roundToTwoDecimals(cappedCommission),
+              commissionAmount: roundToTwoDecimals(totalCommission),
               formula: formula,
               status: "approved",
               remark: `${moment(weekStart).format("YYYY-MM-DD")} to ${moment(
@@ -1091,8 +1288,8 @@ const calculateTurnoverCommission = async () => {
           const weekStartFormatted = moment(weekStart).format("DD/MM/YYYY");
           const weekEndFormatted = moment(weekEnd).format("DD/MM/YYYY");
           const commissionPeriod = `${weekStartFormatted} - ${weekEndFormatted}`;
-          await updateAgentWallet(agentId, cappedCommission, commissionPeriod);
-          console.log(`   Agent wallet updated with ${cappedCommission}`);
+          await updateAgentWallet(agentId, totalCommission, commissionPeriod);
+          console.log(`   Agent wallet updated with ${totalCommission}`);
         } catch (err) {
           console.error(
             `   Error creating report or updating wallet: ${err.message}`
@@ -1189,7 +1386,7 @@ async function processUplineChain(
   let levelCommission = 0;
   Object.entries(userTurnover).forEach(([date, categories]) => {
     const formattedDate = moment(date, "DD-MM-YYYY").format("DD/MM/YYYY");
-    const displayName = user.username.toUpperCase();
+    const displayName = user.fullname.toUpperCase();
     const userLevelKey = `${displayName}(L${currentLevel})`;
     if (!agentCommissions[referrerId].formulaData[formattedDate]) {
       agentCommissions[referrerId].formulaData[formattedDate] = {};
@@ -1283,7 +1480,12 @@ async function processUplineChain(
   );
 }
 
-const updateAgentWallet = async (agentId, commissionAmount) => {
+const updateAgentWallet = async (
+  agentId,
+  commissionAmount,
+  commissionPeriod,
+  transactionId
+) => {
   try {
     const kioskSettings = await kioskbalance.findOne({});
     if (kioskSettings && kioskSettings.status) {
@@ -1309,26 +1511,18 @@ const updateAgentWallet = async (agentId, commissionAmount) => {
         );
       }
     }
-    const weekStart = moment()
-      .subtract(1, "week")
-      .startOf("isoWeek")
-      .format("DD/MM/YYYY");
-    const weekEnd = moment()
-      .subtract(1, "week")
-      .endOf("isoWeek")
-      .format("DD/MM/YYYY");
-    const commissionPeriod = `${weekStart} - ${weekEnd}`;
     await User.findOneAndUpdate(
       { _id: agentId },
       { $inc: { wallet: commissionAmount } }
     );
     await UserWalletLog.create({
       userId: agentId,
-      transactiontype: "agent commission",
+      transactionid: transactionId,
+      transactiontype: "commission",
       amount: commissionAmount,
       status: "approved",
-      promotionnameEN: `${commissionPeriod}`,
-      promotionnameCN: `${commissionPeriod}`,
+      promotionnameEN: commissionPeriod,
+      promotionnameCN: commissionPeriod,
       transactiontime: new Date(),
     });
   } catch (error) {
@@ -1347,1005 +1541,5 @@ async function getAgentDownlines(agentId, maxLevel) {
   }
   return downlines;
 }
-
-const calculateUserTurnoverCommission = async (userId) => {
-  console.log("====== STARTING USER TURNOVER COMMISSION CALCULATION ======");
-  console.log(`Processing for user ID: ${userId}`);
-  try {
-    const user = await User.findById(userId);
-    if (!user) {
-      console.log(`User not found: ${userId}`);
-      return {
-        success: false,
-        message: {
-          en: "User not found",
-          zh: "找不到用户",
-          ms: "Pengguna tidak dijumpai",
-        },
-        amount: 0,
-      };
-    }
-
-    if (user.duplicateIP) {
-      console.log(
-        `User ${user.username} has duplicateIP=true, blocking commission`
-      );
-      return {
-        success: false,
-        message: {
-          en: "Commission not available due to account restrictions",
-          zh: "由于账户限制，佣金不可用",
-          ms: "Komisen tidak tersedia kerana sekatan akaun",
-        },
-        amount: 0,
-      };
-    }
-
-    console.log(`Processing for user: ${user.username}`);
-    const commission = await AgentCommission.findOne();
-    if (!commission || !commission.isActive) {
-      console.log("No commission settings or commission not active");
-      return {
-        success: false,
-        message: {
-          en: "Commission feature is not active",
-          zh: "佣金功能未激活",
-          ms: "Ciri komisen tidak aktif",
-        },
-        amount: 0,
-      };
-    }
-
-    try {
-      const response = await axios.get(
-        `${process.env.BASE_URL}api/user/getCommissionDatatest?userId=${userId}`
-      );
-      if (!response.data.success) {
-        console.log("API call failed:", response.data.message);
-        return {
-          success: false,
-          message: {
-            en: "Failed to retrieve commission data",
-            zh: "获取佣金数据失败",
-            ms: "Gagal mendapatkan data komisen",
-          },
-          amount: 0,
-        };
-      }
-      mockTurnoverData = response.data.data;
-    } catch (error) {
-      console.error("Error fetching commission data:", error.message);
-      return {
-        success: false,
-        message: {
-          en: "An error occurred while retrieving commission data",
-          zh: "获取佣金数据时发生错误",
-          ms: "Ralat berlaku semasa mendapatkan data komisen",
-        },
-        amount: 0,
-      };
-    }
-
-    if (
-      mockTurnoverData.downlines &&
-      Object.keys(mockTurnoverData.downlines).length > 0
-    ) {
-      const downlineUsernames = Object.keys(mockTurnoverData.downlines);
-      const downlineUsers = await User.find({
-        username: { $in: downlineUsernames },
-      }).select("username duplicateIP");
-      const duplicateIPMap = new Map();
-      downlineUsers.forEach((user) => {
-        duplicateIPMap.set(user.username, user.duplicateIP || false);
-      });
-      const filteredDownlines = {};
-      let excludedDownlinesCount = 0;
-      for (const [downlineUsername, turnoverByDate] of Object.entries(
-        mockTurnoverData.downlines
-      )) {
-        const hasDuplicateIP = duplicateIPMap.get(downlineUsername);
-        if (hasDuplicateIP) {
-          console.log(
-            `Excluding downline ${downlineUsername} due to duplicateIP=true`
-          );
-          excludedDownlinesCount++;
-          continue;
-        }
-        filteredDownlines[downlineUsername] = turnoverByDate;
-      }
-      console.log(
-        `Excluded ${excludedDownlinesCount} downlines due to duplicateIP restrictions`
-      );
-      console.log(
-        `Processing ${
-          Object.keys(filteredDownlines).length
-        } valid downlines for commission calculation`
-      );
-      mockTurnoverData.downlines = filteredDownlines;
-      if (Object.keys(filteredDownlines).length === 0) {
-        console.log("No valid downlines found after duplicateIP filtering");
-        return {
-          success: false,
-          message: {
-            en: "No eligible downlines found for commission calculation",
-            zh: "没有符合条件的下线可以计算佣金",
-            ms: "Tiada downline yang layak untuk pengiraan komisen",
-          },
-          amount: 0,
-        };
-      }
-    } else {
-      console.log("No downlines found in commission data");
-      return {
-        success: false,
-        message: {
-          en: "No downlines found for commission calculation",
-          zh: "没有找到下线进行佣金计算",
-          ms: "Tiada downline dijumpai untuk pengiraan komisen",
-        },
-        amount: 0,
-      };
-    }
-
-    // const mockTurnoverData = {
-    //   // 佣金计算的起止日期
-    //   startDate: "01-05-2025",
-    //   endDate: "07-05-2025",
-
-    //   // 下线数据
-    //   downlines: {
-    //     test1: {
-    //       "02-05-2025": {
-    //         "Slot Games": 600000,
-    //         Lottery: 6000,
-    //         "Live Casino": 4850,
-    //         Sports: 2220,
-    //         Fishing: 1000,
-    //         "E-Sports": 4500,
-    //         downlineLevel: 1,
-    //       },
-    //       "05-05-2025": {
-    //         "Slot Games": 5000,
-    //         Others: 6000,
-    //         "Live Casino": 4850,
-    //         Sports: 2220,
-    //         downlineLevel: 1,
-    //       },
-    //     },
-    //     test2: {
-    //       "03-05-2025": {
-    //         "Slot Games": 5000,
-    //         Others: 6000,
-    //         "Live Casino": 4850,
-    //         Sports: 2220,
-    //         downlineLevel: 2,
-    //       },
-    //       "06-05-2025": {
-    //         "Slot Games": 5000,
-    //         Others: 6000,
-    //         "Live Casino": 4850,
-    //         Sports: 2220,
-    //         downlineLevel: 2,
-    //       },
-    //     },
-    //     test3: {
-    //       "01-05-2025": {
-    //         "Slot Games": 5000,
-    //         Others: 6000,
-    //         "Live Casino": 4850,
-    //         Sports: 2220,
-    //         downlineLevel: 3,
-    //       },
-    //       "07-05-2025": {
-    //         "Slot Games": 5000,
-    //         Others: 6000,
-    //         "Live Casino": 4850,
-    //         Sports: 2220,
-    //         downlineLevel: 3,
-    //       },
-    //     },
-    //   },
-    // };
-
-    console.log(
-      "Mock turnover data loaded with date range:",
-      mockTurnoverData.startDate,
-      "to",
-      mockTurnoverData.endDate
-    );
-    console.log(
-      "Downlines count:",
-      Object.keys(mockTurnoverData.downlines).length
-    );
-    const startDate = moment(mockTurnoverData.startDate, "DD-MM-YYYY").toDate();
-    const endDate = moment(mockTurnoverData.endDate, "DD-MM-YYYY").toDate();
-    const startDateFormatted = moment(startDate).format("DD/MM/YYYY");
-    const endDateFormatted = moment(endDate).format("DD/MM/YYYY");
-    const commissionPeriod = `${startDateFormatted} - ${endDateFormatted}`;
-    console.log(`Commission period: ${commissionPeriod}`);
-    let totalCommission = 0;
-    let downlinesData = {};
-    let downlineFormulaData = {};
-    for (const [downlineUsername, turnoverByDate] of Object.entries(
-      mockTurnoverData.downlines
-    )) {
-      console.log(`\nProcessing downline: ${downlineUsername}`);
-      const downlineCategories = {};
-      let downlineTotalTurnover = 0;
-      let downlineLevel = 1;
-      let downlineCommission = 0;
-      downlineFormulaData[downlineUsername] = {};
-      for (const [date, turnoverData] of Object.entries(turnoverByDate)) {
-        const formattedDate = moment(date, "DD-MM-YYYY").format("DD/MM/YYYY");
-        downlineLevel = turnoverData.downlineLevel || 1;
-        if (!downlineFormulaData[downlineUsername][formattedDate]) {
-          downlineFormulaData[downlineUsername][formattedDate] = {};
-        }
-        const userLevelKey = `${downlineUsername.toUpperCase()}(L${downlineLevel})`;
-        if (
-          !downlineFormulaData[downlineUsername][formattedDate][userLevelKey]
-        ) {
-          downlineFormulaData[downlineUsername][formattedDate][userLevelKey] =
-            [];
-        }
-        for (const [category, turnover] of Object.entries(turnoverData)) {
-          if (category === "downlineLevel") continue;
-          if (!downlineCategories[category]) {
-            downlineCategories[category] = 0;
-          }
-          downlineCategories[category] += turnover;
-          downlineTotalTurnover += turnover;
-          const rate =
-            commission.commissionPercentages[downlineLevel.toString()]?.[
-              category
-            ] || 0;
-
-          if (rate > 0) {
-            const categoryCommission = (turnover * rate) / 100;
-            totalCommission += categoryCommission;
-            downlineCommission += categoryCommission;
-            downlineFormulaData[downlineUsername][formattedDate][
-              userLevelKey
-            ].push(
-              `    ${category}: ${turnover} * ${rate}% = ${categoryCommission.toFixed(
-                2
-              )}`
-            );
-
-            console.log(
-              `  ${category}: ${turnover} * ${rate}% = ${categoryCommission.toFixed(
-                2
-              )}`
-            );
-          }
-        }
-      }
-      downlinesData[downlineUsername] = {
-        categoryTurnover: downlineCategories,
-        totalTurnover: downlineTotalTurnover,
-        level: downlineLevel,
-        commission: downlineCommission,
-      };
-    }
-    const roundedCommission = roundToTwoDecimals(totalCommission);
-    console.log(`Total commission calculated: ${roundedCommission}`);
-    if (roundedCommission < 1) {
-      console.log("Commission amount is less than 1, cannot claim");
-      return {
-        success: false,
-        message: {
-          en: `Your commission amount (${roundedCommission}) is less than 1, cannot claim yet`,
-          zh: `您的佣金金额(${roundedCommission})少于1，暂时无法领取`,
-          ms: `Jumlah komisen anda (${roundedCommission}) kurang daripada 1, tidak boleh dituntut lagi`,
-        },
-        amount: roundedCommission,
-      };
-    }
-    let totalAdjustedCommission = 0;
-    for (const [downlineUsername, downlineData] of Object.entries(
-      downlinesData
-    )) {
-      let formattedFormula = "";
-      const downlineFormula = downlineFormulaData[downlineUsername];
-      const sortedDates = Object.keys(downlineFormula).sort();
-      for (const date of sortedDates) {
-        const usersData = downlineFormula[date];
-        formattedFormula += `${date}\n`;
-        const sortedUsers = Object.keys(usersData).sort((a, b) => {
-          const levelA = parseInt(a.match(/L(\d+)/)[1]);
-          const levelB = parseInt(b.match(/L(\d+)/)[1]);
-          return levelA - levelB;
-        });
-        for (const userLevel of sortedUsers) {
-          const categories = usersData[userLevel];
-          if (categories.length > 0) {
-            formattedFormula += `  ${userLevel}\n${categories.join("\n")}\n`;
-          }
-        }
-        formattedFormula += "\n";
-      }
-      let downlineCommission = roundToTwoDecimals(downlineData.commission);
-      let originalCommission = downlineCommission;
-      if (downlineCommission > 1000) {
-        downlineCommission = 1000;
-        console.log(
-          `Commission for downline ${downlineUsername} capped at 1000 MYR (original: ${originalCommission})`
-        );
-      }
-      totalAdjustedCommission += downlineCommission;
-      await AgentCommissionReport.create({
-        agentId: userId,
-        agentUsername: user.username,
-        agentFullname: user.fullname,
-        downlineUsername: downlineUsername,
-        downlineFullname: "",
-        calculationType: "turnover",
-        categoryTurnover: downlineData.categoryTurnover,
-        totalTurnover: downlineData.totalTurnover,
-        downlineLevel: downlineData.level,
-        commissionAmount: downlineCommission,
-        formula: formattedFormula,
-        status: "approved",
-        remark: `${startDateFormatted} to ${endDateFormatted}`,
-      });
-      console.log(
-        `Created commission report for downline ${downlineUsername} with commission ${downlineCommission}`
-      );
-    }
-    totalAdjustedCommission = roundToTwoDecimals(totalAdjustedCommission);
-    console.log(`Total adjusted commission: ${totalAdjustedCommission}`);
-    const transactionId = `COM${Date.now()}${Math.floor(Math.random() * 1000)}`;
-    const NewBonusTransaction = new Bonus({
-      transactionId: transactionId,
-      userId: userId,
-      username: user.username,
-      fullname: user.fullname,
-      transactionType: "bonus",
-      processBy: user.username,
-      amount: totalAdjustedCommission,
-      status: "approved",
-      method: "manual",
-      remark: "-",
-      promotionname: "佣金",
-      promotionnameEN: "Commission",
-      promotionId: "6824c18db6b20f85bf963190",
-      processtime: "-",
-    });
-    await NewBonusTransaction.save();
-    await User.findByIdAndUpdate(userId, {
-      $inc: { wallet: totalAdjustedCommission },
-      lastCommissionClaim: new Date(),
-    });
-    await UserWalletLog.create({
-      userId: userId,
-      transactiontype: "agent commission",
-      amount: totalAdjustedCommission,
-      status: "approved",
-      promotionnameEN: `${commissionPeriod}`,
-      promotionnameCN: `${commissionPeriod}`,
-      transactiontime: new Date(),
-    });
-    console.log(
-      `Commission of ${totalAdjustedCommission} successfully processed for user ${user.username}`
-    );
-    return {
-      success: true,
-      message: {
-        en: `Commission of ${totalAdjustedCommission} has been added to your wallet`,
-        zh: `佣金 ${totalAdjustedCommission} 已添加到您的钱包`,
-        ms: `Komisen ${totalAdjustedCommission} telah ditambahkan ke dompet anda`,
-      },
-      amount: totalAdjustedCommission,
-    };
-  } catch (error) {
-    console.error(
-      "\n====== ERROR IN USER TURNOVER COMMISSION CALCULATION ======"
-    );
-    console.error(`Error message: ${error.message}`);
-    console.error(`Error stack: ${error.stack}`);
-
-    return {
-      success: false,
-      message: {
-        en: "An error occurred while processing your commission",
-        zh: "处理佣金时发生错误",
-        ms: "Ralat berlaku semasa memproses komisen anda",
-      },
-      amount: 0,
-    };
-  }
-};
-
-async function initializeSchedule() {
-  try {
-    const commission = await AgentCommission.findOne();
-    if (commission && commission.isActive) {
-      await setScheduledJob({
-        type: commission.type,
-        weekDay: commission.weekDay,
-        monthDay: commission.monthDay,
-        hour: commission.hour,
-        minute: commission.minute,
-      });
-    }
-  } catch (error) {
-    console.error("Schedule initialization error:", error);
-  }
-}
-
-const getUserCommissionData = async (userId) => {
-  try {
-    console.log("====== STARTING GET COMMISSION DATA FUNCTION ======");
-    const startProcessTime = Date.now();
-
-    const currentUser = await User.findById(userId);
-    if (!currentUser) {
-      return {
-        success: false,
-        message: "User not found",
-      };
-    }
-
-    console.log(`Processing commission data for user: ${currentUser.username}`);
-
-    let startDate, endDate;
-    endDate = moment.utc().add(8, "hours").endOf("day").toDate();
-
-    if (currentUser.lastCommissionClaim) {
-      startDate = moment(currentUser.lastCommissionClaim)
-        .utc()
-        .add(8, "hours")
-        .startOf("day")
-        .toDate();
-      console.log(
-        `User has previous commission claim. Start date set to: ${startDate.toISOString()}`
-      );
-    } else {
-      startDate = moment(currentUser.createdAt)
-        .utc()
-        .add(8, "hours")
-        .startOf("day")
-        .toDate();
-      console.log(
-        `No previous commission claim found. Using user creation date: ${startDate.toISOString()}`
-      );
-    }
-
-    console.log(
-      `Date range for commission data: ${startDate.toISOString()} to ${endDate.toISOString()}`
-    );
-
-    // Fetch commission settings
-    const commission = await AgentCommission.findOne();
-    if (!commission || !commission.isActive) {
-      console.log("Commission system is not active");
-      return {
-        success: false,
-        message: "Commission system is not active",
-      };
-    }
-
-    const maxDownlineLevel = parseInt(commission.maxDownline) || 1;
-    console.log(`Maximum downline level: ${maxDownlineLevel}`);
-
-    const startDateFormatted = moment(startDate).utc().format("DD-MM-YYYY");
-    const endDateFormatted = moment(endDate).utc().format("DD-MM-YYYY");
-
-    const commissionData = {
-      startDate: startDateFormatted,
-      endDate: endDateFormatted,
-      downlines: {},
-    };
-
-    // Find all of the user's downlines up to maxDownlineLevel
-    console.log(
-      `Finding downlines for user ${currentUser.username} up to level ${maxDownlineLevel}...`
-    );
-
-    const directDownlines = await User.find({
-      "referralBy.user_id": currentUser._id,
-    })
-      .select("_id username fullname referralBy")
-      .lean();
-
-    console.log(`Found ${directDownlines.length} direct downlines (level 1)`);
-
-    let allDownlines = [];
-
-    allDownlines = directDownlines.map((user) => ({
-      ...user,
-      level: 1,
-    }));
-
-    let currentLevelDownlines = directDownlines;
-
-    for (let level = 2; level <= maxDownlineLevel; level++) {
-      if (currentLevelDownlines.length === 0) break;
-
-      const downlineIds = currentLevelDownlines.map((d) => d._id);
-
-      const nextLevelDownlines = await User.find({
-        "referralBy.user_id": { $in: downlineIds },
-      })
-        .select("_id username fullname referralBy")
-        .lean();
-
-      console.log(
-        `Found ${nextLevelDownlines.length} downlines at level ${level}`
-      );
-
-      allDownlines = allDownlines.concat(
-        nextLevelDownlines.map((user) => ({
-          ...user,
-          level: level,
-        }))
-      );
-
-      currentLevelDownlines = nextLevelDownlines;
-    }
-
-    console.log(
-      `Total downlines found across all levels: ${allDownlines.length}`
-    );
-
-    if (allDownlines.length === 0) {
-      console.log("No downlines found for commission calculation");
-      return {
-        success: true,
-        message: "No downlines found for commission calculation",
-        data: commissionData,
-      };
-    }
-
-    const dateRange = [];
-    let currentDate = moment(startDate);
-    while (currentDate <= moment(endDate)) {
-      dateRange.push(currentDate.format("YYYY-MM-DD"));
-      currentDate = currentDate.add(1, "days");
-    }
-
-    console.log(
-      `Processing ${dateRange.length} days of data for ${allDownlines.length} downlines`
-    );
-
-    // For each downline, get their GameDataLog entries within the date range
-    for (const downline of allDownlines) {
-      console.log(
-        `Processing downline: ${downline.username} (Level ${downline.level})`
-      );
-
-      // Get all GameDataLog entries for this downline within the date range
-      const gameDataLogs = await GameDataValidLog.find({
-        username: downline.username,
-        date: { $in: dateRange },
-      }).lean();
-
-      console.log(
-        `Found ${gameDataLogs.length} game data logs for ${downline.username}`
-      );
-
-      for (const log of gameDataLogs) {
-        const logDate = moment(log.date).format("DD-MM-YYYY");
-
-        if (!commissionData.downlines[downline.username]) {
-          commissionData.downlines[downline.username] = {};
-        }
-
-        if (!commissionData.downlines[downline.username][logDate]) {
-          commissionData.downlines[downline.username][logDate] = {
-            downlineLevel: downline.level,
-          };
-        }
-
-        const gameCategories =
-          log.gameCategories instanceof Map
-            ? Object.fromEntries(log.gameCategories)
-            : log.gameCategories;
-
-        if (gameCategories) {
-          Object.keys(gameCategories).forEach((categoryName) => {
-            const category =
-              gameCategories[categoryName] instanceof Map
-                ? Object.fromEntries(gameCategories[categoryName])
-                : gameCategories[categoryName];
-
-            Object.keys(category).forEach((gameName) => {
-              const game = category[gameName];
-              const validTurnover = Number(game.turnover || 0);
-
-              if (validTurnover > 0) {
-                if (
-                  !commissionData.downlines[downline.username][logDate][
-                    categoryName
-                  ]
-                ) {
-                  commissionData.downlines[downline.username][logDate][
-                    categoryName
-                  ] = 0;
-                }
-
-                commissionData.downlines[downline.username][logDate][
-                  categoryName
-                ] += validTurnover;
-              }
-            });
-          });
-        }
-      }
-
-      if (commissionData.downlines[downline.username]) {
-        for (const dateKey of Object.keys(
-          commissionData.downlines[downline.username]
-        )) {
-          const dateData = commissionData.downlines[downline.username][dateKey];
-          let hasTurnover = false;
-
-          for (const category of Object.keys(dateData)) {
-            if (category !== "downlineLevel" && dateData[category] > 0) {
-              dateData[category] = Number(dateData[category].toFixed(2));
-              hasTurnover = true;
-            }
-          }
-
-          if (!hasTurnover) {
-            delete commissionData.downlines[downline.username][dateKey];
-          }
-        }
-
-        if (
-          Object.keys(commissionData.downlines[downline.username]).length === 0
-        ) {
-          delete commissionData.downlines[downline.username];
-        }
-      }
-    }
-
-    const executionTime = Date.now() - startProcessTime;
-    console.log(
-      `====== GET COMMISSION DATA COMPLETED IN ${executionTime}ms ======`
-    );
-
-    return {
-      success: true,
-      message: "Commission data retrieved successfully",
-      executionTime,
-      data: commissionData,
-    };
-  } catch (error) {
-    console.error("Error retrieving commission data:", error);
-    return {
-      success: false,
-      message: "An error occurred while retrieving commission data",
-      error: error.message,
-    };
-  }
-};
-
-// Example usage in a route:
-router.get("/api/user/getCommissionDatatest", async (req, res) => {
-  try {
-    const userId = req.query.userId;
-    const result = await getUserCommissionData(userId);
-    return res.status(result.success ? 200 : 400).json(result);
-  } catch (error) {
-    console.error("Error in commission data route:", error);
-    return res.status(500).json({
-      success: false,
-      message: {
-        en: "An error occurred while retrieving commission data",
-        zh: "获取佣金数据时发生错误",
-        ms: "Ralat berlaku semasa mengambil data komisen",
-      },
-      error: error.message,
-    });
-  }
-});
-
-router.get(
-  "/api/user/getCommissionDatahahaha",
-  authenticateToken,
-  async (req, res) => {
-    try {
-      console.log("====== STARTING GET COMMISSION DATA ROUTE ======");
-      const startProcessTime = Date.now();
-      const userId = req.user.userId;
-
-      // Find the current user
-      const currentUser = await User.findById(userId);
-      if (!currentUser) {
-        return res.status(404).json({
-          success: false,
-          message: {
-            en: "User not found",
-            zh: "未找到用户",
-            ms: "Pengguna tidak dijumpai",
-          },
-        });
-      }
-
-      console.log(
-        `Processing commission data for user: ${currentUser.username}`
-      );
-
-      // Determine date range based on lastCommissionClaim
-      let startDate, endDate;
-      endDate = moment.utc().add(8, "hours").endOf("day").toDate(); // Today
-
-      if (currentUser.lastCommissionClaim) {
-        // If user has claimed commission before, use that date as start date
-        startDate = moment(currentUser.lastCommissionClaim)
-          .utc()
-          .add(8, "hours")
-          .startOf("day")
-          .toDate();
-        console.log(
-          `User has previous commission claim. Start date set to: ${startDate.toISOString()}`
-        );
-      } else {
-        // If never claimed, use user creation date
-        startDate = moment(currentUser.createdAt)
-          .utc()
-          .add(8, "hours")
-          .startOf("day")
-          .toDate();
-        console.log(
-          `No previous commission claim found. Using user creation date: ${startDate.toISOString()}`
-        );
-      }
-
-      console.log(
-        `Date range for commission data: ${startDate.toISOString()} to ${endDate.toISOString()}`
-      );
-
-      // Fetch commission settings
-      const commission = await AgentCommission.findOne();
-      if (!commission || !commission.isActive) {
-        return res.status(200).json({
-          success: false,
-          message: {
-            en: "Commission system is not active",
-            zh: "佣金系统未激活",
-            ms: "Sistem komisen tidak aktif",
-          },
-        });
-      }
-
-      // Get max downline level from commission settings
-      const maxDownlineLevel = parseInt(commission.maxDownline) || 1;
-      console.log(`Maximum downline level: ${maxDownlineLevel}`);
-
-      // Format dates for response
-      const startDateFormatted = moment(startDate).format("DD-MM-YYYY");
-      const endDateFormatted = moment(endDate).format("DD-MM-YYYY");
-
-      // Initialize response data structure
-      const commissionData = {
-        startDate: startDateFormatted,
-        endDate: endDateFormatted,
-        downlines: {},
-      };
-
-      // Find all of the user's downlines up to maxDownlineLevel
-      console.log(
-        `Finding downlines for user ${currentUser.username} up to level ${maxDownlineLevel}...`
-      );
-
-      // Find direct downlines (level 1)
-      const directDownlines = await User.find({
-        "referralBy.user_id": currentUser._id,
-      })
-        .select("_id username fullname referralBy")
-        .lean();
-
-      console.log(`Found ${directDownlines.length} direct downlines (level 1)`);
-
-      // Store all downlines with their levels
-      let allDownlines = [];
-
-      // Add direct downlines with level 1
-      allDownlines = directDownlines.map((user) => ({
-        ...user,
-        level: 1,
-      }));
-
-      // Find deeper level downlines (2 to maxDownlineLevel)
-      let currentLevelDownlines = directDownlines;
-
-      for (let level = 2; level <= maxDownlineLevel; level++) {
-        if (currentLevelDownlines.length === 0) break;
-
-        // Get IDs of current level downlines
-        const downlineIds = currentLevelDownlines.map((d) => d._id);
-
-        // Find next level downlines
-        const nextLevelDownlines = await User.find({
-          "referralBy.user_id": { $in: downlineIds },
-        })
-          .select("_id username fullname referralBy")
-          .lean();
-
-        console.log(
-          `Found ${nextLevelDownlines.length} downlines at level ${level}`
-        );
-
-        // Add to allDownlines with their level
-        allDownlines = allDownlines.concat(
-          nextLevelDownlines.map((user) => ({
-            ...user,
-            level: level,
-          }))
-        );
-
-        // Update current level downlines for next iteration
-        currentLevelDownlines = nextLevelDownlines;
-      }
-
-      console.log(
-        `Total downlines found across all levels: ${allDownlines.length}`
-      );
-
-      // No downlines found
-      if (allDownlines.length === 0) {
-        return res.status(200).json({
-          success: true,
-          message: {
-            en: "No downlines found for commission calculation",
-            zh: "没有找到下线进行佣金计算",
-            ms: "Tidak menemukan downline untuk perhitungan komisen",
-          },
-          data: commissionData,
-        });
-      }
-
-      // Get the date range as an array of dates
-      const dateRange = [];
-      let currentDate = moment(startDate);
-      while (currentDate <= moment(endDate)) {
-        dateRange.push(currentDate.format("YYYY-MM-DD"));
-        currentDate = currentDate.add(1, "days");
-      }
-
-      console.log(
-        `Processing ${dateRange.length} days of data for ${allDownlines.length} downlines`
-      );
-
-      // For each downline, get their GameDataLog entries within the date range
-      for (const downline of allDownlines) {
-        console.log(
-          `Processing downline: ${downline.username} (Level ${downline.level})`
-        );
-
-        // Get all GameDataLog entries for this downline within the date range
-        const gameDataLogs = await GameDataValidLog.find({
-          username: downline.username,
-          date: { $in: dateRange },
-        }).lean();
-
-        console.log(
-          `Found ${gameDataLogs.length} game data logs for ${downline.username}`
-        );
-
-        // Process each log entry by date
-        for (const log of gameDataLogs) {
-          const logDate = moment(log.date).format("DD-MM-YYYY");
-
-          // Initialize downline in response if not exists
-          if (!commissionData.downlines[downline.username]) {
-            commissionData.downlines[downline.username] = {};
-          }
-
-          // Initialize date for this downline if not exists
-          if (!commissionData.downlines[downline.username][logDate]) {
-            commissionData.downlines[downline.username][logDate] = {
-              downlineLevel: downline.level,
-            };
-          }
-
-          // Process game categories in this log
-          const gameCategories =
-            log.gameCategories instanceof Map
-              ? Object.fromEntries(log.gameCategories)
-              : log.gameCategories;
-
-          // Sum up turnover from each game category
-          if (gameCategories) {
-            Object.keys(gameCategories).forEach((categoryName) => {
-              const category =
-                gameCategories[categoryName] instanceof Map
-                  ? Object.fromEntries(gameCategories[categoryName])
-                  : gameCategories[categoryName];
-
-              // Process each game in this category
-              Object.keys(category).forEach((gameName) => {
-                const game = category[gameName];
-                const validTurnover = Number(game.turnover || 0); // Use valid turnover
-
-                // Add to the appropriate category in the response
-                if (validTurnover > 0) {
-                  // Initialize category if not exists
-                  if (
-                    !commissionData.downlines[downline.username][logDate][
-                      categoryName
-                    ]
-                  ) {
-                    commissionData.downlines[downline.username][logDate][
-                      categoryName
-                    ] = 0;
-                  }
-
-                  // Add turnover to category
-                  commissionData.downlines[downline.username][logDate][
-                    categoryName
-                  ] += validTurnover;
-                }
-              });
-            });
-          }
-        }
-
-        // Format numbers and remove dates with no turnover
-        if (commissionData.downlines[downline.username]) {
-          for (const dateKey of Object.keys(
-            commissionData.downlines[downline.username]
-          )) {
-            const dateData =
-              commissionData.downlines[downline.username][dateKey];
-            let hasTurnover = false;
-
-            // Format each category value and check if there's any turnover
-            for (const category of Object.keys(dateData)) {
-              if (category !== "downlineLevel" && dateData[category] > 0) {
-                dateData[category] = Number(dateData[category].toFixed(2));
-                hasTurnover = true;
-              }
-            }
-
-            // Remove date if no turnover in any category
-            if (!hasTurnover) {
-              delete commissionData.downlines[downline.username][dateKey];
-            }
-          }
-
-          // Remove downline if no dates with turnover
-          if (
-            Object.keys(commissionData.downlines[downline.username]).length ===
-            0
-          ) {
-            delete commissionData.downlines[downline.username];
-          }
-        }
-      }
-
-      const executionTime = Date.now() - startProcessTime;
-      console.log(
-        `====== GET COMMISSION DATA COMPLETED IN ${executionTime}ms ======`
-      );
-
-      return res.status(200).json({
-        success: true,
-        message: {
-          en: "Commission data retrieved successfully",
-          zh: "佣金数据获取成功",
-          ms: "Data komisen berjaya diambil",
-        },
-        executionTime,
-        data: commissionData,
-      });
-    } catch (error) {
-      console.error("Error retrieving commission data:", error);
-      return res.status(500).json({
-        success: false,
-        message: {
-          en: "An error occurred while retrieving commission data",
-          zh: "获取佣金数据时发生错误",
-          ms: "Ralat berlaku semasa mengambil data komisen",
-        },
-        error: error.message,
-      });
-    }
-  }
-);
-
-initializeSchedule();
 
 module.exports = router;

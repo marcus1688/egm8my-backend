@@ -12,6 +12,8 @@ const promotion = require("../models/promotion.model");
 const { adminUser, adminLog } = require("../models/adminuser.model");
 const router = express.Router();
 const Deposit = require("../models/deposit.model");
+const { createCanvas, loadImage } = require("canvas");
+const path = require("path");
 const vip = require("../models/vip.model");
 const Withdraw = require("../models/withdraw.model");
 const { RebateLog } = require("../models/rebate.model");
@@ -137,6 +139,70 @@ ${
   } catch (error) {
     console.error("❌ Telegram notification failed:", error.message);
     return false;
+  }
+}
+
+async function generateQRWithLogo(
+  text,
+  logoData = null,
+  maxLogoWidth = 80,
+  maxLogoHeight = 80
+) {
+  try {
+    const canvas = createCanvas(400, 400);
+    const ctx = canvas.getContext("2d");
+    await QRCode.toCanvas(canvas, text, {
+      width: 400,
+      margin: 2,
+      color: {
+        dark: "#000000",
+        light: "#FFFFFF",
+      },
+      errorCorrectionLevel: "H",
+    });
+    const logoToUse = logoData || path.join(__dirname, "../public/logo.png");
+    if (logoToUse) {
+      const logo = await loadImage(logoToUse);
+      const logoAspectRatio = logo.width / logo.height;
+      let logoWidth = maxLogoWidth;
+      let logoHeight = maxLogoHeight;
+      if (logoAspectRatio > 1) {
+        logoWidth = maxLogoWidth;
+        logoHeight = logoWidth / logoAspectRatio;
+      } else {
+        logoHeight = maxLogoHeight;
+        logoWidth = logoHeight * logoAspectRatio;
+      }
+
+      if (logoWidth > maxLogoWidth) {
+        logoWidth = maxLogoWidth;
+        logoHeight = logoWidth / logoAspectRatio;
+      }
+      if (logoHeight > maxLogoHeight) {
+        logoHeight = maxLogoHeight;
+        logoWidth = logoHeight * logoAspectRatio;
+      }
+      const clearSize = Math.max(logoWidth, logoHeight) + 24;
+      const x = (400 - logoWidth) / 2;
+      const y = (400 - logoHeight) / 2;
+      const clearX = (400 - clearSize) / 2;
+      const clearY = (400 - clearSize) / 2;
+      ctx.fillStyle = "white";
+      ctx.fillRect(clearX, clearY, clearSize, clearSize);
+      ctx.fillStyle = "#1a1a1a";
+      ctx.beginPath();
+      ctx.roundRect(clearX, clearY, clearSize, clearSize, 12);
+      ctx.fill();
+      ctx.strokeStyle = "#333333";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.drawImage(logo, x, y, logoWidth, logoHeight);
+    }
+
+    return canvas.toDataURL();
+  } catch (error) {
+    console.error("Error generating QR with logo:", error);
+    return await QRCode.toDataURL(text);
   }
 }
 
@@ -761,7 +827,7 @@ router.post("/api/register", async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
     const newReferralCode = await generateUniqueReferralCode();
     const referralLink = generateReferralLink(newReferralCode);
-    const referralQrCode = await QRCode.toDataURL(referralLink);
+    const referralQrCode = await generateQRWithLogo(referralLink);
 
     let referralBy = null;
     if (referralCode) {
@@ -3232,7 +3298,7 @@ router.post(
       const hashedPassword = await bcrypt.hash(password, salt);
       const newReferralCode = await generateUniqueReferralCode();
       const referralLink = generateReferralLink(newReferralCode);
-      const referralQrCode = await QRCode.toDataURL(referralLink);
+      const referralQrCode = await generateQRWithLogo(referralLink);
 
       let referralBy = null;
       if (referralCode) {

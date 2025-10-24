@@ -155,6 +155,9 @@ const helmet = require("helmet");
 const mongoSanitize = require("express-mongo-sanitize");
 const xss = require("xss-clean");
 
+global.AGENT_COMMISSION_PROMOTION_ID = "68fabc976cfe394ec64f37e2";
+global.REBATE_PROMOTION_ID = "68909e951af19dfb128af5be";
+
 const allowedOrigins = [
   "https://mysteryclub88.com",
   "https://www.mysteryclub88.com",
