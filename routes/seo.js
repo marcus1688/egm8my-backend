@@ -302,16 +302,25 @@ router.delete(
         });
       }
       const block = page.contentBlocks[blockIndex];
-      const content = block.content;
       const imgRegex = /<img[^>]+src="([^">]+)"/g;
       let match;
       const imageUrls = [];
-      while ((match = imgRegex.exec(content)) !== null) {
+
+      // Collect images from both English and Chinese content
+      while ((match = imgRegex.exec(block.content)) !== null) {
         const imageUrl = match[1];
         if (imageUrl.includes(process.env.S3_MAINBUCKET)) {
           imageUrls.push(imageUrl);
         }
       }
+      imgRegex.lastIndex = 0;
+      while ((match = imgRegex.exec(block.contentCN || "")) !== null) {
+        const imageUrl = match[1];
+        if (imageUrl.includes(process.env.S3_MAINBUCKET)) {
+          imageUrls.push(imageUrl);
+        }
+      }
+
       for (const imageUrl of imageUrls) {
         const key = imageUrl.split(".com/")[1];
         await s3Client.send(
@@ -362,8 +371,9 @@ router.post(
           },
         });
       }
+
+      // Process English content
       let newContent = req.body.content;
-      const newImageUrls = new Set();
       const base64Regex = /src="data:image\/[^;]+;base64[^"]+"/g;
       const base64Matches = newContent.match(base64Regex);
       if (base64Matches) {
@@ -372,14 +382,30 @@ router.post(
           try {
             const imageUrl = await handleBase64Image(base64String);
             newContent = newContent.replace(base64String, imageUrl);
-            newImageUrls.add(imageUrl);
           } catch (error) {
             console.error("Error processing image in content:", error);
           }
         }
       }
+
+      // Process Chinese content
+      let newContentCN = req.body.contentCN || "";
+      const base64MatchesCN = newContentCN.match(base64Regex);
+      if (base64MatchesCN) {
+        for (const base64Match of base64MatchesCN) {
+          const base64String = base64Match.substring(5, base64Match.length - 1);
+          try {
+            const imageUrl = await handleBase64Image(base64String);
+            newContentCN = newContentCN.replace(base64String, imageUrl);
+          } catch (error) {
+            console.error("Error processing image in contentCN:", error);
+          }
+        }
+      }
+
       const newBlock = {
         content: newContent,
+        contentCN: newContentCN,
         order: req.body.order || page.contentBlocks.length + 1,
       };
       page.contentBlocks.push(newBlock);
@@ -432,17 +458,29 @@ router.put(
           },
         });
       }
+
       const oldBlock = page.contentBlocks[blockIndex];
       const oldImageUrls = new Set();
       const imgRegex = /<img[^>]+src="([^">]+)"/g;
       let match;
+
+      // Collect old images from both English and Chinese content
       while ((match = imgRegex.exec(oldBlock.content)) !== null) {
         const imageUrl = match[1];
         if (imageUrl.includes(process.env.S3_MAINBUCKET)) {
           oldImageUrls.add(imageUrl);
         }
       }
+      while ((match = imgRegex.exec(oldBlock.contentCN || "")) !== null) {
+        const imageUrl = match[1];
+        if (imageUrl.includes(process.env.S3_MAINBUCKET)) {
+          oldImageUrls.add(imageUrl);
+        }
+      }
+
       const newImageUrls = new Set();
+
+      // Process English content
       let newContent = req.body.content;
       const base64Regex = /src="data:image\/[^;]+;base64[^"]+"/g;
       const base64Matches = newContent.match(base64Regex);
@@ -458,12 +496,40 @@ router.put(
           }
         }
       }
+
+      // Process Chinese content
+      let newContentCN = req.body.contentCN || "";
+      const base64MatchesCN = newContentCN.match(base64Regex);
+      if (base64MatchesCN) {
+        for (const base64Match of base64MatchesCN) {
+          const base64String = base64Match.substring(5, base64Match.length - 1);
+          try {
+            const imageUrl = await handleBase64Image(base64String);
+            newContentCN = newContentCN.replace(base64String, imageUrl);
+            newImageUrls.add(imageUrl);
+          } catch (error) {
+            console.error("Error processing image in contentCN:", error);
+          }
+        }
+      }
+
+      // Collect new images from both contents
+      imgRegex.lastIndex = 0;
       while ((match = imgRegex.exec(newContent)) !== null) {
         const imageUrl = match[1];
         if (imageUrl.includes(process.env.S3_MAINBUCKET)) {
           newImageUrls.add(imageUrl);
         }
       }
+      imgRegex.lastIndex = 0;
+      while ((match = imgRegex.exec(newContentCN)) !== null) {
+        const imageUrl = match[1];
+        if (imageUrl.includes(process.env.S3_MAINBUCKET)) {
+          newImageUrls.add(imageUrl);
+        }
+      }
+
+      // Delete unused images
       const urlsToDelete = Array.from(oldImageUrls).filter(
         (url) => !newImageUrls.has(url)
       );
@@ -480,7 +546,9 @@ router.put(
           console.error("Error deleting old image:", error);
         }
       }
+
       page.contentBlocks[blockIndex].content = newContent;
+      page.contentBlocks[blockIndex].contentCN = newContentCN;
       page.contentBlocks[blockIndex].order =
         req.body.order || page.contentBlocks[blockIndex].order;
       const updatedPage = await page.save();

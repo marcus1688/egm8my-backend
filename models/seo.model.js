@@ -6,6 +6,10 @@ const ContentBlockSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    contentCN: {
+      type: String,
+      default: "",
+    },
     order: {
       type: Number,
       required: true,
