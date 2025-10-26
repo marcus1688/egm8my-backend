@@ -36,6 +36,8 @@ const modulePermissions = {
     permissions: [
       { value: "rescuesetting", label: "Resuce Setting" },
       { value: "rescuereport", label: "Rescue Report" },
+      { value: "leaderboard", label: "Leaderboard" },
+      { value: "livetransaction", label: "Live Transaction" },
     ],
   },
   agent: {

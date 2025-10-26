@@ -17,6 +17,7 @@ const path = require("path");
 const vip = require("../models/vip.model");
 const Withdraw = require("../models/withdraw.model");
 const { RebateLog } = require("../models/rebate.model");
+const LiveTransaction = require("../models/transaction.model");
 const UserWalletCashOut = require("../models/userwalletcashout.model");
 const jwt = require("jsonwebtoken");
 const {
@@ -1883,6 +1884,32 @@ router.post(
         "deposit"
       );
 
+      const depositCount = await LiveTransaction.countDocuments({
+        type: "deposit",
+      });
+      if (depositCount >= 5) {
+        const oldestDepositTransaction = await LiveTransaction.findOne({
+          type: "deposit",
+        })
+          .sort({ time: 1 })
+          .limit(1);
+        if (oldestDepositTransaction) {
+          oldestDepositTransaction.username = user.username;
+          oldestDepositTransaction.amount = deposit.amount;
+          oldestDepositTransaction.time = new Date();
+          await oldestDepositTransaction.save();
+        }
+      } else {
+        const newTransaction = new LiveTransaction({
+          type: "deposit",
+          username: user.username,
+          amount: deposit.amount,
+          time: new Date(),
+          status: "completed",
+        });
+        await newTransaction.save();
+      }
+
       res.status(200).json({
         success: true,
         message: {
@@ -2079,6 +2106,33 @@ router.post(
         withdraw.processtime,
         "withdrawal"
       );
+
+      const withdrawCount = await LiveTransaction.countDocuments({
+        type: "withdraw",
+      });
+      if (withdrawCount >= 5) {
+        const oldestWithdrawTransaction = await LiveTransaction.findOne({
+          type: "withdraw",
+        })
+          .sort({ time: 1 })
+          .limit(1);
+        if (oldestWithdrawTransaction) {
+          oldestWithdrawTransaction.username = user.username;
+          oldestWithdrawTransaction.amount = actualWithdrawAmount;
+          oldestWithdrawTransaction.time = new Date();
+          await oldestWithdrawTransaction.save();
+        }
+      } else {
+        const newTransaction = new LiveTransaction({
+          type: "withdraw",
+          username: user.username,
+          amount: actualWithdrawAmount,
+          time: new Date(),
+          status: "completed",
+        });
+        await newTransaction.save();
+      }
+
       res.status(200).json({
         success: true,
         message: {
@@ -2662,6 +2716,20 @@ router.post(
         await transactionLog.save();
       }
 
+      const depositTime = new Date(deposit.createdAt);
+      const timeBefore = new Date(depositTime.getTime() - 3000);
+      const timeAfter = new Date(depositTime.getTime() + 3000);
+
+      await LiveTransaction.findOneAndDelete({
+        type: "deposit",
+        username: user.username,
+        amount: deposit.amount,
+        time: {
+          $gte: timeBefore,
+          $lte: timeAfter,
+        },
+      });
+
       res.status(200).json({
         success: true,
         message: {
@@ -2804,6 +2872,20 @@ router.post(
         playerfullname: user.fullname,
       });
       await transactionLog.save();
+
+      const withdrawTime = new Date(withdraw.createdAt);
+      const timeBefore = new Date(withdrawTime.getTime() - 3000);
+      const timeAfter = new Date(withdrawTime.getTime() + 3000);
+
+      await LiveTransaction.findOneAndDelete({
+        type: "withdraw",
+        username: user.username,
+        amount: withdraw.amount,
+        time: {
+          $gte: timeBefore,
+          $lte: timeAfter,
+        },
+      });
 
       res.status(200).json({
         success: true,
@@ -5642,6 +5724,36 @@ router.get("/api/verify-magic-link/:token", async (req, res) => {
         en: "Internal server error",
         zh: "服务器内部错误",
       },
+    });
+  }
+});
+
+// Get Live Transaction
+router.get("/api/transactions/list", async (req, res) => {
+  try {
+    const deposits = await LiveTransaction.find({ type: "deposit" })
+      .sort({ time: -1 })
+      .limit(5)
+      .select("username amount time");
+    const withdraws = await LiveTransaction.find({ type: "withdraw" })
+      .sort({ time: -1 })
+      .limit(5)
+      .select("username amount time");
+    res.json({
+      success: true,
+      data: {
+        deposits,
+        withdraws,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: {
+        en: "Error fetching transaction list",
+        zh: "获取交易列表时出错",
+      },
+      error: error.message,
     });
   }
 });
