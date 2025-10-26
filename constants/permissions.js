@@ -38,6 +38,7 @@ const modulePermissions = {
       { value: "rescuereport", label: "Rescue Report" },
       { value: "leaderboard", label: "Leaderboard" },
       { value: "livetransaction", label: "Live Transaction" },
+      { value: "luckydraw", label: "Lucky Draw" },
     ],
   },
   agent: {
