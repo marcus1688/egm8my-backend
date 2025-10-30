@@ -68,6 +68,10 @@ const AgentPTRouter = require("./routes/agentpt");
 const WeeklyTurnoverRouter = require("./routes/weeklyturnover");
 const LuckyDrawRouter = require("./routes/luckydraw");
 
+const slotEpicWinRouter = require("./routes/GAMEAPI/slot_epicwin");
+
+const importGameListRouter = require("./routes/GAMEAPI/0_ImportGameList");
+
 const adminListRouter = require("./routes/adminlist");
 const notificationRouter = require("./routes/notification");
 
@@ -827,6 +831,10 @@ app.use(SportsRouter);
 app.use(AgentPTRouter);
 app.use(WeeklyTurnoverRouter);
 app.use(LuckyDrawRouter);
+
+app.use(slotEpicWinRouter);
+
+app.use(importGameListRouter);
 
 app.use(adminListRouter);
 app.use(notificationRouter);

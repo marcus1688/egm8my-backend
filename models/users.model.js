@@ -289,31 +289,7 @@ const userSchema = new mongoose.Schema(
     lastAdminAccess: { type: Date, default: null },
     lastAdminAccessBy: String,
     gameLock: {
-      // rcb988: { type: gameLockSchema, default: () => ({}) },
-      // sexybcrt: { type: gameLockSchema, default: () => ({}) },
-      // wmcasino: { type: gameLockSchema, default: () => ({}) },
-      cmd368: { type: gameLockSchema, default: () => ({}) },
-      ct855: { type: gameLockSchema, default: () => ({}) },
-      mega888h5: { type: gameLockSchema, default: () => ({}) },
-      jili: { type: gameLockSchema, default: () => ({}) },
-      nextspin: { type: gameLockSchema, default: () => ({}) },
-      joker: { type: gameLockSchema, default: () => ({}) },
-      asiagaming: { type: gameLockSchema, default: () => ({}) },
-      uuslot: { type: gameLockSchema, default: () => ({}) },
-      live22: { type: gameLockSchema, default: () => ({}) },
-      lfc888: { type: gameLockSchema, default: () => ({}) },
-      playtech: { type: gameLockSchema, default: () => ({}) },
-      gsi: { type: gameLockSchema, default: () => ({}) },
-      kiss918h5: { type: gameLockSchema, default: () => ({}) },
-      pp: { type: gameLockSchema, default: () => ({}) },
-      habanero: { type: gameLockSchema, default: () => ({}) },
-      cq9: { type: gameLockSchema, default: () => ({}) },
-      spadegaming: { type: gameLockSchema, default: () => ({}) },
-      fachai: { type: gameLockSchema, default: () => ({}) },
-      sabasport: { type: gameLockSchema, default: () => ({}) },
-      sagaming: { type: gameLockSchema, default: () => ({}) },
-      microgaming: { type: gameLockSchema, default: () => ({}) },
-      hacksaw: { type: gameLockSchema, default: () => ({}) },
+      epicwin: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },
@@ -331,84 +307,7 @@ const userSchema = new mongoose.Schema(
       type: userLuckySpinSettingSchema,
       default: () => ({ settings: [], remainingCount: 0 }),
     },
-    live22GameToken: {
-      type: String,
-    },
-    uuslotGameToken: {
-      type: String,
-    },
-    playtechGameToken: {
-      type: String,
-    },
-    habaneroGameToken: {
-      type: String,
-    },
-    CT855GamePW: {
-      type: String,
-    },
-    kiss918GameID: {
-      type: String,
-    },
-    kiss918GamePW: {
-      type: String,
-    },
-    ppliveGameToken: {
-      type: String,
-    },
-    ppslotGameToken: {
-      type: String,
-    },
-    jiliGameToken: {
-      type: String,
-    },
-    lionKingGameID: {
-      type: String,
-    },
-    LFC888GamePW: {
-      type: String,
-    },
-    AsiaGamingGamePW: {
-      type: String,
-    },
-    AsiaGamingGameToken: {
-      type: String,
-    },
-    alipayGameID: {
-      type: String,
-    },
-    alipayGameToken: {
-      type: String,
-    },
-    nextspinGameToken: {
-      type: String,
-    },
-    microGamingGameToken: {
-      type: String,
-    },
-    hacksawGameToken: {
-      type: String,
-    },
-    cmd368GameToken: {
-      type: String,
-    },
-    gw99GameID: {
-      type: String,
-    },
-    gw99GamePW: {
-      type: String,
-    },
-    pastGw99GameID: {
-      type: [String],
-      default: [],
-    },
-    pastGw99GamePW: {
-      type: [String],
-      default: [],
-    },
-    mega888h5ID: {
-      type: String,
-    },
-    mega888h5PW: {
+    epicwinGameToken: {
       type: String,
     },
     lastRebateClaim: {
