@@ -70,54 +70,6 @@ const LuckyDrawRouter = require("./routes/luckydraw");
 
 const adminListRouter = require("./routes/adminlist");
 const notificationRouter = require("./routes/notification");
-const paymentgatewayRouter = require("./routes/payloh");
-const allImportGameListRouter = require("./routes/GAMEAPI/0_ImportGameList");
-
-const slotPlaytechRouter = require("./routes/GAMEAPI/slotPLAYTECH");
-const slotHabaneroRouter = require("./routes/GAMEAPI/slothabanero");
-const slotJiliRouter = require("./routes/GAMEAPI/slotjili");
-const slotKiss918H5Router = require("./routes/GAMEAPI/slotkissh5");
-const slotLive22Router = require("./routes/GAMEAPI/slotlive22ne");
-const slotCQ9Router = require("./routes/GAMEAPI/slotcq9");
-const slotLionKingRouter = require("./routes/GAMEAPI/slotlionking");
-const slotLFC888Router = require("./routes/GAMEAPI/slotlfc888");
-const slotNextSpinRouter = require("./routes/GAMEAPI/slotnextspin");
-const slotUUSlotRouter = require("./routes/GAMEAPI/slotuuslots");
-const slotJokerRouter = require("./routes/GAMEAPI/slot_joker");
-const slotMegaH5Router = require("./routes/GAMEAPI/slotmega888h5");
-const slotGw99Router = require("./routes/GAMEAPI/slot_99gw");
-const slotSpadeGamingRouter = require("./routes/GAMEAPI/slotspadegaming");
-const slotFachaiRouter = require("./routes/GAMEAPI/slotfachai");
-const slotHacksawRouter = require("./routes/GAMEAPI/slothacksaw.js");
-const slotLiveMicroGamingRouter = require("./routes/GAMEAPI/slot_livemicrogaming.js");
-
-const liveCT855Router = require("./routes/GAMEAPI/liveCT855");
-const liveCT855SeamlessRouter = require("./routes/GAMEAPI/liveCT855Seamless");
-const liveSaGamingRouter = require("./routes/GAMEAPI/liveSaGaming.js");
-
-const slotLivePPRouter = require("./routes/GAMEAPI/slot_livepp");
-const slotLiveAGRouter = require("./routes/GAMEAPI/slot_liveasiagaming");
-
-const sportCMD368Router = require("./routes/GAMEAPI/sportcmd.js");
-// const sportSabaRouter = require("./routes/GAMEAPI/sportsaba.js");
-
-const allGSIRouter = require("./routes/GAMEAPI/allGSI");
-
-const GameFunctionRouter = require("./routes/GAMEAPI/0_GameFunction");
-const GameTotalTurnoverRouter = require("./routes/GAMEAPI/0_GameTotalTurnover");
-const OC7GameRouter = require("./routes/GAMEAPI/0_OC7Function");
-const GameStatusRouter = require("./routes/GAMEAPI/0_GameStatus");
-
-const { fetchAcceptedBetsCron } = require("./routes/GAMEAPI/lotteryAlipay");
-const { startGW99Cron } = require("./routes/GAMEAPI/slot_99gw.js");
-const { startLionKingCron } = require("./routes/GAMEAPI/slotlionking.js");
-
-const lotteryAlipayRouter = require("./routes/GAMEAPI/lotteryAlipay");
-
-const dgPayRouter = require("./routes/PaymentGateway/dgpay");
-const truePayRouter = require("./routes/PaymentGateway/truepay");
-const luxePayRouter = require("./routes/PaymentGateway/luxepay");
-const skl99Router = require("./routes/PaymentGateway/skl99");
 
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
@@ -127,7 +79,6 @@ const Withdraw = require("./models/withdraw.model");
 const { User } = require("./models/users.model");
 const { adminUser, adminLog } = require("./models/adminuser.model");
 const { Mail } = require("./models/mail.model");
-const paylohModal = require("./models/payloh.model");
 const email = require("./models/email.model");
 const { updateKioskBalance } = require("./services/kioskBalanceService");
 const kioskbalance = require("./models/kioskbalance.model");
@@ -200,8 +151,6 @@ app.use(
   })
 );
 
-app.use(liveCT855SeamlessRouter);
-
 // Apply express.json() only to non-CT855 routes
 app.use((req, res, next) => {
   // Skip body parsing for CT855 routes - they handle it manually
@@ -241,8 +190,6 @@ app.use((req, res, next) => {
 //     },
 //   })
 // );
-
-// app.use(liveCT855SeamlessRouter);
 
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
@@ -885,49 +832,7 @@ app.use(adminListRouter);
 app.use(notificationRouter);
 
 app.use(myPromotionRouter);
-app.use(paymentgatewayRouter);
 
-app.use(allImportGameListRouter);
-
-app.use(slotPlaytechRouter);
-app.use(slotLive22Router);
-app.use(slotHabaneroRouter);
-app.use(slotJiliRouter);
-app.use(slotKiss918H5Router);
-app.use(slotCQ9Router);
-app.use(slotLionKingRouter);
-app.use(slotLFC888Router);
-app.use(slotNextSpinRouter);
-app.use(slotUUSlotRouter);
-app.use(slotJokerRouter);
-app.use(slotMegaH5Router);
-app.use(slotGw99Router);
-app.use(slotSpadeGamingRouter);
-app.use(slotFachaiRouter);
-app.use(slotHacksawRouter);
-app.use(slotLiveMicroGamingRouter);
-
-app.use(liveCT855Router);
-app.use(liveSaGamingRouter);
-
-app.use(slotLivePPRouter);
-app.use(slotLiveAGRouter);
-
-app.use(allGSIRouter);
-
-app.use(lotteryAlipayRouter);
-
-app.use(dgPayRouter);
-app.use(truePayRouter);
-app.use(luxePayRouter);
-app.use(skl99Router);
-
-app.use(GameFunctionRouter);
-app.use(GameTotalTurnoverRouter);
-app.use(OC7GameRouter);
-app.use(GameStatusRouter);
-
-app.use(sportCMD368Router);
 // app.use(sportSabaRouter);
 
 // cron.schedule(

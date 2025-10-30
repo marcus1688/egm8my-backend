@@ -30,29 +30,6 @@ const {
   setRefreshCookie,
   clearCookie,
 } = require("../auth/auth");
-const SlotLivePPModal = require("../models/slot_live_pp.model");
-const SlotLiveAGModal = require("../models/slot_live_ag.model");
-const SlotLiveGSCModal = require("../models/slot_live_gsc.model");
-const SlotJokerModal = require("../models/slot_joker.model");
-const SlotJiliModal = require("../models/slot_jili.model");
-const SlotHabaneroModal = require("../models/slot_habanero.model");
-const SlotKiss918H5Modal = require("../models/slot_kiss918.model");
-const SlotCQ9Modal = require("../models/slot_cq9.model");
-const SlotLive22Modal = require("../models/slot_live22.model");
-const SlotUUSlotModal = require("../models/slot_uuslot.model");
-const LiveCT855Modal = require("../models/live_ct855.model");
-const SlotNextSpinModal = require("../models/slot_nextspin.model");
-const SlotLFC888Modal = require("../models/slot_lfc888.model");
-const SlotMega888H5Modal = require("../models/slot_mega888h5.model");
-const LotteryAP95Modal = require("../models/lottery_ap95.mode");
-const PlaytechGameModal = require("../models/slot_playtech.model");
-const slotGW99Modal = require("../models/slot_gw99.model");
-const SlotSpadeGamingModal = require("../models/slot_spadegaming.model");
-const SlotFachaiModal = require("../models/slot_fachai.model");
-const LiveSaGamingModal = require("../models/live_sagaming.model");
-const SlotLiveMicroGamingModal = require("../models/slot_microgaming.model");
-const SlotHacksawModal = require("../models/slot_hacksaw.model");
-const SportCMDModal = require("../models/sport_cmd.model");
 
 const { authenticateAdminToken } = require("../auth/adminAuth");
 const geoip = require("geoip-lite");
@@ -5010,116 +4987,9 @@ router.get(
       // Get today's data if needed
       if (needsTodayData) {
         const todayGamePromises = [
-          getAllUsersTurnover(SlotLivePPModal, {
-            refunded: false,
-            ended: true,
-          }),
-          getAllUsersTurnover(SlotLiveAGModal, {
-            cancel: { $ne: true },
-            settle: true,
-          }),
-          getAllUsersTurnover(SlotLiveGSCModal, {
-            cancel: { $ne: true },
-            settle: true,
-          }),
-          getAllUsersTurnover(
-            SlotJokerModal,
-            {
-              cancel: { $ne: true },
-
-              settle: true,
-            },
-            {
-              $add: [
-                { $ifNull: ["$betamount", 0] },
-                { $ifNull: ["$fishTurnover", 0] },
-              ],
-            }
-          ),
-          getAllUsersTurnover(SlotJiliModal, {
-            cancel: { $ne: true },
-
-            settle: true,
-          }),
-          getAllUsersTurnover(SlotHabaneroModal, {
-            refund: { $ne: true },
-
-            settle: true,
-          }),
-          getAllUsersTurnover(SlotKiss918H5Modal, {
-            cancel: { $ne: true },
-
-            settle: true,
-          }),
-          getAllUsersTurnover(SlotCQ9Modal, {
-            cancel: { $ne: true },
-            refund: { $ne: true },
-            settle: true,
-          }),
-          getAllUsersTurnover(SlotLive22Modal, {
-            cancel: { $ne: true },
-
-            settle: true,
-          }),
-          getAllUsersTurnover(SlotLiveMicroGamingModal, {
-            cancel: { $ne: true },
-
-            settle: true,
-          }),
-          getAllUsersTurnover(SlotUUSlotModal, {
-            cancel: { $ne: true },
-
-            settle: true,
-          }),
-          getAllUsersTurnover(LiveCT855Modal, {
-            cancel: { $ne: true },
-            settle: true,
-          }),
-          getAllUsersTurnover(
-            PlaytechGameModal,
-            {
-              settle: true,
-              cancel: { $ne: true },
-            },
-            { $ifNull: ["$betAmount", 0] }
-          ),
-          getAllUsersTurnover(SlotNextSpinModal, {
-            cancel: { $ne: true },
-            settle: true,
-          }),
-          getAllUsersTurnover(SlotLFC888Modal, {
-            cancel: { $ne: true },
-            settle: true,
-          }),
-          getAllUsersTurnover(SlotMega888H5Modal, {
-            cancel: { $ne: true },
-            settle: true,
-          }),
-          getAllUsersTurnover(LotteryAP95Modal, {}),
-          getAllUsersTurnover(slotGW99Modal, {
-            settle: true,
-          }),
-          getAllUsersTurnover(SlotSpadeGamingModal, {
-            cancel: { $ne: true },
-            settle: true,
-          }),
-          getAllUsersTurnover(SlotFachaiModal, {
-            cancel: { $ne: true },
-            settle: true,
-          }),
-          getAllUsersTurnover(LiveSaGamingModal, {
-            cancel: { $ne: true },
-
-            settle: true,
-          }),
-          getAllUsersTurnover(SlotHacksawModal, {
-            cancel: { $ne: true },
-
-            settle: true,
-          }),
-          getAllUsersTurnover(SportCMDModal, {
-            cancel: { $ne: true },
-          }),
+          // getAllUsersTurnover(SportCMDModal, {
+          //   cancel: { $ne: true },
+          // }),
         ];
 
         const todayGameResults = await Promise.allSettled(todayGamePromises);
