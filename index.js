@@ -71,6 +71,7 @@ const LuckyDrawRouter = require("./routes/luckydraw");
 const slotEpicWinRouter = require("./routes/GAMEAPI/slot_epicwin");
 const slotFachaiRouter = require("./routes/GAMEAPI/slot_fachai");
 const slotLivePlayaceRouter = require("./routes/GAMEAPI/slot_liveplayace");
+const slotBNGRouter = require("./routes/GAMEAPI/slot_bng");
 
 const importGameListRouter = require("./routes/GAMEAPI/0_ImportGameList");
 const gameStatusRouter = require("./routes/GAMEAPI/0_GameStatus");
@@ -840,6 +841,7 @@ app.use(LuckyDrawRouter);
 app.use(slotEpicWinRouter);
 app.use(slotFachaiRouter);
 app.use(slotLivePlayaceRouter);
+app.use(slotBNGRouter);
 
 app.use(importGameListRouter);
 app.use(gameStatusRouter);

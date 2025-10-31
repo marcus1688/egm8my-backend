@@ -286,6 +286,7 @@ const userSchema = new mongoose.Schema(
       epicwin: { type: gameLockSchema, default: () => ({}) },
       fachai: { type: gameLockSchema, default: () => ({}) },
       playace: { type: gameLockSchema, default: () => ({}) },
+      bng: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },
@@ -319,6 +320,13 @@ const userSchema = new mongoose.Schema(
     },
     playaceGameToken: {
       type: String,
+    },
+    bngGameToken: {
+      type: String,
+    },
+    bngbalanceVersion: {
+      type: Number,
+      default: 0,
     },
   },
   {
