@@ -12,7 +12,7 @@ const {
   GameDataLog,
 } = require("../../models/users.model");
 const { adminUser, adminLog } = require("../../models/adminuser.model");
-const SlotLiveAGModal = require("../../models/slot_live_ag.model");
+const SlotLivePlayAceModal = require("../../models/slot_liveplayace.model");
 const { v4: uuidv4 } = require("uuid");
 const jwt = require("jsonwebtoken");
 const moment = require("moment");
@@ -21,18 +21,17 @@ const GameWalletLog = require("../../models/gamewalletlog.model");
 const xml2js = require("xml2js");
 const parser = new xml2js.Parser({ explicitArray: false });
 const Decimal = require("decimal.js");
-const GameAsiaGamingGameModal = require("../../models/slot_asiagamingDatabase.model");
-
+const GamePlayAceGameModal = require("../../models/slot_liveplayaceDatabase.model");
 require("dotenv").config();
 
-const agAgentCode = "NB6_AGIN";
+const agAgentCode = "NS8_PA";
 const agMD = process.env.AG_MD;
 const agDES = process.env.AG_DES;
-const webURL = "www.oc7.me";
-const agAPIURL = "https://gi.oc7.me";
-const agAPIURL2 = "https://gci.oc7.me";
+const webURL = "http://egm8my.vip/";
+const agAPIURL = "https://gi.playacestaging.com";
+const agAPIURL2 = "https://gci.playacestaging.com";
 const agCreateSessionAPIURL =
-  "https://swapi.playacegame.com/resource/player-tickets.ucs";
+  "https://swapi.etwlt.com/resource/player-tickets.ucs";
 
 function roundToTwoDecimals(num) {
   return Math.round(num * 100) / 100;
@@ -106,12 +105,20 @@ async function GameWalletLogAttempt(
   });
 }
 
-router.post("/api/asiagaming/getgamelist", async (req, res) => {
+router.post("/api/playace/getgamelist", async (req, res) => {
   try {
-    // Fetch all games from the database (or add filters as needed)
-    const games = await GameAsiaGamingGameModal.find({}).sort({
+    const games = await GamePlayAceGameModal.find({
+      $and: [
+        {
+          $or: [{ maintenance: false }, { maintenance: { $exists: false } }],
+        },
+        {
+          imageUrlEN: { $exists: true, $ne: null, $ne: "" },
+        },
+      ],
+    }).sort({
       hot: -1,
-      createdAt: 1,
+      createdAt: -1,
     });
 
     if (!games || games.length === 0) {
@@ -121,6 +128,8 @@ router.post("/api/asiagaming/getgamelist", async (req, res) => {
           en: "No games found. Please try again later.",
           zh: "未找到游戏。请稍后再试。",
           ms: "Tiada permainan ditemui. Sila cuba lagi kemudian.",
+          zh_hk: "未找到遊戲。請稍後再試。",
+          id: "Tidak ada permainan ditemukan. Silakan coba lagi nanti.",
         },
       });
     }
@@ -142,13 +151,15 @@ router.post("/api/asiagaming/getgamelist", async (req, res) => {
       gamelist: reformattedGamelist,
     });
   } catch (error) {
-    console.log("ASIA GAMING error fetching game list:", error.message);
+    console.log("PLAYACE error fetching game list:", error.message);
     return res.status(200).json({
       success: false,
       message: {
-        en: "ASIA GAMING: Unable to retrieve game lists. Please contact customer service for assistance.",
-        zh: "ASIA GAMING: 无法获取游戏列表，请联系客服以获取帮助。",
-        ms: "ASIA GAMING: Tidak dapat mendapatkan senarai permainan. Sila hubungi khidmat pelanggan untuk bantuan.",
+        en: "PLAYACE: Unable to retrieve game lists. Please contact customer service for assistance.",
+        zh: "PLAYACE: 无法获取游戏列表，请联系客服以获取帮助。",
+        ms: "PLAYACE: Tidak dapat mendapatkan senarai permainan. Sila hubungi khidmat pelanggan untuk bantuan.",
+        zh_hk: "PLAYACE: 無法獲取遊戲列表，請聯絡客服以獲取幫助。",
+        id: "PLAYACE: Tidak dapat mengambil daftar permainan. Silakan hubungi layanan pelanggan untuk bantuan.",
       },
     });
   }
@@ -182,7 +193,7 @@ async function registerAGUser(username) {
         { customerId: username },
         {
           $set: {
-            AsiaGamingGamePW: registerPassword,
+            playaceGamePW: registerPassword,
           },
         }
       );
@@ -240,155 +251,151 @@ async function createAGPlayerSession(username, token, wallet) {
   }
 }
 
-router.post(
-  "/api/asiagaming/launchGame",
-  authenticateToken,
-  async (req, res) => {
-    try {
-      const { gameLang, gameCode, clientPlatform } = req.body;
+router.post("/api/playace/launchGame", authenticateToken, async (req, res) => {
+  try {
+    const { gameLang, gameCode, clientPlatform } = req.body;
 
-      const userId = req.user.userId;
-      let user = await User.findById(userId);
+    const userId = req.user.userId;
+    let user = await User.findById(userId);
 
-      if (user.gameLock.asiagaming.lock) {
-        return res.status(200).json({
-          success: false,
-          message: {
-            en: "Your game access has been locked. Please contact customer support for further assistance.",
-            zh: "您的游戏访问已被锁定，请联系客服以获取进一步帮助。",
-            ms: "Akses permainan anda telah dikunci. Sila hubungi khidmat pelanggan untuk bantuan lanjut.",
-          },
-        });
-      }
+    if (user.gameLock.playace.lock) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "Your game access has been locked. Please contact customer support for further assistance.",
+          zh: "您的游戏访问已被锁定，请联系客服以获取进一步帮助。",
+          ms: "Akses permainan anda telah dikunci. Sila hubungi khidmat pelanggan untuk bantuan lanjut.",
+        },
+      });
+    }
 
-      if (!user.AsiaGamingGamePW) {
-        const registration = await registerAGUser(user.customerId);
+    if (!user.playaceGamePW) {
+      const registration = await registerAGUser(user.customerId);
 
-        if (!registration.success) {
-          console.log(
-            "ASIA_GAMING registration failed:",
-            registration.data || registration.error
-          );
+      if (!registration.success) {
+        console.log(
+          "PLAYACE registration failed:",
+          registration.data || registration.error
+        );
 
-          if (registration.maintenance) {
-            return res.status(200).json({
-              success: false,
-              message: {
-                en: "Game under maintenance. Please try again later.",
-                zh: "游戏正在维护中，请稍后再试。",
-                ms: "Permainan sedang diselenggara, sila cuba lagi nanti.",
-              },
-            });
-          }
-
+        if (registration.maintenance) {
           return res.status(200).json({
             success: false,
             message: {
-              en: "ASIA GAMING: Game launch failed. Please try again or customer service for assistance.",
-              zh: "ASIA GAMING: 游戏启动失败，请重试或联系客服以获得帮助。",
-              ms: "ASIA GAMING: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+              en: "Game under maintenance. Please try again later.",
+              zh: "游戏正在维护中，请稍后再试。",
+              ms: "Permainan sedang diselenggara, sila cuba lagi nanti.",
             },
           });
         }
 
-        user = await User.findById(userId);
-      }
-      let token = `${user.username}:${generateRandomCode()}`;
-
-      const createSession = await createAGPlayerSession(
-        user.customerId,
-        token,
-        user.wallet
-      );
-
-      if (!createSession.success) {
-        console.log(
-          "ASIA_GAMING create session failed:",
-          createSession.data || createSession.error
-        );
-
         return res.status(200).json({
           success: false,
           message: {
-            en: "ASIA GAMING: Game launch failed. Please try again or customer service for assistance.",
-            zh: "ASIA GAMING: 游戏启动失败，请重试或联系客服以获得帮助。",
-            ms: "ASIA GAMING: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+            en: "PLAYACE: Game launch failed. Please try again or customer service for assistance.",
+            zh: "PLAYACE: 游戏启动失败，请重试或联系客服以获得帮助。",
+            ms: "PLAYACE: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
           },
         });
       }
 
-      let lang = "3";
+      user = await User.findById(userId);
+    }
+    let token = `${user.username}:${generateRandomCode()}`;
 
-      if (gameLang === "en") {
-        lang = "3";
-      } else if (gameLang === "zh") {
-        lang = "1";
-      } else if (gameLang === "ms") {
-        lang = "11";
-      }
+    const createSession = await createAGPlayerSession(
+      user.customerId,
+      token,
+      user.wallet
+    );
 
-      let platform = "n";
-      if (clientPlatform === "web") {
-        platform = "n";
-      } else if (clientPlatform === "mobile") {
-        platform = "y";
-      }
-
-      const sequence =
-        Date.now().toString() + Math.floor(Math.random() * 1000).toString();
-      const sid = `${agAgentCode}${sequence}`;
-
-      const rawParams = `cagent=${agAgentCode}/\\\\/loginname=${user.customerId}/\\\\/actype=1/\\\\/password=${user.AsiaGamingGamePW}/\\\\/dm=${webURL}/\\\\/sid=${sid}/\\\\/lang=${lang}/\\\\/gameType=${gameCode}/\\\\/oddtype=A/\\\\/session_token=${token}/\\\\/cur=MYR/\\\\/mh5=${platform}`;
-
-      const encryptedParams = encryptParams(rawParams);
-      const key = generateMD5Key(encryptedParams);
-
-      const gameUrl = `${agAPIURL2}/forwardGame.do?params=${encodeURIComponent(
-        encryptedParams
-      )}&key=${key}`;
-
-      const updatedUser = await User.findOneAndUpdate(
-        { _id: user._id },
-        {
-          AsiaGamingGameToken: token,
-        },
-        { new: true }
+    if (!createSession.success) {
+      console.log(
+        "PLAYACE create session failed:",
+        createSession.data || createSession.error
       );
 
-      await GameWalletLogAttempt(
-        user.username,
-        "Transfer In",
-        "Seamless",
-        roundToTwoDecimals(user.wallet),
-        "PLAYACE"
-      );
-
-      // Return the game URL
-      return res.status(200).json({
-        success: true,
-        gameLobby: gameUrl,
-        message: {
-          en: "Game launched successfully.",
-          zh: "游戏启动成功。",
-          ms: "Permainan berjaya dimulakan.",
-        },
-      });
-    } catch (error) {
-      console.log("ASIA GAMING error in launching game", error.message);
       return res.status(200).json({
         success: false,
         message: {
-          en: "ASIA GAMING: Game launch failed. Please try again or customer service for assistance.",
-          zh: "ASIA GAMING: 游戏启动失败，请重试或联系客服以获得帮助。",
-          ms: "ASIA GAMING: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          en: "PLAYACE: Game launch failed. Please try again or customer service for assistance.",
+          zh: "PLAYACE: 游戏启动失败，请重试或联系客服以获得帮助。",
+          ms: "PLAYACE: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
         },
       });
     }
+
+    let lang = "3";
+
+    if (gameLang === "en") {
+      lang = "3";
+    } else if (gameLang === "zh") {
+      lang = "1";
+    } else if (gameLang === "ms") {
+      lang = "11";
+    }
+
+    let platform = "n";
+    if (clientPlatform === "web") {
+      platform = "n";
+    } else if (clientPlatform === "mobile") {
+      platform = "y";
+    }
+
+    const sequence =
+      Date.now().toString() + Math.floor(Math.random() * 1000).toString();
+    const sid = `${agAgentCode}${sequence}`;
+
+    const rawParams = `cagent=${agAgentCode}/\\\\/loginname=${user.customerId}/\\\\/actype=1/\\\\/password=${user.playaceGamePW}/\\\\/dm=${webURL}/\\\\/sid=${sid}/\\\\/lang=${lang}/\\\\/gameType=${gameCode}/\\\\/oddtype=A/\\\\/session_token=${token}/\\\\/cur=MYR/\\\\/mh5=${platform}`;
+
+    const encryptedParams = encryptParams(rawParams);
+    const key = generateMD5Key(encryptedParams);
+
+    const gameUrl = `${agAPIURL2}/forwardGame.do?params=${encodeURIComponent(
+      encryptedParams
+    )}&key=${key}`;
+
+    const updatedUser = await User.findOneAndUpdate(
+      { _id: user._id },
+      {
+        playaceGameToken: token,
+      },
+      { new: true }
+    );
+
+    await GameWalletLogAttempt(
+      user.username,
+      "Transfer In",
+      "Seamless",
+      roundToTwoDecimals(user.wallet),
+      "PLAYACE"
+    );
+
+    // Return the game URL
+    return res.status(200).json({
+      success: true,
+      gameLobby: gameUrl,
+      message: {
+        en: "Game launched successfully.",
+        zh: "游戏启动成功。",
+        ms: "Permainan berjaya dimulakan.",
+      },
+    });
+  } catch (error) {
+    console.log("PLAYACE error in launching game", error.message);
+    return res.status(200).json({
+      success: false,
+      message: {
+        en: "PLAYACE: Game launch failed. Please try again or customer service for assistance.",
+        zh: "PLAYACE: 游戏启动失败，请重试或联系客服以获得帮助。",
+        ms: "PLAYACE: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+      },
+    });
   }
-);
+});
 
 router.post(
-  "/api/asiagaminglive/launchGame",
+  "/api/playacelive/launchGame",
   authenticateToken,
   async (req, res) => {
     try {
@@ -397,7 +404,7 @@ router.post(
       const userId = req.user.userId;
       let user = await User.findById(userId);
 
-      if (user.gameLock.asiagaming.lock) {
+      if (user.gameLock.playace.lock) {
         return res.status(200).json({
           success: false,
           message: {
@@ -408,12 +415,12 @@ router.post(
         });
       }
 
-      if (!user.AsiaGamingGamePW) {
+      if (!user.playaceGamePW) {
         const registration = await registerAGUser(user.customerId);
 
         if (!registration.success) {
           console.log(
-            "ASIA_GAMING registration failed:",
+            "PLAYACE registration failed:",
             registration.data || registration.error
           );
 
@@ -431,9 +438,9 @@ router.post(
           return res.status(200).json({
             success: false,
             message: {
-              en: "ASIA GAMING: Game launch failed. Please try again or customer service for assistance.",
-              zh: "ASIA GAMING: 游戏启动失败，请重试或联系客服以获得帮助。",
-              ms: "ASIA GAMING: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+              en: "PLAYACE: Game launch failed. Please try again or customer service for assistance.",
+              zh: "PLAYACE: 游戏启动失败，请重试或联系客服以获得帮助。",
+              ms: "PLAYACE: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
             },
           });
         }
@@ -450,16 +457,16 @@ router.post(
 
       if (!createSession.success) {
         console.log(
-          "ASIA_GAMING create session failed:",
+          "PLAYACE create session failed:",
           createSession.data || createSession.error
         );
 
         return res.status(200).json({
           success: false,
           message: {
-            en: "ASIA GAMING: Game launch failed. Please try again or customer service for assistance.",
-            zh: "ASIA GAMING: 游戏启动失败，请重试或联系客服以获得帮助。",
-            ms: "ASIA GAMING: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+            en: "PLAYACE: Game launch failed. Please try again or customer service for assistance.",
+            zh: "PLAYACE: 游戏启动失败，请重试或联系客服以获得帮助。",
+            ms: "PLAYACE: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
           },
         });
       }
@@ -485,7 +492,7 @@ router.post(
         Date.now().toString() + Math.floor(Math.random() * 1000).toString();
       const sid = `${agAgentCode}${sequence}`;
 
-      const rawParams = `cagent=${agAgentCode}/\\\\/loginname=${user.customerId}/\\\\/actype=1/\\\\/password=${user.AsiaGamingGamePW}/\\\\/dm=${webURL}/\\\\/sid=${sid}/\\\\/lang=${lang}/\\\\/gameType=0/\\\\/oddtype=A/\\\\/cur=MYR
+      const rawParams = `cagent=${agAgentCode}/\\\\/loginname=${user.customerId}/\\\\/actype=1/\\\\/password=${user.playaceGamePW}/\\\\/dm=${webURL}/\\\\/sid=${sid}/\\\\/lang=${lang}/\\\\/gameType=0/\\\\/oddtype=A/\\\\/cur=MYR
         /\\\\/mh5=${platform}`;
 
       const encryptedParams = encryptParams(rawParams);
@@ -498,7 +505,7 @@ router.post(
       const updatedUser = await User.findOneAndUpdate(
         { _id: user._id },
         {
-          AsiaGamingGameToken: token,
+          playaceGameToken: token,
         },
         { new: true }
       );
@@ -522,366 +529,20 @@ router.post(
         },
       });
     } catch (error) {
-      console.log("ASIA GAMING error in launching game", error.message);
+      console.log("PLAYACE error in launching game", error.message);
       return res.status(200).json({
         success: false,
         message: {
-          en: "ASIA GAMING: Game launch failed. Please try again or customer service for assistance.",
-          zh: "ASIA GAMING: 游戏启动失败，请重试或联系客服以获得帮助。",
-          ms: "ASIA GAMING: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          en: "PLAYACE: Game launch failed. Please try again or customer service for assistance.",
+          zh: "PLAYACE: 游戏启动失败，请重试或联系客服以获得帮助。",
+          ms: "PLAYACE: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
         },
       });
     }
   }
 );
 
-// router.post("/api/liveasiagaming", async (req, res) => {
-//   try {
-//     // Get the raw XML body
-//     let xmlData = "";
-
-//     // Collect data chunks
-//     req.on("data", (chunk) => {
-//       xmlData += chunk.toString();
-//     });
-
-//     // Process the complete request
-//     req.on("end", async () => {
-//       try {
-//         // Parse the XML to JSON
-//         const result = await parser.parseStringPromise(xmlData);
-
-//         const trimmedCode = trimAfterUnderscore(agAgentCode);
-
-//         if (result.Data.Record.agentCode !== trimmedCode) {
-//           const responseXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-//           <TransferResponse><ResponseCode>INVALID_DATA</ResponseCode></TransferResponse>`;
-
-//           res.set("Content-Type", "text/xml");
-//           res.set("X-Integration-API-host", "api-1.operator.com");
-//           return res.status(400).send(responseXml);
-//         }
-
-//         const username = extractPlayerName(
-//           result.Data.Record.playname,
-//           trimmedCode
-//         );
-
-//         const currentUser = await User.findOne({ username });
-
-//         if (
-//           !currentUser ||
-//           currentUser.AsiaGamingGameToken !== result.Data.Record.sessionToken
-//         ) {
-//           const responseXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-//           <TransferResponse><ResponseCode>INCORRECT_SESSION_TYPE</ResponseCode></TransferResponse>`;
-
-//           res.set("Content-Type", "text/xml");
-//           res.set("X-Integration-API-host", "api-1.operator.com");
-//           return res.status(403).send(responseXml);
-//         }
-
-//         const transactionType = result.Data.Record.transactionType || "";
-
-//         if (transactionType === "BET") {
-//           const transferAmount = new Decimal(result.Data.Record.value)
-//             .toDecimalPlaces(4)
-//             .toNumber();
-
-//           if (currentUser.gameLock.asiagaming.lock) {
-//             const responseXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-//             <TransferResponse><ResponseCode>ERROR</ResponseCode></TransferResponse>`;
-
-//             res.set("Content-Type", "text/xml");
-//             res.set("X-Integration-API-host", "api-1.operator.com");
-//             return res.status(500).send(responseXml);
-//           }
-
-//           const existingBet = await SlotLiveAGModal.findOne({
-//             betId: result.Data.Record.transactionID,
-//             bet: true,
-//           });
-
-//           if (existingBet) {
-//             const responseXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-//             <TransferResponse><ResponseCode>OK</ResponseCode><Balance>${roundToTwoDecimals(
-//               currentUser.wallet
-//             )}</Balance></TransferResponse>`;
-
-//             // Set headers as specified in the documentation
-//             res.set("Content-Type", "text/xml");
-//             res.set("X-Integration-API-host", "api-1.operator.com");
-//             return res.status(200).send(responseXml);
-//           }
-
-//           const updatedUserBalance = await User.findOneAndUpdate(
-//             {
-//               _id: currentUser._id,
-//               wallet: { $gte: transferAmount },
-//             },
-//             { $inc: { wallet: -transferAmount } },
-//             { new: true }
-//           );
-
-//           if (!updatedUserBalance) {
-//             const responseXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-//             <TransferResponse><ResponseCode>INSUFFICIENT_FUNDS</ResponseCode></TransferResponse>`;
-
-//             res.set("Content-Type", "text/xml");
-//             res.set("X-Integration-API-host", "api-1.operator.com");
-//             return res.status(409).send(responseXml);
-//           }
-
-//           await SlotLiveAGModal.create({
-//             username: currentUser.username,
-//             betId: result.Data.Record.transactionID,
-//             bet: true,
-//             betamount: transferAmount,
-//           });
-
-//           const responseXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-//           <TransferResponse><ResponseCode>OK</ResponseCode><Balance>${roundToTwoDecimals(
-//             updatedUserBalance.wallet
-//           )}</Balance></TransferResponse>`;
-
-//           // Set headers as specified in the documentation
-//           res.set("Content-Type", "text/xml");
-//           res.set("X-Integration-API-host", "api-1.operator.com");
-//           return res.status(200).send(responseXml);
-//         } else if (transactionType === "WIN" || transactionType === "LOSE") {
-//           const netAmount = new Decimal(result.Data.Record.netAmount)
-//             .toDecimalPlaces(4)
-//             .toNumber();
-
-//           const betAmount = new Decimal(result.Data.Record.validBetAmount)
-//             .toDecimalPlaces(4)
-//             .toNumber();
-
-//           const TotalTrfAmt = netAmount + betAmount;
-
-//           const winAmount = new Decimal(TotalTrfAmt)
-//             .toDecimalPlaces(4)
-//             .toNumber();
-
-//           const existingBet = await SlotLiveAGModal.findOne({
-//             betId: result.Data.Record.transactionID,
-//           });
-
-//           if (!existingBet) {
-//             const responseXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-//             <TransferResponse><ResponseCode>INVALID_TRANSACTION</ResponseCode></TransferResponse>`;
-
-//             res.set("Content-Type", "text/xml");
-//             res.set("X-Integration-API-host", "api-1.operator.com");
-//             return res.status(404).send(responseXml);
-//           }
-
-//           const existingTransaction = await SlotLiveAGModal.findOne({
-//             settleId: result.Data.Record.billNo,
-//             $or: [{ settle: true }, { cancel: true }],
-//           });
-
-//           if (existingTransaction) {
-//             const responseXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-//             <TransferResponse><ResponseCode>OK</ResponseCode><Balance>${roundToTwoDecimals(
-//               currentUser.wallet
-//             )}</Balance></TransferResponse>`;
-
-//             res.set("Content-Type", "text/xml");
-//             res.set("X-Integration-API-host", "api-1.operator.com");
-//             return res.status(200).send(responseXml);
-//           }
-
-//           const updatedUserBalance = await User.findByIdAndUpdate(
-//             currentUser._id,
-//             { $inc: { wallet: winAmount } },
-//             { new: true }
-//           );
-
-//           const existingBetRecord = await SlotLiveAGModal.findOne({
-//             betId: result.Data.Record.transactionID,
-//           });
-
-//           if (existingBetRecord && !existingBetRecord.settleId) {
-//             // Update existing record if it doesn't have a settleId
-//             await SlotLiveAGModal.findOneAndUpdate(
-//               {
-//                 betId: result.Data.Record.transactionID,
-//               },
-//               {
-//                 $set: {
-//                   settleId: result.Data.Record.billNo,
-//                   settle: true,
-//                   settleamount: winAmount,
-//                   betamount: betAmount,
-//                 },
-//               }
-//             );
-//           } else {
-//             // Create a new record if the existing record already has a settleId
-//             await SlotLiveAGModal.create({
-//               username: currentUser.username,
-//               betId: result.Data.Record.transactionID,
-//               settleId: result.Data.Record.billNo,
-//               settle: true,
-//               settleamount: winAmount,
-//               bet: true,
-//               betamount: betAmount,
-//             });
-//           }
-
-//           const responseXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-//           <TransferResponse><ResponseCode>OK</ResponseCode><Balance>${roundToTwoDecimals(
-//             updatedUserBalance.wallet
-//           )}</Balance></TransferResponse>`;
-
-//           res.set("Content-Type", "text/xml");
-//           res.set("X-Integration-API-host", "api-1.operator.com");
-//           return res.status(200).send(responseXml);
-//         } else if (transactionType === "REFUND") {
-//           const transferAmount = new Decimal(result.Data.Record.value)
-//             .toDecimalPlaces(4)
-//             .toNumber();
-
-//           const existingBet = await SlotLiveAGModal.findOne({
-//             betId: result.Data.Record.transactionID,
-//           });
-
-//           if (!existingBet) {
-//             const responseXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-//             <TransferResponse><ResponseCode>INVALID_TRANSACTION</ResponseCode></TransferResponse>`;
-
-//             res.set("Content-Type", "text/xml");
-//             res.set("X-Integration-API-host", "api-1.operator.com");
-//             return res.status(404).send(responseXml);
-//           }
-
-//           if (result.Data.Record.billNo) {
-//             const existingTransaction = await SlotLiveAGModal.findOne({
-//               settleId: result.Data.Record.billNo,
-//               cancel: true,
-//             });
-
-//             if (existingTransaction) {
-//               const responseXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-//               <TransferResponse><ResponseCode>OK</ResponseCode><Balance>${roundToTwoDecimals(
-//                 currentUser.wallet
-//               )}</Balance></TransferResponse>`;
-
-//               res.set("Content-Type", "text/xml");
-//               res.set("X-Integration-API-host", "api-1.operator.com");
-//               return res.status(200).send(responseXml);
-//             }
-
-//             const updatedUserBalance = await User.findOneAndUpdate(
-//               {
-//                 _id: currentUser._id,
-//                 wallet: { $gte: transferAmount },
-//               },
-//               { $inc: { wallet: -transferAmount } },
-//               { new: true }
-//             );
-
-//             if (!updatedUserBalance) {
-//               const responseXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-//               <TransferResponse><ResponseCode>INSUFFICIENT_FUNDS</ResponseCode></TransferResponse>`;
-
-//               res.set("Content-Type", "text/xml");
-//               res.set("X-Integration-API-host", "api-1.operator.com");
-//               return res.status(409).send(responseXml);
-//             }
-
-//             await SlotLiveAGModal.findOneAndUpdate(
-//               { settleId: result.Data.Record.billNo },
-//               {
-//                 $set: {
-//                   cancel: true,
-//                 },
-//               },
-//               { upsert: true, new: true }
-//             );
-
-//             const responseXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-//           <TransferResponse><ResponseCode>OK</ResponseCode><Balance>${roundToTwoDecimals(
-//             updatedUserBalance.wallet
-//           )}</Balance></TransferResponse>`;
-
-//             res.set("Content-Type", "text/xml");
-//             res.set("X-Integration-API-host", "api-1.operator.com");
-//             return res.status(200).send(responseXml);
-//           } else {
-//             const existingTransaction = await SlotLiveAGModal.findOne({
-//               betId: result.Data.Record.transactionID,
-//               cancel: true,
-//             });
-
-//             if (existingTransaction) {
-//               const responseXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-//               <TransferResponse><ResponseCode>OK</ResponseCode><Balance>${roundToTwoDecimals(
-//                 currentUser.wallet
-//               )}</Balance></TransferResponse>`;
-
-//               res.set("Content-Type", "text/xml");
-//               res.set("X-Integration-API-host", "api-1.operator.com");
-//               return res.status(200).send(responseXml);
-//             }
-
-//             const updatedUserBalance = await User.findByIdAndUpdate(
-//               currentUser._id,
-//               { $inc: { wallet: transferAmount } },
-//               { new: true }
-//             );
-
-//             await SlotLiveAGModal.findOneAndUpdate(
-//               { betId: result.Data.Record.transactionID },
-//               {
-//                 $set: {
-//                   cancel: true,
-//                 },
-//               },
-//               { upsert: true, new: true }
-//             );
-
-//             const responseXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-//             <TransferResponse><ResponseCode>OK</ResponseCode><Balance>${roundToTwoDecimals(
-//               updatedUserBalance.wallet
-//             )}</Balance></TransferResponse>`;
-
-//             res.set("Content-Type", "text/xml");
-//             res.set("X-Integration-API-host", "api-1.operator.com");
-//             return res.status(200).send(responseXml);
-//           }
-//         } else {
-//           console.error("Error parsing XML:", parseError);
-//           const errorXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-//   <Response><ResponseCode>INVALID_DATA</ResponseCode></Response>`;
-
-//           res.set("Content-Type", "text/xml");
-//           res.set("X-Integration-API-host", "api-1.operator.com");
-//           res.status(400).send(errorXml);
-//         }
-//       } catch (parseError) {
-//         console.error("Error parsing XML:", parseError);
-//         const errorXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-// <Response><ResponseCode>INVALID_DATA</ResponseCode></Response>`;
-
-//         res.set("Content-Type", "text/xml");
-//         res.set("X-Integration-API-host", "api-1.operator.com");
-//         res.status(400).send(errorXml);
-//       }
-//     });
-//   } catch (error) {
-//     console.error("LiveAsia Gaming API Error:", error);
-//     const errorXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-// <Response><ResponseCode>ERROR</ResponseCode></Response>`;
-
-//     res.set("Content-Type", "text/xml");
-//     res.set("X-Integration-API-host", "api-1.operator.com");
-//     res.status(500).send(errorXml);
-//   }
-// });
-
-router.post("/api/eventasiagaming", async (req, res) => {
+router.post("/api/playacebonus", async (req, res) => {
   // Helper function for standard responses
   const sendResponse = (status, responseCode, balance = null) => {
     const xmlContent =
@@ -918,14 +579,14 @@ router.post("/api/eventasiagaming", async (req, res) => {
         const currentUser = await User.findOne(
           {
             customerId: username,
-            AsiaGamingGameToken: record.sessionToken,
+            playaceGameToken: record.sessionToken,
           },
           {
             _id: 1,
             wallet: 1,
             username: 1,
-            "gameLock.asiagaming.lock": 1,
-            AsiaGamingGameToken: 1,
+            "gameLock.playace.lock": 1,
+            playaceGameToken: 1,
             customerId: 1,
           }
         );
@@ -942,12 +603,12 @@ router.post("/api/eventasiagaming", async (req, res) => {
             .toDecimalPlaces(4)
             .toNumber();
 
-          if (currentUser.gameLock.asiagaming.lock) {
+          if (currentUser.gameLock.playace.lock) {
             return sendResponse(500, "ERROR");
           }
 
           // Check for existing bet with projection
-          const existingBet = await SlotLiveAGModal.findOne(
+          const existingBet = await SlotLivePlayAceModal.findOne(
             { betId: record.transactionID, bet: true },
             { _id: 1 }
           );
@@ -983,7 +644,7 @@ router.post("/api/eventasiagaming", async (req, res) => {
 
           // Create bet record and get updated user in parallel
           const [newBet, updatedUser] = await Promise.all([
-            SlotLiveAGModal.create({
+            SlotLivePlayAceModal.create({
               username: currentUser.username,
               betId: record.transactionID,
               bet: true,
@@ -1008,11 +669,11 @@ router.post("/api/eventasiagaming", async (req, res) => {
 
           // Run these checks in parallel
           const [existingBet, existingTransaction] = await Promise.all([
-            SlotLiveAGModal.findOne(
+            SlotLivePlayAceModal.findOne(
               { betId: record.transactionID },
               { settleId: 1, _id: 1 }
             ),
-            SlotLiveAGModal.findOne(
+            SlotLivePlayAceModal.findOne(
               {
                 settleId: record.transactionID,
                 $or: [{ settle: true }, { cancel: true }],
@@ -1042,7 +703,7 @@ router.post("/api/eventasiagaming", async (req, res) => {
 
           // Then update or create bet record as needed
           if (!existingBet.settleId) {
-            await SlotLiveAGModal.updateOne(
+            await SlotLivePlayAceModal.updateOne(
               { betId: record.transactionID },
               {
                 $set: {
@@ -1053,7 +714,7 @@ router.post("/api/eventasiagaming", async (req, res) => {
               }
             );
           } else {
-            await SlotLiveAGModal.create({
+            await SlotLivePlayAceModal.create({
               username: currentUser.username,
               betId: record.transactionID,
               settleId: record.eventID,
@@ -1078,7 +739,7 @@ router.post("/api/eventasiagaming", async (req, res) => {
             .toDecimalPlaces(4)
             .toNumber();
 
-          const existingBet = await SlotLiveAGModal.findOne(
+          const existingBet = await SlotLivePlayAceModal.findOne(
             { betId: record.transactionID },
             { _id: 1 }
           );
@@ -1087,7 +748,7 @@ router.post("/api/eventasiagaming", async (req, res) => {
             return sendResponse(404, "INVALID_TRANSACTION");
           }
 
-          const existingTransaction = await SlotLiveAGModal.findOne(
+          const existingTransaction = await SlotLivePlayAceModal.findOne(
             { settleId: record.transactionID, cancel: true },
             { _id: 1 }
           );
@@ -1109,7 +770,7 @@ router.post("/api/eventasiagaming", async (req, res) => {
             { new: true, projection: { wallet: 1 } }
           );
 
-          await SlotLiveAGModal.updateOne(
+          await SlotLivePlayAceModal.updateOne(
             { settleId: record.transactionID },
             { $set: { cancel: true } },
             { upsert: true }
@@ -1129,12 +790,12 @@ router.post("/api/eventasiagaming", async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("LiveAsia Gaming API Error:", error);
+    console.error("LivePLAYACE API Error:", error);
     return sendResponse(500, "ERROR");
   }
 });
 
-router.post("/api/liveasiagaming", async (req, res) => {
+router.post("/api/playacelive", async (req, res) => {
   // Helper function for standard responses
   const sendResponse = (status, responseCode, balance = null) => {
     const xmlContent =
@@ -1176,14 +837,14 @@ router.post("/api/liveasiagaming", async (req, res) => {
         const currentUser = await User.findOne(
           {
             customerId: username,
-            AsiaGamingGameToken: record.sessionToken,
+            playaceGameToken: record.sessionToken,
           },
           {
             _id: 1,
             wallet: 1,
             username: 1,
-            "gameLock.asiagaming.lock": 1,
-            AsiaGamingGameToken: 1,
+            "gameLock.playace.lock": 1,
+            playaceGameToken: 1,
             customerId: 1,
           }
         );
@@ -1200,12 +861,12 @@ router.post("/api/liveasiagaming", async (req, res) => {
             .toDecimalPlaces(4)
             .toNumber();
 
-          if (currentUser.gameLock.asiagaming.lock) {
+          if (currentUser.gameLock.playace.lock) {
             return sendResponse(500, "ERROR");
           }
 
           // Check for existing bet with projection
-          const existingBet = await SlotLiveAGModal.findOne(
+          const existingBet = await SlotLivePlayAceModal.findOne(
             { betId: record.transactionID, bet: true },
             { _id: 1 }
           );
@@ -1241,7 +902,7 @@ router.post("/api/liveasiagaming", async (req, res) => {
 
           // Create bet record and get updated user in parallel
           const [newBet, updatedUser] = await Promise.all([
-            SlotLiveAGModal.create({
+            SlotLivePlayAceModal.create({
               username: currentUser.username,
               betId: record.transactionID,
               bet: true,
@@ -1272,11 +933,11 @@ router.post("/api/liveasiagaming", async (req, res) => {
 
           // Run these checks in parallel
           const [existingBet, existingTransaction] = await Promise.all([
-            SlotLiveAGModal.findOne(
+            SlotLivePlayAceModal.findOne(
               { betId: record.transactionID },
               { settleId: 1 }
             ),
-            SlotLiveAGModal.findOne(
+            SlotLivePlayAceModal.findOne(
               {
                 settleId: record.billNo,
                 $or: [{ settle: true }, { cancel: true }],
@@ -1306,7 +967,7 @@ router.post("/api/liveasiagaming", async (req, res) => {
 
           // Then update or create bet record as needed
           if (!existingBet.settleId) {
-            await SlotLiveAGModal.updateOne(
+            await SlotLivePlayAceModal.updateOne(
               { betId: record.transactionID },
               {
                 $set: {
@@ -1318,7 +979,7 @@ router.post("/api/liveasiagaming", async (req, res) => {
               }
             );
           } else {
-            await SlotLiveAGModal.create({
+            await SlotLivePlayAceModal.create({
               username: currentUser.username,
               betId: record.transactionID,
               settleId: record.billNo,
@@ -1342,7 +1003,7 @@ router.post("/api/liveasiagaming", async (req, res) => {
             .toDecimalPlaces(4)
             .toNumber();
 
-          const existingBet = await SlotLiveAGModal.findOne(
+          const existingBet = await SlotLivePlayAceModal.findOne(
             { betId: record.transactionID },
             { _id: 1 }
           );
@@ -1352,7 +1013,7 @@ router.post("/api/liveasiagaming", async (req, res) => {
           }
 
           if (record.billNo) {
-            const existingTransaction = await SlotLiveAGModal.findOne(
+            const existingTransaction = await SlotLivePlayAceModal.findOne(
               { settleId: record.billNo, cancel: true },
               { _id: 1 }
             );
@@ -1379,7 +1040,7 @@ router.post("/api/liveasiagaming", async (req, res) => {
               return sendResponse(409, "INSUFFICIENT_FUNDS");
             }
 
-            await SlotLiveAGModal.updateOne(
+            await SlotLivePlayAceModal.updateOne(
               { settleId: record.billNo },
               { $set: { cancel: true } },
               { upsert: true }
@@ -1391,7 +1052,7 @@ router.post("/api/liveasiagaming", async (req, res) => {
               roundToTwoDecimals(updatedUser.wallet)
             );
           } else {
-            const existingTransaction = await SlotLiveAGModal.findOne(
+            const existingTransaction = await SlotLivePlayAceModal.findOne(
               { betId: record.transactionID, cancel: true },
               { _id: 1 }
             );
@@ -1411,7 +1072,7 @@ router.post("/api/liveasiagaming", async (req, res) => {
               { new: true, projection: { wallet: 1 } }
             );
 
-            await SlotLiveAGModal.updateOne(
+            await SlotLivePlayAceModal.updateOne(
               { betId: record.transactionID },
               { $set: { cancel: true } },
               { upsert: true }
@@ -1432,12 +1093,12 @@ router.post("/api/liveasiagaming", async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("LiveAsia Gaming API Error:", error);
+    console.error("LivePLAYACE API Error:", error);
     return sendResponse(500, "ERROR");
   }
 });
 
-router.post("/api/slotasiagaming", async (req, res) => {
+router.post("/api/playaceslot", async (req, res) => {
   // Helper function for standard responses
   const sendResponse = (status, responseCode, balance = null) => {
     const xmlContent =
@@ -1482,14 +1143,14 @@ router.post("/api/slotasiagaming", async (req, res) => {
         const currentUser = await User.findOne(
           {
             customerId: username,
-            AsiaGamingGameToken: record.sessionToken,
+            playaceGameToken: record.sessionToken,
           },
           {
             _id: 1,
             wallet: 1,
             username: 1,
-            "gameLock.asiagaming.lock": 1,
-            AsiaGamingGameToken: 1,
+            "gameLock.playace.lock": 1,
+            playaceGameToken: 1,
             customerId: 1,
           }
         );
@@ -1509,12 +1170,12 @@ router.post("/api/slotasiagaming", async (req, res) => {
             .toDecimalPlaces(4)
             .toNumber();
 
-          if (currentUser.gameLock.asiagaming.lock) {
+          if (currentUser.gameLock.playace.lock) {
             return sendResponse(500, "ERROR");
           }
 
           // Check for existing bet with projection
-          const existingBet = await SlotLiveAGModal.findOne(
+          const existingBet = await SlotLivePlayAceModal.findOne(
             { betId: record.transactionID, bet: true },
             { _id: 1 }
           );
@@ -1550,7 +1211,7 @@ router.post("/api/slotasiagaming", async (req, res) => {
 
           // Create bet record and get updated user in parallel
           const [newBet, updatedUser] = await Promise.all([
-            SlotLiveAGModal.create({
+            SlotLivePlayAceModal.create({
               username: currentUser.username,
               betId: record.transactionID,
               bet: true,
@@ -1573,8 +1234,11 @@ router.post("/api/slotasiagaming", async (req, res) => {
 
           // Run these checks in parallel
           const [existingBet, existingTransaction] = await Promise.all([
-            SlotLiveAGModal.findOne({ billNo: record.billNo }, { settleId: 1 }),
-            SlotLiveAGModal.findOne(
+            SlotLivePlayAceModal.findOne(
+              { billNo: record.billNo },
+              { settleId: 1 }
+            ),
+            SlotLivePlayAceModal.findOne(
               {
                 settleId: record.transactionID,
               },
@@ -1601,14 +1265,14 @@ router.post("/api/slotasiagaming", async (req, res) => {
             { new: true, projection: { wallet: 1 } }
           );
 
-          const existingBetRecord = await SlotLiveAGModal.findOne({
+          const existingBetRecord = await SlotLivePlayAceModal.findOne({
             billNo: record.billNo,
             settle: true,
           });
 
           // // Then update or create bet record as needed
           if (!existingBetRecord) {
-            await SlotLiveAGModal.findOneAndUpdate(
+            await SlotLivePlayAceModal.findOneAndUpdate(
               { billNo: record.billNo },
               {
                 $set: {
@@ -1624,7 +1288,7 @@ router.post("/api/slotasiagaming", async (req, res) => {
               ? record.transactionID.slice(0, -1)
               : null;
 
-            await SlotLiveAGModal.findOneAndUpdate(
+            await SlotLivePlayAceModal.findOneAndUpdate(
               { betId: relatedWithdrawTxnId },
               {
                 $set: {
@@ -1649,7 +1313,7 @@ router.post("/api/slotasiagaming", async (req, res) => {
             .toDecimalPlaces(4)
             .toNumber();
 
-          const existingBet = await SlotLiveAGModal.findOne(
+          const existingBet = await SlotLivePlayAceModal.findOne(
             { billNo: record.billNo },
             { _id: 1 }
           );
@@ -1658,7 +1322,7 @@ router.post("/api/slotasiagaming", async (req, res) => {
             return sendResponse(404, "INVALID_TRANSACTION");
           }
 
-          const existingTransaction = await SlotLiveAGModal.findOne(
+          const existingTransaction = await SlotLivePlayAceModal.findOne(
             { billNo: record.billNo, cancel: true },
             { _id: 1 }
           );
@@ -1680,7 +1344,7 @@ router.post("/api/slotasiagaming", async (req, res) => {
             { new: true, projection: { wallet: 1 } }
           );
 
-          await SlotLiveAGModal.updateOne(
+          await SlotLivePlayAceModal.updateOne(
             { billNo: record.billNo },
             { $set: { cancel: true } },
             { upsert: true }
@@ -1700,13 +1364,13 @@ router.post("/api/slotasiagaming", async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("LiveAsia Gaming API Error:", error);
+    console.error("LivePLAYACE API Error:", error);
     return sendResponse(500, "ERROR");
   }
 });
 
 // ----------------
-router.post("/api/agslot/getturnoverforrebate", async (req, res) => {
+router.post("/api/playaceslot/getturnoverforrebate", async (req, res) => {
   try {
     const { date } = req.body;
 
@@ -1742,7 +1406,7 @@ router.post("/api/agslot/getturnoverforrebate", async (req, res) => {
         .toDate();
     }
 
-    const records = await SlotLiveAGModal.find({
+    const records = await SlotLivePlayAceModal.find({
       createdAt: {
         $gte: startDate,
         $lt: endDate,
@@ -1780,25 +1444,25 @@ router.post("/api/agslot/getturnoverforrebate", async (req, res) => {
     return res.status(200).json({
       success: true,
       summary: {
-        gamename: "ASIA GAMING",
+        gamename: "PLAYACE",
         gamecategory: "Slot Games",
         users: playerSummary,
       },
     });
   } catch (error) {
-    console.log("ASIA GAMING: Failed to fetch win/loss report:", error.message);
+    console.log("PLAYACE: Failed to fetch win/loss report:", error.message);
     return res.status(500).json({
       success: false,
       message: {
-        en: "ASIA GAMING: Failed to fetch win/loss report",
-        zh: "ASIA GAMING: 获取盈亏报告失败",
+        en: "PLAYACE: Failed to fetch win/loss report",
+        zh: "PLAYACE: 获取盈亏报告失败",
       },
     });
   }
 });
 
 router.get(
-  "/admin/api/agslot/:userId/dailygamedata",
+  "/admin/api/playaceslot/:userId/dailygamedata",
   authenticateAdminToken,
   async (req, res) => {
     try {
@@ -1808,7 +1472,7 @@ router.get(
 
       const user = await User.findById(userId);
 
-      const records = await SlotLiveAGModal.find({
+      const records = await SlotLivePlayAceModal.find({
         username: user.username.toLowerCase(),
         createdAt: {
           $gte: moment(new Date(startDate)).utc().toDate(),
@@ -1834,7 +1498,7 @@ router.get(
       return res.status(200).json({
         success: true,
         summary: {
-          gamename: "ASIA GAMING",
+          gamename: "PLAYACE",
           gamecategory: "Slot Games",
           user: {
             username: user.username,
@@ -1844,15 +1508,12 @@ router.get(
         },
       });
     } catch (error) {
-      console.log(
-        "ASIA GAMING: Failed to fetch win/loss report:",
-        error.message
-      );
+      console.log("PLAYACE: Failed to fetch win/loss report:", error.message);
       return res.status(500).json({
         success: false,
         message: {
-          en: "ASIA GAMING: Failed to fetch win/loss report",
-          zh: "ASIA GAMING: 获取盈亏报告失败",
+          en: "PLAYACE: Failed to fetch win/loss report",
+          zh: "PLAYACE: 获取盈亏报告失败",
         },
       });
     }
@@ -1860,7 +1521,7 @@ router.get(
 );
 
 router.get(
-  "/admin/api/agslot/:userId/gamedata",
+  "/admin/api/playaceslot/:userId/gamedata",
   authenticateAdminToken,
   async (req, res) => {
     try {
@@ -1902,9 +1563,9 @@ router.get(
         ) {
           const gameCat = Object.fromEntries(gameCategories["Slot Games"]);
 
-          if (gameCat["ASIA GAMING"]) {
-            totalTurnover += gameCat["ASIA GAMING"].turnover || 0;
-            totalWinLoss += gameCat["ASIA GAMING"].winloss || 0;
+          if (gameCat["PLAYACE"]) {
+            totalTurnover += gameCat["PLAYACE"].turnover || 0;
+            totalWinLoss += gameCat["PLAYACE"].winloss || 0;
           }
         }
       });
@@ -1916,7 +1577,7 @@ router.get(
       return res.status(200).json({
         success: true,
         summary: {
-          gamename: "ASIA GAMING",
+          gamename: "PLAYACE",
           gamecategory: "Slot Games",
           user: {
             username: user.username,
@@ -1926,15 +1587,12 @@ router.get(
         },
       });
     } catch (error) {
-      console.log(
-        "ASIA GAMING: Failed to fetch win/loss report:",
-        error.message
-      );
+      console.log("PLAYACE: Failed to fetch win/loss report:", error.message);
       return res.status(500).json({
         success: false,
         message: {
-          en: "ASIA GAMING: Failed to fetch win/loss report",
-          zh: "ASIA GAMING: 获取盈亏报告失败",
+          en: "PLAYACE: Failed to fetch win/loss report",
+          zh: "PLAYACE: 获取盈亏报告失败",
         },
       });
     }
@@ -1942,13 +1600,13 @@ router.get(
 );
 
 router.get(
-  "/admin/api/agslot/dailykioskreport",
+  "/admin/api/playaceslot/dailykioskreport",
   authenticateAdminToken,
   async (req, res) => {
     try {
       const { startDate, endDate } = req.query;
 
-      const records = await SlotLiveAGModal.find({
+      const records = await SlotLivePlayAceModal.find({
         createdAt: {
           $gte: moment(new Date(startDate)).utc().toDate(),
           $lte: moment(new Date(endDate)).utc().toDate(),
@@ -1970,19 +1628,19 @@ router.get(
       return res.status(200).json({
         success: true,
         summary: {
-          gamename: "ASIA GAMING",
+          gamename: "PLAYACE",
           gamecategory: "Slot Games",
           totalturnover: Number(totalTurnover.toFixed(2)),
           totalwinloss: Number(totalWinLoss.toFixed(2)),
         },
       });
     } catch (error) {
-      console.error("ASIA GAMING: Failed to fetch win/loss report:", error);
+      console.error("PLAYACE: Failed to fetch win/loss report:", error);
       return res.status(500).json({
         success: false,
         message: {
-          en: "ASIA GAMING: Failed to fetch win/loss report",
-          zh: "ASIA GAMING: 获取盈亏报告失败",
+          en: "PLAYACE: Failed to fetch win/loss report",
+          zh: "PLAYACE: 获取盈亏报告失败",
         },
       });
     }
@@ -1990,7 +1648,7 @@ router.get(
 );
 
 router.get(
-  "/admin/api/agslot/kioskreport",
+  "/admin/api/playaceslot/kioskreport",
   authenticateAdminToken,
   async (req, res) => {
     try {
@@ -2025,9 +1683,9 @@ router.get(
         ) {
           const gameCat = Object.fromEntries(gameCategories["Slot Games"]);
 
-          if (gameCat["ASIA GAMING"]) {
-            totalTurnover += Number(gameCat["ASIA GAMING"].turnover || 0);
-            totalWinLoss += Number(gameCat["ASIA GAMING"].winloss || 0) * -1;
+          if (gameCat["PLAYACE"]) {
+            totalTurnover += Number(gameCat["PLAYACE"].turnover || 0);
+            totalWinLoss += Number(gameCat["PLAYACE"].winloss || 0) * -1;
           }
         }
       });
@@ -2035,19 +1693,19 @@ router.get(
       return res.status(200).json({
         success: true,
         summary: {
-          gamename: "ASIA GAMING",
+          gamename: "PLAYACE",
           gamecategory: "Slot Games",
           totalturnover: Number(totalTurnover.toFixed(2)),
           totalwinloss: Number(totalWinLoss.toFixed(2)),
         },
       });
     } catch (error) {
-      console.error("ASIA GAMING: Failed to fetch win/loss report:", error);
+      console.error("PLAYACE: Failed to fetch win/loss report:", error);
       return res.status(500).json({
         success: false,
         message: {
-          en: "ASIA GAMING: Failed to fetch win/loss report",
-          zh: "ASIA GAMING: 获取盈亏报告失败",
+          en: "PLAYACE: Failed to fetch win/loss report",
+          zh: "PLAYACE: 获取盈亏报告失败",
         },
       });
     }
@@ -2055,7 +1713,7 @@ router.get(
 );
 
 // ----------------
-router.post("/api/aglive/getturnoverforrebate", async (req, res) => {
+router.post("/api/playacelive/getturnoverforrebate", async (req, res) => {
   try {
     const { date } = req.body;
 
@@ -2091,7 +1749,7 @@ router.post("/api/aglive/getturnoverforrebate", async (req, res) => {
         .toDate();
     }
 
-    const records = await SlotLiveAGModal.find({
+    const records = await SlotLivePlayAceModal.find({
       createdAt: {
         $gte: startDate,
         $lt: endDate,
@@ -2129,25 +1787,25 @@ router.post("/api/aglive/getturnoverforrebate", async (req, res) => {
     return res.status(200).json({
       success: true,
       summary: {
-        gamename: "ASIA GAMING",
+        gamename: "PLAYACE",
         gamecategory: "Live Casino",
         users: playerSummary,
       },
     });
   } catch (error) {
-    console.log("ASIA GAMING: Failed to fetch win/loss report:", error.message);
+    console.log("PLAYACE: Failed to fetch win/loss report:", error.message);
     return res.status(500).json({
       success: false,
       message: {
-        en: "ASIA GAMING: Failed to fetch win/loss report",
-        zh: "ASIA GAMING: 获取盈亏报告失败",
+        en: "PLAYACE: Failed to fetch win/loss report",
+        zh: "PLAYACE: 获取盈亏报告失败",
       },
     });
   }
 });
 
 router.get(
-  "/admin/api/aglive/:userId/dailygamedata",
+  "/admin/api/playacelive/:userId/dailygamedata",
   authenticateAdminToken,
   async (req, res) => {
     try {
@@ -2157,7 +1815,7 @@ router.get(
 
       const user = await User.findById(userId);
 
-      const records = await SlotLiveAGModal.find({
+      const records = await SlotLivePlayAceModal.find({
         username: user.username.toLowerCase(),
         createdAt: {
           $gte: moment(new Date(startDate)).utc().toDate(),
@@ -2183,7 +1841,7 @@ router.get(
       return res.status(200).json({
         success: true,
         summary: {
-          gamename: "ASIA GAMING",
+          gamename: "PLAYACE",
           gamecategory: "Live Casino",
           user: {
             username: user.username,
@@ -2193,15 +1851,12 @@ router.get(
         },
       });
     } catch (error) {
-      console.log(
-        "ASIA GAMING: Failed to fetch win/loss report:",
-        error.message
-      );
+      console.log("PLAYACE: Failed to fetch win/loss report:", error.message);
       return res.status(500).json({
         success: false,
         message: {
-          en: "ASIA GAMING: Failed to fetch win/loss report",
-          zh: "ASIA GAMING: 获取盈亏报告失败",
+          en: "PLAYACE: Failed to fetch win/loss report",
+          zh: "PLAYACE: 获取盈亏报告失败",
         },
       });
     }
@@ -2209,7 +1864,7 @@ router.get(
 );
 
 router.get(
-  "/admin/api/aglive/:userId/gamedata",
+  "/admin/api/playacelive/:userId/gamedata",
   authenticateAdminToken,
   async (req, res) => {
     try {
@@ -2251,9 +1906,9 @@ router.get(
         ) {
           const gameCat = Object.fromEntries(gameCategories["Live Casino"]);
 
-          if (gameCat["ASIA GAMING"]) {
-            totalTurnover += gameCat["ASIA GAMING"].turnover || 0;
-            totalWinLoss += gameCat["ASIA GAMING"].winloss || 0;
+          if (gameCat["PLAYACE"]) {
+            totalTurnover += gameCat["PLAYACE"].turnover || 0;
+            totalWinLoss += gameCat["PLAYACE"].winloss || 0;
           }
         }
       });
@@ -2265,7 +1920,7 @@ router.get(
       return res.status(200).json({
         success: true,
         summary: {
-          gamename: "ASIA GAMING",
+          gamename: "PLAYACE",
           gamecategory: "Live Casino",
           user: {
             username: user.username,
@@ -2275,15 +1930,12 @@ router.get(
         },
       });
     } catch (error) {
-      console.log(
-        "ASIA GAMING: Failed to fetch win/loss report:",
-        error.message
-      );
+      console.log("PLAYACE: Failed to fetch win/loss report:", error.message);
       return res.status(500).json({
         success: false,
         message: {
-          en: "ASIA GAMING: Failed to fetch win/loss report",
-          zh: "ASIA GAMING: 获取盈亏报告失败",
+          en: "PLAYACE: Failed to fetch win/loss report",
+          zh: "PLAYACE: 获取盈亏报告失败",
         },
       });
     }
@@ -2291,13 +1943,13 @@ router.get(
 );
 
 router.get(
-  "/admin/api/aglive/dailykioskreport",
+  "/admin/api/playacelive/dailykioskreport",
   authenticateAdminToken,
   async (req, res) => {
     try {
       const { startDate, endDate } = req.query;
 
-      const records = await SlotLiveAGModal.find({
+      const records = await SlotLivePlayAceModal.find({
         createdAt: {
           $gte: moment(new Date(startDate)).utc().toDate(),
           $lte: moment(new Date(endDate)).utc().toDate(),
@@ -2319,19 +1971,19 @@ router.get(
       return res.status(200).json({
         success: true,
         summary: {
-          gamename: "ASIA GAMING",
+          gamename: "PLAYACE",
           gamecategory: "Live Casino",
           totalturnover: Number(totalTurnover.toFixed(2)),
           totalwinloss: Number(totalWinLoss.toFixed(2)),
         },
       });
     } catch (error) {
-      console.error("ASIA GAMING: Failed to fetch win/loss report:", error);
+      console.error("PLAYACE: Failed to fetch win/loss report:", error);
       return res.status(500).json({
         success: false,
         message: {
-          en: "ASIA GAMING: Failed to fetch win/loss report",
-          zh: "ASIA GAMING: 获取盈亏报告失败",
+          en: "PLAYACE: Failed to fetch win/loss report",
+          zh: "PLAYACE: 获取盈亏报告失败",
         },
       });
     }
@@ -2339,7 +1991,7 @@ router.get(
 );
 
 router.get(
-  "/admin/api/aglive/kioskreport",
+  "/admin/api/playacelive/kioskreport",
   authenticateAdminToken,
   async (req, res) => {
     try {
@@ -2374,9 +2026,9 @@ router.get(
         ) {
           const gameCat = Object.fromEntries(gameCategories["Live Casino"]);
 
-          if (gameCat["ASIA GAMING"]) {
-            totalTurnover += Number(gameCat["ASIA GAMING"].turnover || 0);
-            totalWinLoss += Number(gameCat["ASIA GAMING"].winloss || 0) * -1;
+          if (gameCat["PLAYACE"]) {
+            totalTurnover += Number(gameCat["PLAYACE"].turnover || 0);
+            totalWinLoss += Number(gameCat["PLAYACE"].winloss || 0) * -1;
           }
         }
       });
@@ -2384,19 +2036,19 @@ router.get(
       return res.status(200).json({
         success: true,
         summary: {
-          gamename: "ASIA GAMING",
+          gamename: "PLAYACE",
           gamecategory: "Live Casino",
           totalturnover: Number(totalTurnover.toFixed(2)),
           totalwinloss: Number(totalWinLoss.toFixed(2)),
         },
       });
     } catch (error) {
-      console.error("ASIA GAMING: Failed to fetch win/loss report:", error);
+      console.error("PLAYACE: Failed to fetch win/loss report:", error);
       return res.status(500).json({
         success: false,
         message: {
-          en: "ASIA GAMING: Failed to fetch win/loss report",
-          zh: "ASIA GAMING: 获取盈亏报告失败",
+          en: "PLAYACE: Failed to fetch win/loss report",
+          zh: "PLAYACE: 获取盈亏报告失败",
         },
       });
     }

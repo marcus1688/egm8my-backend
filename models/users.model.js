@@ -285,6 +285,7 @@ const userSchema = new mongoose.Schema(
     gameLock: {
       epicwin: { type: gameLockSchema, default: () => ({}) },
       fachai: { type: gameLockSchema, default: () => ({}) },
+      playace: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },
@@ -312,6 +313,12 @@ const userSchema = new mongoose.Schema(
     lastCommissionClaim: {
       type: Date,
       default: null,
+    },
+    playaceGamePW: {
+      type: String,
+    },
+    playaceGameToken: {
+      type: String,
     },
   },
   {
