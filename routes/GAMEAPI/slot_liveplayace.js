@@ -24,13 +24,14 @@ const Decimal = require("decimal.js");
 const GamePlayAceGameModal = require("../../models/slot_liveplayaceDatabase.model");
 require("dotenv").config();
 
-const agAgentCode = "NS8_PA";
-const agMD = process.env.AG_MD;
-const agDES = process.env.AG_DES;
+const playaceProductId = "NS8";
+const playaceAgentCode = "NS8_PA";
+const playaceMD = process.env.PLAYACE_MD5KEY;
+const playaceDES = process.env.PLAYACE_DESKEY;
 const webURL = "http://egm8my.vip/";
-const agAPIURL = "https://gi.playacestaging.com";
-const agAPIURL2 = "https://gci.playacestaging.com";
-const agCreateSessionAPIURL =
+const playaceAPIURL = "https://gi.playacestaging.com";
+const playaceAPIURL2 = "https://gci.playacestaging.com";
+const playaceCreateSessionAPIURL =
   "https://swapi.etwlt.com/resource/player-tickets.ucs";
 
 function roundToTwoDecimals(num) {
@@ -68,29 +69,19 @@ const generatePassword = () => {
 };
 
 function encryptParams(params) {
-  try {
-    const key = CryptoJS.enc.Utf8.parse(agDES);
-
-    const message = CryptoJS.enc.Utf8.parse(params);
-
-    const encrypted = CryptoJS.DES.encrypt(message, key, {
+  const encrypted = CryptoJS.DES.encrypt(
+    params,
+    CryptoJS.enc.Utf8.parse(playaceDES),
+    {
       mode: CryptoJS.mode.ECB,
       padding: CryptoJS.pad.Pkcs7,
-    });
-
-    const result = encrypted.toString();
-
-    return result;
-  } catch (error) {
-    console.error("Encryption error:", error);
-    throw error;
-  }
+    }
+  );
+  return CryptoJS.enc.Base64.stringify(encrypted.ciphertext);
 }
+
 function generateMD5Key(encryptedParams) {
-  // MD5 should be lowercase
-  return CryptoJS.MD5(encryptedParams + agMD)
-    .toString()
-    .toLowerCase();
+  return CryptoJS.MD5(encryptedParams + playaceMD).toString();
 }
 
 const generateRandomCode = () => {
@@ -185,64 +176,24 @@ async function registerAGUser(username) {
   try {
     const registerPassword = generatePassword();
 
-    // The documentation shows /\\\\/ which means: / \ \ /
-    // In JavaScript, we need to escape backslashes, so:
-    // To get / \ \ / we write: /\\\\/
-    const separator = `/\\\\/`;
+    const rawParams = `cagent=${playaceAgentCode}/\\\\/loginname=${username}/\\\\/method=lg/\\\\/actype=1/\\\\/password=${registerPassword}/\\\\/oddtype=A/\\\\/cur=MYR`;
 
-    // Build params string
-    const paramsArray = [
-      `cagent=${agAgentCode}`,
-      `loginname=${username}`,
-      `method=lg`,
-      `actype=1`,
-      `password=${registerPassword}`,
-      `oddtype=A`,
-      `cur=MYR`,
-    ];
-
-    const rawParams = paramsArray.join(separator);
-
-    console.log("=== DEBUG INFO ===");
-    console.log("DES Key:", agDES);
-    console.log("DES Key length:", agDES.length);
-    console.log("MD5 Key:", agMD);
-    console.log("Separator:", separator);
-    console.log("Separator length:", separator.length);
-    console.log("Raw params:", rawParams);
-    console.log("Raw params length:", rawParams.length);
-
-    // Log each character of separator
-    console.log(
-      "Separator chars:",
-      separator.split("").map((c) => c.charCodeAt(0))
-    );
-
-    // Encrypt params
     const encryptedParams = encryptParams(rawParams);
-    console.log("Encrypted params:", encryptedParams);
-
-    // Generate MD5 key
     const key = generateMD5Key(encryptedParams);
-    console.log("MD5 key:", key);
 
-    // Build API URL - try WITHOUT URL encoding first
-    const apiUrl = `${agAPIURL}/doBusiness.do?params=${encryptedParams}&key=${key}`;
-
-    console.log("API URL:", apiUrl);
+    const apiUrl = `${playaceAPIURL}/doBusiness.do?params=${encodeURIComponent(
+      encryptedParams
+    )}&key=${key}`;
 
     const response = await axios.get(apiUrl);
-    const xmlResult = response.data;
 
-    console.log("API Response:", xmlResult);
+    const xmlResult = response.data;
 
     const infoMatch = xmlResult.match(/info="([^"]+)"/);
     const msgMatch = xmlResult.match(/msg="([^"]*)"/);
 
     const info = infoMatch ? infoMatch[1] : null;
     const msg = msgMatch ? msgMatch[1] : null;
-
-    console.log("Info:", info, "Msg:", msg);
 
     if (info === "0") {
       await User.findOneAndUpdate(
@@ -258,8 +209,7 @@ async function registerAGUser(username) {
 
     return {
       success: false,
-      info: info,
-      msg: msg,
+      data: `Info ${info}, Msg ${msg}`,
     };
   } catch (error) {
     console.error("PlayAce error in creating member:", error.message);
@@ -272,8 +222,7 @@ async function registerAGUser(username) {
 
 async function createAGPlayerSession(username, token, wallet) {
   try {
-    // Build the API request URL
-    const requestURL = `${agCreateSessionAPIURL}?productid=NB6&username=${username}&session_token=${token}&credit=${roundToTwoDecimals(
+    const requestURL = `${playaceCreateSessionAPIURL}?productid=${playaceProductId}&username=${username}&session_token=${token}&credit=${roundToTwoDecimals(
       wallet
     )}`;
 
@@ -350,19 +299,6 @@ router.post("/api/playace/launchGame", authenticateToken, async (req, res) => {
           registration.data || registration.error
         );
 
-        if (registration.maintenance) {
-          return res.status(200).json({
-            success: false,
-            message: {
-              en: "Game under maintenance. Please try again later.",
-              zh: "游戏正在维护中，请稍后再试。",
-              ms: "Permainan sedang diselenggara, sila cuba lagi nanti.",
-              zh_hk: "遊戲正在維護中，請稍後再試。",
-              id: "Permainan sedang dalam pemeliharaan. Silakan coba lagi nanti.",
-            },
-          });
-        }
-
         return res.status(200).json({
           success: false,
           message: {
@@ -426,14 +362,14 @@ router.post("/api/playace/launchGame", authenticateToken, async (req, res) => {
 
     const sequence =
       Date.now().toString() + Math.floor(Math.random() * 1000).toString();
-    const sid = `${agAgentCode}${sequence}`;
+    const sid = `${playaceAgentCode}${sequence}`;
 
-    const rawParams = `cagent=${agAgentCode}/\\\\/loginname=${user.gameId}/\\\\/actype=1/\\\\/password=${user.playaceGamePW}/\\\\/dm=${webURL}/\\\\/sid=${sid}/\\\\/lang=${lang}/\\\\/gameType=${gameCode}/\\\\/oddtype=A/\\\\/session_token=${token}/\\\\/cur=MYR/\\\\/mh5=${platform}`;
+    const rawParams = `cagent=${playaceAgentCode}/\\\\/loginname=${user.gameId}/\\\\/actype=1/\\\\/password=${user.playaceGamePW}/\\\\/dm=${webURL}/\\\\/sid=${sid}/\\\\/lang=${lang}/\\\\/gameType=${gameCode}/\\\\/oddtype=A/\\\\/session_token=${token}/\\\\/cur=MYR/\\\\/mh5=${platform}`;
 
     const encryptedParams = encryptParams(rawParams);
     const key = generateMD5Key(encryptedParams);
 
-    const gameUrl = `${agAPIURL2}/forwardGame.do?params=${encodeURIComponent(
+    const gameUrl = `${playaceAPIURL2}/forwardGame.do?params=${encodeURIComponent(
       encryptedParams
     )}&key=${key}`;
 
@@ -450,7 +386,7 @@ router.post("/api/playace/launchGame", authenticateToken, async (req, res) => {
       "Transfer In",
       "Seamless",
       roundToTwoDecimals(user.wallet),
-      "PLAYACE"
+      "PLAYACE SLOT"
     );
 
     // Return the game URL
@@ -490,6 +426,19 @@ router.post(
       const userId = req.user.userId;
       let user = await User.findById(userId);
 
+      if (!user) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "User not found. Please try again or contact customer service for assistance.",
+            zh: "用户未找到，请重试或联系客服以获取帮助。",
+            ms: "Pengguna tidak ditemui, sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+            zh_hk: "用戶未找到，請重試或聯絡客服以獲取幫助。",
+            id: "Pengguna tidak ditemukan. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+          },
+        });
+      }
+
       if (user.gameLock.playace.lock) {
         return res.status(200).json({
           success: false,
@@ -497,6 +446,8 @@ router.post(
             en: "Your game access has been locked. Please contact customer support for further assistance.",
             zh: "您的游戏访问已被锁定，请联系客服以获取进一步帮助。",
             ms: "Akses permainan anda telah dikunci. Sila hubungi khidmat pelanggan untuk bantuan lanjut.",
+            zh_hk: "您的遊戲訪問已被鎖定，請聯絡客服以獲取進一步幫助。",
+            id: "Akses permainan Anda telah dikunci. Silakan hubungi dukungan pelanggan untuk bantuan lebih lanjut.",
           },
         });
       }
@@ -510,23 +461,14 @@ router.post(
             registration.data || registration.error
           );
 
-          if (registration.maintenance) {
-            return res.status(200).json({
-              success: false,
-              message: {
-                en: "Game under maintenance. Please try again later.",
-                zh: "游戏正在维护中，请稍后再试。",
-                ms: "Permainan sedang diselenggara, sila cuba lagi nanti.",
-              },
-            });
-          }
-
           return res.status(200).json({
             success: false,
             message: {
               en: "PLAYACE: Game launch failed. Please try again or customer service for assistance.",
               zh: "PLAYACE: 游戏启动失败，请重试或联系客服以获得帮助。",
               ms: "PLAYACE: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+              zh_hk: "PLAYACE: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+              id: "PLAYACE: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
             },
           });
         }
@@ -553,6 +495,8 @@ router.post(
             en: "PLAYACE: Game launch failed. Please try again or customer service for assistance.",
             zh: "PLAYACE: 游戏启动失败，请重试或联系客服以获得帮助。",
             ms: "PLAYACE: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+            zh_hk: "PLAYACE: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+            id: "PLAYACE: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
           },
         });
       }
@@ -563,7 +507,11 @@ router.post(
         lang = "3";
       } else if (gameLang === "zh") {
         lang = "1";
+      } else if (gameLang === "zh_hk") {
+        lang = "2";
       } else if (gameLang === "ms") {
+        lang = "3";
+      } else if (gameLang === "id") {
         lang = "11";
       }
 
@@ -576,15 +524,15 @@ router.post(
 
       const sequence =
         Date.now().toString() + Math.floor(Math.random() * 1000).toString();
-      const sid = `${agAgentCode}${sequence}`;
+      const sid = `${playaceAgentCode}${sequence}`;
 
-      const rawParams = `cagent=${agAgentCode}/\\\\/loginname=${user.gameId}/\\\\/actype=1/\\\\/password=${user.playaceGamePW}/\\\\/dm=${webURL}/\\\\/sid=${sid}/\\\\/lang=${lang}/\\\\/gameType=0/\\\\/oddtype=A/\\\\/cur=MYR
+      const rawParams = `cagent=${playaceAgentCode}/\\\\/loginname=${user.gameId}/\\\\/actype=1/\\\\/password=${user.playaceGamePW}/\\\\/dm=${webURL}/\\\\/sid=${sid}/\\\\/lang=${lang}/\\\\/gameType=0/\\\\/oddtype=A/\\\\/cur=MYR
         /\\\\/mh5=${platform}`;
 
       const encryptedParams = encryptParams(rawParams);
       const key = generateMD5Key(encryptedParams);
 
-      const gameUrl = `${agAPIURL2}/forwardGame.do?params=${encodeURIComponent(
+      const gameUrl = `${playaceAPIURL2}/forwardGame.do?params=${encodeURIComponent(
         encryptedParams
       )}&key=${key}`;
 
@@ -601,7 +549,7 @@ router.post(
         "Transfer In",
         "Seamless",
         roundToTwoDecimals(user.wallet),
-        "PLAYACE"
+        "PLAYACE LIVE"
       );
 
       // Return the game URL
@@ -612,6 +560,8 @@ router.post(
           en: "Game launched successfully.",
           zh: "游戏启动成功。",
           ms: "Permainan berjaya dimulakan.",
+          zh_hk: "遊戲啟動成功。",
+          id: "Permainan berhasil diluncurkan.",
         },
       });
     } catch (error) {
@@ -622,6 +572,8 @@ router.post(
           en: "PLAYACE: Game launch failed. Please try again or customer service for assistance.",
           zh: "PLAYACE: 游戏启动失败，请重试或联系客服以获得帮助。",
           ms: "PLAYACE: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          zh_hk: "PLAYACE: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+          id: "PLAYACE: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
         },
       });
     }
@@ -657,7 +609,7 @@ router.post("/api/playacebonus", async (req, res) => {
         const result = await parser.parseStringPromise(xmlData);
         const record = result.Data.Record;
 
-        const trimmedCode = trimAfterUnderscore(agAgentCode);
+        const trimmedCode = trimAfterUnderscore(playaceAgentCode);
 
         const username = extractPlayerName(record.playname, trimmedCode);
 
@@ -910,7 +862,7 @@ router.post("/api/playacelive", async (req, res) => {
         const result = await parser.parseStringPromise(xmlData);
         const record = result.Data.Record;
 
-        const trimmedCode = trimAfterUnderscore(agAgentCode);
+        const trimmedCode = trimAfterUnderscore(playaceAgentCode);
 
         // Validate agent code
         if (record.agentCode !== trimmedCode) {
@@ -1221,7 +1173,7 @@ router.post("/api/playaceslot", async (req, res) => {
           return sendResponse(400, "INVALID_DATA");
         }
 
-        const trimmedCode = trimAfterUnderscore(agAgentCode);
+        const trimmedCode = trimAfterUnderscore(playaceAgentCode);
 
         const username = extractPlayerName(record.playname, trimmedCode);
 
