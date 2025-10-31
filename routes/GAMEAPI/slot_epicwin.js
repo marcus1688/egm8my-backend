@@ -602,7 +602,7 @@ router.post("/api/epicwin/launchGame", authenticateToken, async (req, res) => {
   }
 });
 
-router.post("/api/epicwin/GetBalance", async (req, res) => {
+router.post("/api/epicwins/GetBalance", async (req, res) => {
   try {
     const { OperatorId, Signature, PlayerId, AuthToken, RequestDateTime } =
       req.body;
@@ -703,7 +703,7 @@ router.post("/api/epicwin/GetBalance", async (req, res) => {
   }
 });
 
-router.post("/api/epicwin/Bet", async (req, res) => {
+router.post("/api/epicwins/Bet", async (req, res) => {
   try {
     const {
       OperatorId,
@@ -874,7 +874,7 @@ router.post("/api/epicwin/Bet", async (req, res) => {
   }
 });
 
-router.post("/api/epicwin/GameResult", async (req, res) => {
+router.post("/api/epicwins/GameResult", async (req, res) => {
   try {
     const {
       OperatorId,
@@ -1024,7 +1024,7 @@ router.post("/api/epicwin/GameResult", async (req, res) => {
   }
 });
 
-router.post("/api/epicwin/Rollback", async (req, res) => {
+router.post("/api/epicwins/Rollback", async (req, res) => {
   try {
     const {
       OperatorId,
@@ -1168,7 +1168,7 @@ router.post("/api/epicwin/Rollback", async (req, res) => {
   }
 });
 
-router.post("/api/epicwin/CashBonus", async (req, res) => {
+router.post("/api/epicwins/CashBonus", async (req, res) => {
   try {
     const { OperatorId, Signature, PlayerId, RequestDateTime, Payout, TranId } =
       req.body;
@@ -1297,7 +1297,7 @@ router.post("/api/epicwin/CashBonus", async (req, res) => {
   }
 });
 
-router.post("/api/epicwin/Jackpot", async (req, res) => {
+router.post("/api/epicwins/Jackpot", async (req, res) => {
   try {
     const { OperatorId, Signature, PlayerId, RequestDateTime, Payout, TranId } =
       req.body;
