@@ -222,6 +222,8 @@ async function registerAGUser(username) {
 
 async function createAGPlayerSession(username, token, wallet) {
   try {
+    console.log(process.env.PLAYACE_DESKEY, "hi");
+
     const requestURL = `${playaceCreateSessionAPIURL}?productid=${playaceProductId}&username=${username}&session_token=${token}&credit=${roundToTwoDecimals(
       wallet
     )}`;
@@ -359,7 +361,6 @@ router.post("/api/playace/launchGame", authenticateToken, async (req, res) => {
     } else if (clientPlatform === "mobile") {
       platform = "y";
     }
-    console.log(process.env.PLAYACE_DESKEY);
     const sequence =
       Date.now().toString() + Math.floor(Math.random() * 1000).toString();
     const sid = `${playaceAgentCode}${sequence}`;
