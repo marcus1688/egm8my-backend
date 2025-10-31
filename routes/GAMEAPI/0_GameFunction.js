@@ -85,6 +85,14 @@ router.post("/admin/api/getAllTurnoverForRebate", async (req, res) => {
         url: `${PUBLIC_APIURL}api/fachaifish/getturnoverforrebate`,
         name: "FACHAI",
       },
+      {
+        url: `${PUBLIC_APIURL}api/playaceslot/getturnoverforrebate`,
+        name: "PLAYACE",
+      },
+      {
+        url: `${PUBLIC_APIURL}api/playacelive/getturnoverforrebate`,
+        name: "PLAYACE",
+      },
     ];
 
     const routePromises = routes.map((route) =>
