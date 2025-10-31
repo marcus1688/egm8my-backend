@@ -105,13 +105,7 @@ const dailyGameAmountsSchema = new mongoose.Schema(
 
 const userSchema = new mongoose.Schema(
   {
-    customerId: String,
-    userServerId: {
-      type: String,
-      unique: true,
-      sparse: true,
-    },
-    evolutionUserId: Number,
+    gameId: String,
     email: String,
     isPhoneVerified: { type: Boolean, default: false },
     isEmailVerified: { type: Boolean, default: false },
@@ -474,24 +468,6 @@ const gameDataValidLogSchema = new mongoose.Schema(
   }
 );
 
-function generateCustomerId() {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let result = "";
-  for (let i = 0; i < 5; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-}
-
-function generateUserServerId() {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  let result = "";
-  for (let i = 0; i < 8; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-}
-
 adminUserWalletLogSchema.index(
   { createdAt: -1 },
   { expireAfterSeconds: 5256000 }
@@ -502,28 +478,6 @@ gameDataValidLogSchema.index(
   { createdAt: -1 },
   { expireAfterSeconds: 1309600 }
 );
-
-userSchema.pre("save", async function (next) {
-  if (!this.customerId) {
-    let newId;
-    let exists = true;
-    while (exists) {
-      newId = generateCustomerId();
-      exists = await mongoose.models.User.exists({ customerId: newId });
-    }
-    this.customerId = newId;
-  }
-  if (!this.userServerId) {
-    let newServerId;
-    let exists = true;
-    while (exists) {
-      newServerId = generateUserServerId(); // Generates 8-character ID like "a3k9m2qx"
-      exists = await mongoose.models.User.exists({ userServerId: newServerId });
-    }
-    this.userServerId = newServerId;
-  }
-  next();
-});
 
 const adminUserWalletLog = mongoose.model(
   "adminUserWalletLog",

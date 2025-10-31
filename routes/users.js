@@ -633,6 +633,33 @@ async function updateUserReferral(
 //   }
 // });
 
+async function generateUniqueGameId() {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let result = "";
+  let isUnique = false;
+
+  while (!isUnique) {
+    result = "";
+    for (let i = 0; i < 7; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+
+    if (result.endsWith("2x")) {
+      continue;
+    }
+
+    const existingUser = await User.findOne({
+      $or: [{ gameId: result }],
+    });
+
+    if (!existingUser) {
+      isUnique = true;
+    }
+  }
+
+  return result;
+}
+
 // Register User
 router.post("/api/register", async (req, res) => {
   const {
@@ -835,6 +862,7 @@ router.post("/api/register", async (req, res) => {
       duplicateIP: isDuplicateIP, // 新用户也标记为重复IP（如果检测到重复）
       isPhoneVerified: isPhoneVerified,
       viplevel: "Bronze",
+      gameId: await generateUniqueGameId(),
     });
 
     if (referralBy) {
@@ -1286,7 +1314,7 @@ router.get("/api/userdata", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const user = await User.findById(userId).select(
-      "fullname username bankAccounts totaldeposit email lastRebateClaim lastCommissionClaim telegramId facebookId lastLogin phonenumber luckySpinClaim  wallet createdAt dob withdrawlock rebate email isPhoneVerified isEmailVerified monthlyBonusCountdownTime monthlyLoyaltyCountdownTime weeklySignInTime totaldeposit viplevel cryptoWallet luckySpinCount luckySpinAmount referralLink referralCode referralQrCode positionTaking totalturnover firstDepositDate gw99GameID gw99GamePW alipayGameID lionKingGameID "
+      "fullname username bankAccounts totaldeposit email lastRebateClaim lastCommissionClaim telegramId facebookId lastLogin phonenumber luckySpinClaim  wallet createdAt dob withdrawlock rebate email isPhoneVerified isEmailVerified monthlyBonusCountdownTime monthlyLoyaltyCountdownTime weeklySignInTime totaldeposit viplevel cryptoWallet luckySpinCount luckySpinAmount referralLink referralCode referralQrCode positionTaking totalturnover firstDepositDate"
     );
     if (!user) {
       return res.status(200).json({ message: "用户未找到" });
@@ -3386,6 +3414,7 @@ router.post(
         referralCode: newReferralCode,
         referralQrCode,
         viplevel: "Bronze",
+        gameId: await generateUniqueGameId(),
       });
 
       if (referralBy) {
@@ -3484,7 +3513,7 @@ router.get(
     try {
       const userId = req.params.userId;
       const user = await User.findById(userId).select(
-        " username totalturnover  fullname email phonenumber status viplevel bankAccounts wallet createdAt lastLogin lastLoginIp registerIp dob wallet withdrawlock rebate turnover winloss gamewallet rebate totaldeposit totalwithdraw lastdepositdate totalbonus gameStatus luckySpinCount remark referralCode referralBy duplicateIP gameStatus gameLock kiss918GameID kiss918GamePW pastKiss918GameID pastKiss918GamePW pussy888GameID pussy888GamePW pastPussy888GameID pastPussy888GamePW mega888GameID mega888GamePW pastMega888GameID pastMega888GamePW positionTaking"
+        " username totalturnover  fullname email phonenumber status viplevel bankAccounts wallet createdAt lastLogin lastLoginIp registerIp dob wallet withdrawlock rebate turnover winloss gamewallet rebate totaldeposit totalwithdraw lastdepositdate totalbonus gameStatus luckySpinCount remark referralCode referralBy duplicateIP gameStatus gameLock positionTaking gameId"
       );
       if (!user) {
         return res.status(200).json({

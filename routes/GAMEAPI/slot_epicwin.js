@@ -535,7 +535,6 @@ router.post("/api/epicwin/launchGame", authenticateToken, async (req, res) => {
       RedirectUrl: webURL,
       AuthToken: token,
     };
-
     // Make the API request
     const response = await axios.post(`${epicWinAPIURL}GameLogin`, payload, {
       headers: {
