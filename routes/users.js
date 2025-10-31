@@ -36,6 +36,9 @@ const geoip = require("geoip-lite");
 const BankList = require("../models/banklist.model");
 const BankTransactionLog = require("../models/banktransactionlog.model");
 
+const SlotEpicWinModal = require("../models/slot_epicwin.model");
+const SlotFachaiModal = require("../models/slot_fachai.model");
+
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
 const querystring = require("querystring");
@@ -4987,9 +4990,17 @@ router.get(
       // Get today's data if needed
       if (needsTodayData) {
         const todayGamePromises = [
-          // getAllUsersTurnover(SportCMDModal, {
-          //   cancel: { $ne: true },
-          // }),
+          // EpicWin
+          getAllUsersTurnover(SlotEpicWinModal, {
+            cancel: { $ne: true },
+            settle: true,
+          }),
+
+          // Fachai
+          getAllUsersTurnover(SlotFachaiModal, {
+            cancel: { $ne: true },
+            settle: true,
+          }),
         ];
 
         const todayGameResults = await Promise.allSettled(todayGamePromises);

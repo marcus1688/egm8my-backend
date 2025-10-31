@@ -290,6 +290,7 @@ const userSchema = new mongoose.Schema(
     lastAdminAccessBy: String,
     gameLock: {
       epicwin: { type: gameLockSchema, default: () => ({}) },
+      fachai: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },

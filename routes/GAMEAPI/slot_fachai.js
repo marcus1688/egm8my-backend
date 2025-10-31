@@ -20,8 +20,8 @@ require("dotenv").config();
 
 //Staging
 const fachaiSecret = process.env.FACHAI_SECRET;
-const fachaiCode = "JI";
-const webURL = "https://www.jinlihui.net/";
+const fachaiCode = "DAD";
+const webURL = "http://egm8my.vip/";
 const fachaiAPIURL = "https://ap9.fcg178.net";
 
 function aesEncrypt(dataString, appKey) {
@@ -123,26 +123,26 @@ const verifySignature = (decryptedParams, Sign) => {
 //   try {
 //     // List of gameIDs in order (AB1541 = latest, AB1501 = oldest)
 //     const gameIds = [
-//       "22071",
 //       "22064",
-//       "21008",
-//       "22043",
-//       "22018",
-//       "22020",
-//       "22055",
 //       "22047",
-//       "22041",
-//       "22072",
-//       "22067",
-//       "22063",
-//       "22040",
-//       "21009",
 //       "22084",
-//       "22016",
-//       "22053",
+//       "22040",
+//       "22072",
+//       "22063",
+//       "22041",
 //       "22054",
-//       "22042",
-//       "21003",
+//       "22061",
+//       "21009",
+//       "22053",
+//       "22071",
+//       "22075",
+//       "22060",
+//       "22057",
+//       "22049",
+//       "22067",
+//       "22055",
+//       "22069",
+//       "22020",
 //     ];
 
 //     // Start from current time + 1 month for the latest game (AB1541)
@@ -225,7 +225,7 @@ router.post("/api/fachai/comparegame", async (req, res) => {
 
     const requestBody = querystring.stringify({
       AgentCode: fachaiCode,
-      Currency: "CNY",
+      Currency: "MYR",
       Params: encryptedPayload,
       Sign: md5Sign,
     });
@@ -378,7 +378,7 @@ router.post("/api/fachai/comparegame", async (req, res) => {
 
 //     const requestBody = querystring.stringify({
 //       AgentCode: fachaiCode,
-//       Currency: "CNY",
+//       Currency: "MYR",
 //       Params: encryptedPayload,
 //       Sign: md5Sign,
 //     });
@@ -540,7 +540,7 @@ router.post("/api/fachai/launchGame", authenticateToken, async (req, res) => {
 
     const requestBody = querystring.stringify({
       AgentCode: fachaiCode,
-      Currency: "CNY",
+      Currency: "MYR",
       Params: encryptedPayload,
       Sign: md5Sign,
     });

@@ -69,8 +69,12 @@ const WeeklyTurnoverRouter = require("./routes/weeklyturnover");
 const LuckyDrawRouter = require("./routes/luckydraw");
 
 const slotEpicWinRouter = require("./routes/GAMEAPI/slot_epicwin");
+const slotFachaiRouter = require("./routes/GAMEAPI/slot_fachai");
 
 const importGameListRouter = require("./routes/GAMEAPI/0_ImportGameList");
+const gameStatusRouter = require("./routes/GAMEAPI/0_GameStatus");
+const allGameFunctionRouter = require("./routes/GAMEAPI/0_GameFunction");
+const gameTotalTurnoverRouter = require("./routes/GAMEAPI/0_GameTotalTurnover");
 
 const adminListRouter = require("./routes/adminlist");
 const notificationRouter = require("./routes/notification");
@@ -833,8 +837,12 @@ app.use(WeeklyTurnoverRouter);
 app.use(LuckyDrawRouter);
 
 app.use(slotEpicWinRouter);
+app.use(slotFachaiRouter);
 
 app.use(importGameListRouter);
+app.use(gameStatusRouter);
+app.use(allGameFunctionRouter);
+app.use(gameTotalTurnoverRouter);
 
 app.use(adminListRouter);
 app.use(notificationRouter);
