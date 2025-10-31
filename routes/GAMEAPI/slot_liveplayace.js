@@ -55,11 +55,17 @@ function extractPlayerName(playname, agentCode) {
   return playname;
 }
 
-function generateRandomPassword() {
-  const randomNumber = crypto.randomInt(1000, 10000);
+const generatePassword = () => {
+  const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let result = "";
 
-  return `OC7${randomNumber}`;
-}
+  for (let i = 0; i < 6; i++) {
+    const randomIndex = Math.floor(Math.random() * characters.length);
+    result += characters[randomIndex];
+  }
+
+  return result;
+};
 
 function encryptParams(params) {
   const encrypted = CryptoJS.DES.encrypt(
@@ -167,7 +173,7 @@ router.post("/api/playace/getgamelist", async (req, res) => {
 
 async function registerAGUser(username) {
   try {
-    const registerPassword = generateRandomPassword();
+    const registerPassword = generatePassword();
 
     const rawParams = `cagent=${agAgentCode}/\\\\/loginname=${username}/\\\\/method=lg/\\\\/actype=1/\\\\/password=${registerPassword}/\\\\/oddtype=A/\\\\/cur=MYR`;
 
