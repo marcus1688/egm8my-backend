@@ -359,20 +359,20 @@ router.post("/api/playace/launchGame", authenticateToken, async (req, res) => {
     } else if (clientPlatform === "mobile") {
       platform = "y";
     }
-
+    console.log(process.env.PLAYACE_DESKEY);
     const sequence =
       Date.now().toString() + Math.floor(Math.random() * 1000).toString();
     const sid = `${playaceAgentCode}${sequence}`;
 
     const rawParams = `cagent=${playaceAgentCode}/\\\\/loginname=${user.gameId}/\\\\/actype=1/\\\\/password=${user.playaceGamePW}/\\\\/dm=${webURL}/\\\\/sid=${sid}/\\\\/lang=${lang}/\\\\/gameType=${gameCode}/\\\\/oddtype=A/\\\\/session_token=${token}/\\\\/cur=MYR/\\\\/mh5=${platform}`;
-
+    console.log(rawParams);
     const encryptedParams = encryptParams(rawParams);
     const key = generateMD5Key(encryptedParams);
 
     const gameUrl = `${playaceAPIURL2}/forwardGame.do?params=${encodeURIComponent(
       encryptedParams
     )}&key=${key}`;
-
+    console.log(gameUrl);
     const updatedUser = await User.findOneAndUpdate(
       { _id: user._id },
       {
