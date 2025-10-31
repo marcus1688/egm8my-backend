@@ -68,19 +68,29 @@ const generatePassword = () => {
 };
 
 function encryptParams(params) {
-  const encrypted = CryptoJS.DES.encrypt(
-    params,
-    CryptoJS.enc.Utf8.parse(agDES),
-    {
+  try {
+    const key = CryptoJS.enc.Utf8.parse(agDES);
+
+    const message = CryptoJS.enc.Utf8.parse(params);
+
+    const encrypted = CryptoJS.DES.encrypt(message, key, {
       mode: CryptoJS.mode.ECB,
       padding: CryptoJS.pad.Pkcs7,
-    }
-  );
-  return CryptoJS.enc.Base64.stringify(encrypted.ciphertext);
-}
+    });
 
+    const result = encrypted.toString();
+
+    return result;
+  } catch (error) {
+    console.error("Encryption error:", error);
+    throw error;
+  }
+}
 function generateMD5Key(encryptedParams) {
-  return CryptoJS.MD5(encryptedParams + agMD).toString();
+  // MD5 should be lowercase
+  return CryptoJS.MD5(encryptedParams + agMD)
+    .toString()
+    .toLowerCase();
 }
 
 const generateRandomCode = () => {
@@ -175,18 +185,56 @@ async function registerAGUser(username) {
   try {
     const registerPassword = generatePassword();
 
-    const rawParams = `cagent=${agAgentCode}/\\\\/loginname=${username}/\\\\/method=lg/\\\\/actype=1/\\\\/password=${registerPassword}/\\\\/oddtype=A/\\\\/cur=MYR`;
+    // The documentation shows /\\\\/ which means: / \ \ /
+    // In JavaScript, we need to escape backslashes, so:
+    // To get / \ \ / we write: /\\\\/
+    const separator = `/\\\\/`;
 
+    // Build params string
+    const paramsArray = [
+      `cagent=${agAgentCode}`,
+      `loginname=${username}`,
+      `method=lg`,
+      `actype=1`,
+      `password=${registerPassword}`,
+      `oddtype=A`,
+      `cur=MYR`,
+    ];
+
+    const rawParams = paramsArray.join(separator);
+
+    console.log("=== DEBUG INFO ===");
+    console.log("DES Key:", agDES);
+    console.log("DES Key length:", agDES.length);
+    console.log("MD5 Key:", agMD);
+    console.log("Separator:", separator);
+    console.log("Separator length:", separator.length);
+    console.log("Raw params:", rawParams);
+    console.log("Raw params length:", rawParams.length);
+
+    // Log each character of separator
+    console.log(
+      "Separator chars:",
+      separator.split("").map((c) => c.charCodeAt(0))
+    );
+
+    // Encrypt params
     const encryptedParams = encryptParams(rawParams);
-    const key = generateMD5Key(encryptedParams);
+    console.log("Encrypted params:", encryptedParams);
 
-    const apiUrl = `${agAPIURL}/doBusiness.do?params=${encodeURIComponent(
-      encryptedParams
-    )}&key=${key}`;
+    // Generate MD5 key
+    const key = generateMD5Key(encryptedParams);
+    console.log("MD5 key:", key);
+
+    // Build API URL - try WITHOUT URL encoding first
+    const apiUrl = `${agAPIURL}/doBusiness.do?params=${encryptedParams}&key=${key}`;
+
+    console.log("API URL:", apiUrl);
 
     const response = await axios.get(apiUrl);
-
     const xmlResult = response.data;
+
+    console.log("API Response:", xmlResult);
 
     const infoMatch = xmlResult.match(/info="([^"]+)"/);
     const msgMatch = xmlResult.match(/msg="([^"]*)"/);
@@ -194,9 +242,11 @@ async function registerAGUser(username) {
     const info = infoMatch ? infoMatch[1] : null;
     const msg = msgMatch ? msgMatch[1] : null;
 
-    if (info && info !== 0) {
+    console.log("Info:", info, "Msg:", msg);
+
+    if (info === "0") {
       await User.findOneAndUpdate(
-        { customerId: username },
+        { gameId: username },
         {
           $set: {
             playaceGamePW: registerPassword,
@@ -208,10 +258,11 @@ async function registerAGUser(username) {
 
     return {
       success: false,
-      data: `Info ${info}, Msg ${msg}`,
+      info: info,
+      msg: msg,
     };
   } catch (error) {
-    console.error("AG error in creating member:", error.message);
+    console.error("PlayAce error in creating member:", error.message);
     return {
       success: false,
       error: error.message,
@@ -264,6 +315,19 @@ router.post("/api/playace/launchGame", authenticateToken, async (req, res) => {
     const userId = req.user.userId;
     let user = await User.findById(userId);
 
+    if (!user) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "User not found. Please try again or contact customer service for assistance.",
+          zh: "用户未找到，请重试或联系客服以获取帮助。",
+          ms: "Pengguna tidak ditemui, sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          zh_hk: "用戶未找到，請重試或聯絡客服以獲取幫助。",
+          id: "Pengguna tidak ditemukan. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+        },
+      });
+    }
+
     if (user.gameLock.playace.lock) {
       return res.status(200).json({
         success: false,
@@ -271,12 +335,14 @@ router.post("/api/playace/launchGame", authenticateToken, async (req, res) => {
           en: "Your game access has been locked. Please contact customer support for further assistance.",
           zh: "您的游戏访问已被锁定，请联系客服以获取进一步帮助。",
           ms: "Akses permainan anda telah dikunci. Sila hubungi khidmat pelanggan untuk bantuan lanjut.",
+          zh_hk: "您的遊戲訪問已被鎖定，請聯絡客服以獲取進一步幫助。",
+          id: "Akses permainan Anda telah dikunci. Silakan hubungi dukungan pelanggan untuk bantuan lebih lanjut.",
         },
       });
     }
 
     if (!user.playaceGamePW) {
-      const registration = await registerAGUser(user.customerId);
+      const registration = await registerAGUser(user.gameId);
 
       if (!registration.success) {
         console.log(
@@ -291,6 +357,8 @@ router.post("/api/playace/launchGame", authenticateToken, async (req, res) => {
               en: "Game under maintenance. Please try again later.",
               zh: "游戏正在维护中，请稍后再试。",
               ms: "Permainan sedang diselenggara, sila cuba lagi nanti.",
+              zh_hk: "遊戲正在維護中，請稍後再試。",
+              id: "Permainan sedang dalam pemeliharaan. Silakan coba lagi nanti.",
             },
           });
         }
@@ -301,6 +369,8 @@ router.post("/api/playace/launchGame", authenticateToken, async (req, res) => {
             en: "PLAYACE: Game launch failed. Please try again or customer service for assistance.",
             zh: "PLAYACE: 游戏启动失败，请重试或联系客服以获得帮助。",
             ms: "PLAYACE: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+            zh_hk: "PLAYACE: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+            id: "PLAYACE: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
           },
         });
       }
@@ -310,7 +380,7 @@ router.post("/api/playace/launchGame", authenticateToken, async (req, res) => {
     let token = `${user.username}:${generateRandomCode()}`;
 
     const createSession = await createAGPlayerSession(
-      user.customerId,
+      user.gameId,
       token,
       user.wallet
     );
@@ -327,6 +397,8 @@ router.post("/api/playace/launchGame", authenticateToken, async (req, res) => {
           en: "PLAYACE: Game launch failed. Please try again or customer service for assistance.",
           zh: "PLAYACE: 游戏启动失败，请重试或联系客服以获得帮助。",
           ms: "PLAYACE: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          zh_hk: "PLAYACE: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+          id: "PLAYACE: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
         },
       });
     }
@@ -337,7 +409,11 @@ router.post("/api/playace/launchGame", authenticateToken, async (req, res) => {
       lang = "3";
     } else if (gameLang === "zh") {
       lang = "1";
+    } else if (gameLang === "zh_hk") {
+      lang = "2";
     } else if (gameLang === "ms") {
+      lang = "3";
+    } else if (gameLang === "id") {
       lang = "11";
     }
 
@@ -352,7 +428,7 @@ router.post("/api/playace/launchGame", authenticateToken, async (req, res) => {
       Date.now().toString() + Math.floor(Math.random() * 1000).toString();
     const sid = `${agAgentCode}${sequence}`;
 
-    const rawParams = `cagent=${agAgentCode}/\\\\/loginname=${user.customerId}/\\\\/actype=1/\\\\/password=${user.playaceGamePW}/\\\\/dm=${webURL}/\\\\/sid=${sid}/\\\\/lang=${lang}/\\\\/gameType=${gameCode}/\\\\/oddtype=A/\\\\/session_token=${token}/\\\\/cur=MYR/\\\\/mh5=${platform}`;
+    const rawParams = `cagent=${agAgentCode}/\\\\/loginname=${user.gameId}/\\\\/actype=1/\\\\/password=${user.playaceGamePW}/\\\\/dm=${webURL}/\\\\/sid=${sid}/\\\\/lang=${lang}/\\\\/gameType=${gameCode}/\\\\/oddtype=A/\\\\/session_token=${token}/\\\\/cur=MYR/\\\\/mh5=${platform}`;
 
     const encryptedParams = encryptParams(rawParams);
     const key = generateMD5Key(encryptedParams);
@@ -385,6 +461,8 @@ router.post("/api/playace/launchGame", authenticateToken, async (req, res) => {
         en: "Game launched successfully.",
         zh: "游戏启动成功。",
         ms: "Permainan berjaya dimulakan.",
+        zh_hk: "遊戲啟動成功。",
+        id: "Permainan berhasil diluncurkan.",
       },
     });
   } catch (error) {
@@ -395,6 +473,8 @@ router.post("/api/playace/launchGame", authenticateToken, async (req, res) => {
         en: "PLAYACE: Game launch failed. Please try again or customer service for assistance.",
         zh: "PLAYACE: 游戏启动失败，请重试或联系客服以获得帮助。",
         ms: "PLAYACE: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+        zh_hk: "PLAYACE: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+        id: "PLAYACE: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
       },
     });
   }
@@ -422,7 +502,7 @@ router.post(
       }
 
       if (!user.playaceGamePW) {
-        const registration = await registerAGUser(user.customerId);
+        const registration = await registerAGUser(user.gameId);
 
         if (!registration.success) {
           console.log(
@@ -456,7 +536,7 @@ router.post(
       let token = `${user.username}:${generateRandomCode()}`;
 
       const createSession = await createAGPlayerSession(
-        user.customerId,
+        user.gameId,
         token,
         user.wallet
       );
@@ -498,7 +578,7 @@ router.post(
         Date.now().toString() + Math.floor(Math.random() * 1000).toString();
       const sid = `${agAgentCode}${sequence}`;
 
-      const rawParams = `cagent=${agAgentCode}/\\\\/loginname=${user.customerId}/\\\\/actype=1/\\\\/password=${user.playaceGamePW}/\\\\/dm=${webURL}/\\\\/sid=${sid}/\\\\/lang=${lang}/\\\\/gameType=0/\\\\/oddtype=A/\\\\/cur=MYR
+      const rawParams = `cagent=${agAgentCode}/\\\\/loginname=${user.gameId}/\\\\/actype=1/\\\\/password=${user.playaceGamePW}/\\\\/dm=${webURL}/\\\\/sid=${sid}/\\\\/lang=${lang}/\\\\/gameType=0/\\\\/oddtype=A/\\\\/cur=MYR
         /\\\\/mh5=${platform}`;
 
       const encryptedParams = encryptParams(rawParams);
@@ -584,7 +664,7 @@ router.post("/api/playacebonus", async (req, res) => {
         // Get user in one efficient query with projection
         const currentUser = await User.findOne(
           {
-            customerId: username,
+            gameId: username,
             playaceGameToken: record.sessionToken,
           },
           {
@@ -593,7 +673,7 @@ router.post("/api/playacebonus", async (req, res) => {
             username: 1,
             "gameLock.playace.lock": 1,
             playaceGameToken: 1,
-            customerId: 1,
+            gameId: 1,
           }
         );
 
@@ -842,7 +922,7 @@ router.post("/api/playacelive", async (req, res) => {
         // Get user in one efficient query with projection
         const currentUser = await User.findOne(
           {
-            customerId: username,
+            gameId: username,
             playaceGameToken: record.sessionToken,
           },
           {
@@ -851,7 +931,7 @@ router.post("/api/playacelive", async (req, res) => {
             username: 1,
             "gameLock.playace.lock": 1,
             playaceGameToken: 1,
-            customerId: 1,
+            gameId: 1,
           }
         );
 
@@ -1148,7 +1228,7 @@ router.post("/api/playaceslot", async (req, res) => {
         // Get user in one efficient query with projection
         const currentUser = await User.findOne(
           {
-            customerId: username,
+            gameId: username,
             playaceGameToken: record.sessionToken,
           },
           {
@@ -1157,7 +1237,7 @@ router.post("/api/playaceslot", async (req, res) => {
             username: 1,
             "gameLock.playace.lock": 1,
             playaceGameToken: 1,
-            customerId: 1,
+            gameId: 1,
           }
         );
 
