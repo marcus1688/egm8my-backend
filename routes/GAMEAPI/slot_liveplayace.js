@@ -803,830 +803,757 @@ router.post(
   }
 );
 
-router.post("/api/playacebonus", async (req, res) => {
-  // Helper function for standard responses
-  const sendResponse = (status, responseCode, balance = null) => {
-    const xmlContent =
-      balance !== null
-        ? `<TransferResponse><ResponseCode>${responseCode}</ResponseCode><Balance>${balance}</Balance></TransferResponse>`
-        : `<TransferResponse><ResponseCode>${responseCode}</ResponseCode></TransferResponse>`;
+const sendResponse = (res, status, responseCode, balance = null) => {
+  const xmlContent =
+    balance !== null
+      ? `<TransferResponse><ResponseCode>${responseCode}</ResponseCode><Balance>${balance}</Balance></TransferResponse>`
+      : `<TransferResponse><ResponseCode>${responseCode}</ResponseCode></TransferResponse>`;
 
-    const responseXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${xmlContent}`;
+  const responseXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${xmlContent}`;
 
-    res.set("Content-Type", "text/xml");
-    res.set("X-Integration-API-host", "api-1.operator.com");
-    return res.status(status).send(responseXml);
-  };
+  res.set("Content-Type", "text/xml");
+  res.set("X-Integration-API-host", "api-1.operator.com");
+  return res.status(status).send(responseXml);
+};
 
-  try {
-    // Get the raw XML body
+const parseXMLBody = (req) => {
+  return new Promise((resolve, reject) => {
     let xmlData = "";
-
     req.on("data", (chunk) => {
       xmlData += chunk.toString();
     });
+    req.on("end", () => {
+      resolve(xmlData);
+    });
+    req.on("error", reject);
+  });
+};
 
-    req.on("end", async () => {
-      try {
-        // Parse the XML to JSON
-        const result = await parser.parseStringPromise(xmlData);
-        const record = result.Data.Record;
+router.post("/api/playacebonus", async (req, res) => {
+  try {
+    const xmlData = await parseXMLBody(req);
+    const result = await parser.parseStringPromise(xmlData);
+    const record = result.Data.Record;
 
-        const trimmedCode = trimAfterUnderscore(playaceAgentCode);
+    const trimmedCode = trimAfterUnderscore(playaceAgentCode);
 
-        const username = extractPlayerName(record.playname, trimmedCode);
+    const username = extractPlayerName(record.playname, trimmedCode);
 
-        // Get user in one efficient query with projection
-        const currentUser = await User.findOne(
-          {
-            gameId: username,
-            playaceGameToken: record.sessionToken,
-          },
-          {
-            _id: 1,
-            wallet: 1,
-            username: 1,
-            "gameLock.playace.lock": 1,
-            playaceGameToken: 1,
-            gameId: 1,
-          }
+    // Get user in one efficient query with projection
+    const currentUser = await User.findOne(
+      {
+        gameId: username,
+        playaceGameToken: record.sessionToken,
+      },
+      {
+        _id: 1,
+        wallet: 1,
+        username: 1,
+        "gameLock.playace.lock": 1,
+        playaceGameToken: 1,
+        gameId: 1,
+      }
+    ).lean();
+
+    if (!currentUser) {
+      return sendResponse(res, 403, "INCORRECT_SESSION_TYPE");
+    }
+
+    const transactionType = record.transactionType || "";
+
+    if (transactionType === "WITHDRAW") {
+      const transferAmount = new Decimal(record.amount || 0)
+        .toDecimalPlaces(4)
+        .toNumber();
+
+      if (currentUser.gameLock.playace.lock) {
+        return sendResponse(res, 500, "ERROR");
+      }
+
+      // Check for existing bet with projection
+      const existingBet = await SlotLivePlayAceModal.findOne(
+        { betId: record.transactionID, bet: true },
+        { _id: 1 }
+      ).lean();
+
+      if (existingBet) {
+        return sendResponse(
+          res,
+          200,
+          "OK",
+          roundToTwoDecimals(currentUser.wallet)
         );
+      }
 
-        if (!currentUser) {
-          return sendResponse(403, "INCORRECT_SESSION_TYPE");
-        }
+      const updatedUser = await User.findOneAndUpdate(
+        {
+          _id: currentUser._id,
+          wallet: { $gte: transferAmount },
+        },
+        { $inc: { wallet: -transferAmount } },
+        { new: true, projection: { wallet: 1 } }
+      ).lean();
 
-        const transactionType = record.transactionType || "";
+      // Check if update was successful (matched count > 0)
+      if (result.matchedCount === 0) {
+        return sendResponse(res, 409, "INSUFFICIENT_FUNDS");
+      }
 
-        // Optimized BET transaction handling
-        if (transactionType === "WITHDRAW") {
-          const transferAmount = new Decimal(record.amount || 0)
-            .toDecimalPlaces(4)
-            .toNumber();
+      await SlotLivePlayAceModal.create({
+        username: username,
+        betId: record.transactionID,
+        bet: true,
+        gametype: "EVENT",
+        betamount: transferAmount,
+        event: true,
+      });
 
-          if (currentUser.gameLock.playace.lock) {
-            return sendResponse(500, "ERROR");
-          }
+      return sendResponse(
+        res,
+        200,
+        "OK",
+        roundToTwoDecimals(updatedUser.wallet)
+      );
+    }
+    // Optimized WIN/LOSE transaction handling
+    else if (transactionType === "DEPOSIT") {
+      const winAmount = new Decimal(record.amount || 0)
+        .toDecimalPlaces(4)
+        .toNumber();
 
-          // Check for existing bet with projection
-          const existingBet = await SlotLivePlayAceModal.findOne(
-            { betId: record.transactionID, bet: true },
-            { _id: 1 }
-          );
+      // Run these checks in parallel
+      const [existingBet, existingTransaction] = await Promise.all([
+        SlotLivePlayAceModal.findOne(
+          { betId: record.transactionID },
+          { settleId: 1, _id: 1 }
+        ).lean(),
+        SlotLivePlayAceModal.findOne(
+          {
+            settleId: record.transactionID,
+            $or: [{ settle: true }, { cancel: true }],
+          },
+          { _id: 1 }
+        ).lean(),
+      ]);
 
-          if (existingBet) {
-            return sendResponse(
-              200,
-              "OK",
-              roundToTwoDecimals(currentUser.wallet)
-            );
-          }
+      if (!existingBet) {
+        return sendResponse(res, 404, "INVALID_TRANSACTION");
+      }
 
-          // Use bulkWrite for better performance
-          const bulkOps = [
-            {
-              updateOne: {
-                filter: {
-                  _id: currentUser._id,
-                  wallet: { $gte: transferAmount },
-                },
-                update: { $inc: { wallet: -transferAmount } },
-                upsert: false,
-              },
-            },
-          ];
+      if (existingTransaction) {
+        return sendResponse(
+          res,
+          200,
+          "OK",
+          roundToTwoDecimals(currentUser.wallet)
+        );
+      }
 
-          const result = await User.bulkWrite(bulkOps);
+      // Update user balance first
+      const updatedUser = await User.findByIdAndUpdate(
+        currentUser._id,
+        { $inc: { wallet: winAmount } },
+        { new: true, projection: { wallet: 1 } }
+      ).lean();
 
-          // Check if update was successful (matched count > 0)
-          if (result.matchedCount === 0) {
-            return sendResponse(409, "INSUFFICIENT_FUNDS");
-          }
-
-          // Create bet record and get updated user in parallel
-          const [newBet, updatedUser] = await Promise.all([
-            SlotLivePlayAceModal.create({
-              username: username,
-              betId: record.transactionID,
-              bet: true,
-              gametype: "EVENT",
-              betamount: transferAmount,
-              event: true,
-            }),
-            User.findById(currentUser._id, { wallet: 1 }),
-          ]);
-
-          return sendResponse(
-            200,
-            "OK",
-            roundToTwoDecimals(updatedUser.wallet)
-          );
-        }
-        // Optimized WIN/LOSE transaction handling
-        else if (transactionType === "DEPOSIT") {
-          const winAmount = new Decimal(record.amount || 0)
-            .toDecimalPlaces(4)
-            .toNumber();
-
-          // Run these checks in parallel
-          const [existingBet, existingTransaction] = await Promise.all([
-            SlotLivePlayAceModal.findOne(
-              { betId: record.transactionID },
-              { settleId: 1, _id: 1 }
-            ),
-            SlotLivePlayAceModal.findOne(
-              {
-                settleId: record.transactionID,
-                $or: [{ settle: true }, { cancel: true }],
-              },
-              { _id: 1 }
-            ),
-          ]);
-
-          if (!existingBet) {
-            return sendResponse(404, "INVALID_TRANSACTION");
-          }
-
-          if (existingTransaction) {
-            return sendResponse(
-              200,
-              "OK",
-              roundToTwoDecimals(currentUser.wallet)
-            );
-          }
-
-          // Update user balance first
-          const updatedUser = await User.findByIdAndUpdate(
-            currentUser._id,
-            { $inc: { wallet: winAmount } },
-            { new: true, projection: { wallet: 1 } }
-          );
-
-          // Then update or create bet record as needed
-          if (!existingBet.settleId) {
-            await SlotLivePlayAceModal.updateOne(
-              { betId: record.transactionID },
-              {
-                $set: {
-                  settleId: record.eventID,
-                  settle: true,
-                  settleamount: winAmount,
-                },
-              }
-            );
-          } else {
-            await SlotLivePlayAceModal.create({
-              username: username,
-              betId: record.transactionID,
+      // Then update or create bet record as needed
+      if (!existingBet.settleId) {
+        await SlotLivePlayAceModal.updateOne(
+          { betId: record.transactionID },
+          {
+            $set: {
               settleId: record.eventID,
               settle: true,
               settleamount: winAmount,
-              bet: true,
-              gametype: "EVENT",
-              event: true,
-              betamount: 0,
-            });
-          }
-
-          return sendResponse(
-            200,
-            "OK",
-            roundToTwoDecimals(updatedUser.wallet)
-          );
-        }
-        // Optimized REFUND transaction handling
-        else if (transactionType === "ROLLBACK") {
-          const transferAmount = new Decimal(record.amount || 0)
-            .toDecimalPlaces(4)
-            .toNumber();
-
-          const existingBet = await SlotLivePlayAceModal.findOne(
-            { betId: record.transactionID },
-            { _id: 1 }
-          );
-
-          if (!existingBet) {
-            return sendResponse(404, "INVALID_TRANSACTION");
-          }
-
-          const existingTransaction = await SlotLivePlayAceModal.findOne(
-            { settleId: record.transactionID, cancel: true },
-            { _id: 1 }
-          );
-
-          if (existingTransaction) {
-            return sendResponse(
-              200,
-              "OK",
-              roundToTwoDecimals(currentUser.wallet)
-            );
-          }
-
-          // Use findOneAndUpdate with conditions to handle insufficient funds
-          const updatedUser = await User.findOneAndUpdate(
-            {
-              _id: currentUser._id,
             },
-            { $inc: { wallet: transferAmount } },
-            { new: true, projection: { wallet: 1 } }
-          );
-
-          await SlotLivePlayAceModal.updateOne(
-            { settleId: record.transactionID },
-            { $set: { cancel: true } },
-            { upsert: true }
-          );
-
-          return sendResponse(
-            200,
-            "OK",
-            roundToTwoDecimals(updatedUser.wallet)
-          );
-        } else {
-          return sendResponse(400, "INVALID_DATA");
-        }
-      } catch (parseError) {
-        console.error("Error parsing XML:", parseError);
-        return sendResponse(400, "INVALID_DATA");
+          }
+        );
+      } else {
+        await SlotLivePlayAceModal.create({
+          username: username,
+          betId: record.transactionID,
+          settleId: record.eventID,
+          settle: true,
+          settleamount: winAmount,
+          bet: true,
+          gametype: "EVENT",
+          event: true,
+          betamount: 0,
+        });
       }
-    });
+
+      return sendResponse(
+        res,
+        200,
+        "OK",
+        roundToTwoDecimals(updatedUser.wallet)
+      );
+    }
+    // Optimized REFUND transaction handling
+    else if (transactionType === "ROLLBACK") {
+      const transferAmount = new Decimal(record.amount || 0)
+        .toDecimalPlaces(4)
+        .toNumber();
+
+      const [existingBet, existingTransaction] = await Promise.all([
+        SlotLivePlayAceModal.findOne(
+          { betId: record.transactionID },
+          { _id: 1 }
+        ).lean(),
+        SlotLivePlayAceModal.findOne(
+          { settleId: record.transactionID, cancel: true },
+          { _id: 1 }
+        ).lean(),
+      ]);
+
+      if (!existingBet) {
+        return sendResponse(res, 404, "INVALID_TRANSACTION");
+      }
+
+      if (existingTransaction) {
+        return sendResponse(
+          res,
+          200,
+          "OK",
+          roundToTwoDecimals(currentUser.wallet)
+        );
+      }
+
+      const [updatedUser] = await Promise.all([
+        User.findOneAndUpdate(
+          { _id: currentUser._id },
+          { $inc: { wallet: transferAmount } },
+          { new: true, projection: { wallet: 1 } }
+        ).lean(),
+        SlotLivePlayAceModal.findOneAndUpdate(
+          { settleId: record.transactionID },
+          {
+            cancel: true,
+          },
+          { new: false }
+        ),
+      ]);
+
+      return sendResponse(
+        res,
+        200,
+        "OK",
+        roundToTwoDecimals(updatedUser.wallet)
+      );
+    } else {
+      return sendResponse(res, 400, "INVALID_DATA");
+    }
   } catch (error) {
     console.error("LivePLAYACE API Error:", error);
-    return sendResponse(500, "ERROR");
+    return sendResponse(res, 500, "ERROR");
   }
 });
 
 router.post("/api/playacelive", async (req, res) => {
-  // Helper function for standard responses
-  const sendResponse = (status, responseCode, balance = null) => {
-    const xmlContent =
-      balance !== null
-        ? `<TransferResponse><ResponseCode>${responseCode}</ResponseCode><Balance>${balance}</Balance></TransferResponse>`
-        : `<TransferResponse><ResponseCode>${responseCode}</ResponseCode></TransferResponse>`;
-
-    const responseXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${xmlContent}`;
-
-    res.set("Content-Type", "text/xml");
-    res.set("X-Integration-API-host", "api-1.operator.com");
-    return res.status(status).send(responseXml);
-  };
-
   try {
-    // Get the raw XML body
-    let xmlData = "";
+    const xmlData = await parseXMLBody(req);
+    const result = await parser.parseStringPromise(xmlData);
+    const record = result.Data.Record;
 
-    req.on("data", (chunk) => {
-      xmlData += chunk.toString();
-    });
+    const trimmedCode = trimAfterUnderscore(playaceAgentCode);
 
-    req.on("end", async () => {
-      try {
-        // Parse the XML to JSON
-        const result = await parser.parseStringPromise(xmlData);
-        const record = result.Data.Record;
+    if (record.agentCode !== trimmedCode) {
+      return sendResponse(res, 400, "INVALID_DATA");
+    }
 
-        const trimmedCode = trimAfterUnderscore(playaceAgentCode);
+    const username = extractPlayerName(record.playname, trimmedCode);
 
-        // Validate agent code
-        if (record.agentCode !== trimmedCode) {
-          return sendResponse(400, "INVALID_DATA");
-        }
+    // Get user in one efficient query with projection
+    const currentUser = await User.findOne(
+      {
+        gameId: username,
+        playaceGameToken: record.sessionToken,
+      },
+      {
+        _id: 1,
+        wallet: 1,
+        username: 1,
+        "gameLock.playace.lock": 1,
+        playaceGameToken: 1,
+        gameId: 1,
+      }
+    );
 
-        const username = extractPlayerName(record.playname, trimmedCode);
+    if (!currentUser) {
+      return sendResponse(res, 403, "INCORRECT_SESSION_TYPE");
+    }
 
-        // Get user in one efficient query with projection
-        const currentUser = await User.findOne(
-          {
-            gameId: username,
-            playaceGameToken: record.sessionToken,
-          },
-          {
-            _id: 1,
-            wallet: 1,
-            username: 1,
-            "gameLock.playace.lock": 1,
-            playaceGameToken: 1,
-            gameId: 1,
-          }
+    const transactionType = record.transactionType || "";
+
+    // Optimized BET transaction handling
+    if (transactionType === "BET") {
+      const transferAmount = new Decimal(record.value || 0)
+        .toDecimalPlaces(4)
+        .toNumber();
+
+      if (currentUser.gameLock.playace.lock) {
+        return sendResponse(res, 500, "ERROR");
+      }
+
+      // Check for existing bet with projection
+      const existingBet = await SlotLivePlayAceModal.findOne(
+        { betId: record.transactionID, bet: true },
+        { _id: 1 }
+      ).lean();
+
+      if (existingBet) {
+        return sendResponse(
+          res,
+          200,
+          "OK",
+          roundToTwoDecimals(currentUser.wallet)
         );
+      }
 
-        if (!currentUser) {
-          return sendResponse(403, "INCORRECT_SESSION_TYPE");
-        }
+      const updatedUser = await User.findOneAndUpdate(
+        {
+          _id: currentUser._id,
+          wallet: { $gte: transferAmount },
+        },
+        { $inc: { wallet: -transferAmount } },
+        { new: true, projection: { wallet: 1 } }
+      ).lean();
 
-        const transactionType = record.transactionType || "";
+      if (!updatedUser) {
+        return sendResponse(res, 409, "INSUFFICIENT_FUNDS");
+      }
 
-        // Optimized BET transaction handling
-        if (transactionType === "BET") {
-          const transferAmount = new Decimal(record.value || 0)
-            .toDecimalPlaces(4)
-            .toNumber();
+      await SlotLivePlayAceModal.create({
+        username: username,
+        betId: record.transactionID,
+        bet: true,
+        gametype: "LIVE",
+        betamount: transferAmount,
+        roundId: record.gameCode || "",
+      });
 
-          if (currentUser.gameLock.playace.lock) {
-            return sendResponse(500, "ERROR");
-          }
+      return sendResponse(
+        res,
+        200,
+        "OK",
+        roundToTwoDecimals(updatedUser.wallet)
+      );
+    }
+    // Optimized WIN/LOSE transaction handling
+    else if (transactionType === "WIN" || transactionType === "LOSE") {
+      const netAmount = new Decimal(record.netAmount || 0)
+        .toDecimalPlaces(4)
+        .toNumber();
+      const betAmount = new Decimal(record.validBetAmount || 0)
+        .toDecimalPlaces(4)
+        .toNumber();
+      const winAmount = new Decimal(netAmount + betAmount)
+        .toDecimalPlaces(4)
+        .toNumber();
 
-          // Check for existing bet with projection
-          const existingBet = await SlotLivePlayAceModal.findOne(
-            { betId: record.transactionID, bet: true },
-            { _id: 1 }
-          );
+      // Run these checks in parallel
+      const [existingBet, existingTransaction] = await Promise.all([
+        SlotLivePlayAceModal.findOne(
+          { betId: record.transactionID },
+          { settleId: 1 }
+        ).lean(),
+        SlotLivePlayAceModal.findOne(
+          {
+            settleId: record.billNo,
+            $or: [{ settle: true }, { cancel: true }],
+          },
+          { _id: 1 }
+        ).lean(),
+      ]);
 
-          if (existingBet) {
-            return sendResponse(
-              200,
-              "OK",
-              roundToTwoDecimals(currentUser.wallet)
-            );
-          }
+      if (!existingBet) {
+        return sendResponse(res, 404, "INVALID_TRANSACTION");
+      }
 
-          // Use bulkWrite for better performance
-          const bulkOps = [
-            {
-              updateOne: {
-                filter: {
-                  _id: currentUser._id,
-                  wallet: { $gte: transferAmount },
-                },
-                update: { $inc: { wallet: -transferAmount } },
-                upsert: false,
-              },
-            },
-          ];
+      if (existingTransaction) {
+        return sendResponse(
+          res,
+          200,
+          "OK",
+          roundToTwoDecimals(currentUser.wallet)
+        );
+      }
 
-          const result = await User.bulkWrite(bulkOps);
+      const updatedUser = await User.findByIdAndUpdate(
+        currentUser._id,
+        { $inc: { wallet: winAmount } },
+        { new: true, projection: { wallet: 1 } }
+      ).lean();
 
-          // Check if update was successful (matched count > 0)
-          if (result.matchedCount === 0) {
-            return sendResponse(409, "INSUFFICIENT_FUNDS");
-          }
-
-          // Create bet record and get updated user in parallel
-          const [newBet, updatedUser] = await Promise.all([
-            SlotLivePlayAceModal.create({
-              username: username,
-              betId: record.transactionID,
-              bet: true,
-              gametype: "LIVE",
-              betamount: transferAmount,
-              roundId: record.gameCode || "",
-            }),
-            User.findById(currentUser._id, { wallet: 1 }),
-          ]);
-
-          return sendResponse(
-            200,
-            "OK",
-            roundToTwoDecimals(updatedUser.wallet)
-          );
-        }
-        // Optimized WIN/LOSE transaction handling
-        else if (transactionType === "WIN" || transactionType === "LOSE") {
-          const netAmount = new Decimal(record.netAmount || 0)
-            .toDecimalPlaces(4)
-            .toNumber();
-          const betAmount = new Decimal(record.validBetAmount || 0)
-            .toDecimalPlaces(4)
-            .toNumber();
-          const winAmount = new Decimal(netAmount + betAmount)
-            .toDecimalPlaces(4)
-            .toNumber();
-
-          // Run these checks in parallel
-          const [existingBet, existingTransaction] = await Promise.all([
-            SlotLivePlayAceModal.findOne(
-              { betId: record.transactionID },
-              { settleId: 1 }
-            ),
-            SlotLivePlayAceModal.findOne(
-              {
-                settleId: record.billNo,
-                $or: [{ settle: true }, { cancel: true }],
-              },
-              { _id: 1 }
-            ),
-          ]);
-
-          if (!existingBet) {
-            return sendResponse(404, "INVALID_TRANSACTION");
-          }
-
-          if (existingTransaction) {
-            return sendResponse(
-              200,
-              "OK",
-              roundToTwoDecimals(currentUser.wallet)
-            );
-          }
-
-          // Update user balance first
-          const updatedUser = await User.findByIdAndUpdate(
-            currentUser._id,
-            { $inc: { wallet: winAmount } },
-            { new: true, projection: { wallet: 1 } }
-          );
-
-          // Then update or create bet record as needed
-          if (!existingBet.settleId) {
-            await SlotLivePlayAceModal.updateOne(
-              { betId: record.transactionID },
-              {
-                $set: {
-                  settleId: record.billNo,
-                  settle: true,
-                  settleamount: winAmount,
-                  betamount: betAmount,
-                },
-              }
-            );
-          } else {
-            await SlotLivePlayAceModal.create({
-              username: username,
-              betId: record.transactionID,
+      // Then update or create bet record as needed
+      if (!existingBet.settleId) {
+        await SlotLivePlayAceModal.updateOne(
+          { betId: record.transactionID },
+          {
+            $set: {
               settleId: record.billNo,
               settle: true,
               settleamount: winAmount,
-              bet: true,
-              gametype: "LIVE",
               betamount: betAmount,
-            });
+            },
           }
+        );
+      } else {
+        await SlotLivePlayAceModal.create({
+          username: username,
+          betId: record.transactionID,
+          settleId: record.billNo,
+          settle: true,
+          settleamount: winAmount,
+          bet: true,
+          gametype: "LIVE",
+          betamount: betAmount,
+        });
+      }
 
+      return sendResponse(
+        res,
+        200,
+        "OK",
+        roundToTwoDecimals(updatedUser.wallet)
+      );
+    }
+    // Optimized REFUND transaction handling
+    else if (transactionType === "REFUND") {
+      const transferAmount = new Decimal(record.value || 0)
+        .toDecimalPlaces(4)
+        .toNumber();
+
+      const existingBet = await SlotLivePlayAceModal.findOne(
+        { betId: record.transactionID },
+        { _id: 1 }
+      ).lean();
+
+      if (!existingBet) {
+        return sendResponse(res, 404, "INVALID_TRANSACTION");
+      }
+
+      if (record.billNo) {
+        const existingTransaction = await SlotLivePlayAceModal.findOne(
+          { settleId: record.billNo, cancel: true },
+          { _id: 1 }
+        ).lean();
+
+        if (existingTransaction) {
           return sendResponse(
+            res,
             200,
             "OK",
-            roundToTwoDecimals(updatedUser.wallet)
+            roundToTwoDecimals(currentUser.wallet)
           );
         }
-        // Optimized REFUND transaction handling
-        else if (transactionType === "REFUND") {
-          const transferAmount = new Decimal(record.value || 0)
-            .toDecimalPlaces(4)
-            .toNumber();
 
-          const existingBet = await SlotLivePlayAceModal.findOne(
+        // Use findOneAndUpdate with conditions to handle insufficient funds
+        const updatedUser = await User.findOneAndUpdate(
+          {
+            _id: currentUser._id,
+            wallet: { $gte: transferAmount },
+          },
+          { $inc: { wallet: -transferAmount } },
+          { new: true, projection: { wallet: 1 } }
+        ).lean();
+
+        if (!updatedUser) {
+          return sendResponse(res, 409, "INSUFFICIENT_FUNDS");
+        }
+
+        await SlotLivePlayAceModal.updateOne(
+          { settleId: record.billNo },
+          { $set: { cancel: true } },
+          { upsert: true }
+        );
+
+        return sendResponse(
+          res,
+          200,
+          "OK",
+          roundToTwoDecimals(updatedUser.wallet)
+        );
+      } else {
+        const existingTransaction = await SlotLivePlayAceModal.findOne(
+          { betId: record.transactionID, cancel: true },
+          { _id: 1 }
+        ).lean();
+
+        if (existingTransaction) {
+          return sendResponse(
+            res,
+            200,
+            "OK",
+            roundToTwoDecimals(currentUser.wallet)
+          );
+        }
+
+        const [updatedUser] = await Promise.all([
+          User.findOneAndUpdate(
+            { _id: currentUser._id },
+            { $inc: { wallet: transferAmount } },
+            { new: true, projection: { wallet: 1 } }
+          ).lean(),
+          SlotLivePlayAceModal.findOneAndUpdate(
             { betId: record.transactionID },
-            { _id: 1 }
-          );
+            {
+              $set: { cancel: true },
+            },
+            { new: false }
+          ),
+        ]);
 
-          if (!existingBet) {
-            return sendResponse(404, "INVALID_TRANSACTION");
-          }
-
-          if (record.billNo) {
-            const existingTransaction = await SlotLivePlayAceModal.findOne(
-              { settleId: record.billNo, cancel: true },
-              { _id: 1 }
-            );
-
-            if (existingTransaction) {
-              return sendResponse(
-                200,
-                "OK",
-                roundToTwoDecimals(currentUser.wallet)
-              );
-            }
-
-            // Use findOneAndUpdate with conditions to handle insufficient funds
-            const updatedUser = await User.findOneAndUpdate(
-              {
-                _id: currentUser._id,
-                wallet: { $gte: transferAmount },
-              },
-              { $inc: { wallet: -transferAmount } },
-              { new: true, projection: { wallet: 1 } }
-            );
-
-            if (!updatedUser) {
-              return sendResponse(409, "INSUFFICIENT_FUNDS");
-            }
-
-            await SlotLivePlayAceModal.updateOne(
-              { settleId: record.billNo },
-              { $set: { cancel: true } },
-              { upsert: true }
-            );
-
-            return sendResponse(
-              200,
-              "OK",
-              roundToTwoDecimals(updatedUser.wallet)
-            );
-          } else {
-            const existingTransaction = await SlotLivePlayAceModal.findOne(
-              { betId: record.transactionID, cancel: true },
-              { _id: 1 }
-            );
-
-            if (existingTransaction) {
-              return sendResponse(
-                200,
-                "OK",
-                roundToTwoDecimals(currentUser.wallet)
-              );
-            }
-
-            // Process refund
-            const updatedUser = await User.findByIdAndUpdate(
-              currentUser._id,
-              { $inc: { wallet: transferAmount } },
-              { new: true, projection: { wallet: 1 } }
-            );
-
-            await SlotLivePlayAceModal.updateOne(
-              { betId: record.transactionID },
-              { $set: { cancel: true } },
-              { upsert: true }
-            );
-
-            return sendResponse(
-              200,
-              "OK",
-              roundToTwoDecimals(updatedUser.wallet)
-            );
-          }
-        } else {
-          return sendResponse(400, "INVALID_DATA");
-        }
-      } catch (parseError) {
-        console.error("Error parsing XML:", parseError);
-        return sendResponse(400, "INVALID_DATA");
+        return sendResponse(
+          res,
+          200,
+          "OK",
+          roundToTwoDecimals(updatedUser.wallet)
+        );
       }
-    });
+    } else {
+      return sendResponse(res, 400, "INVALID_DATA");
+    }
   } catch (error) {
     console.error("LivePLAYACE API Error:", error);
-    return sendResponse(500, "ERROR");
+    return sendResponse(res, 500, "ERROR");
   }
 });
 
 router.post("/api/playaceslot", async (req, res) => {
-  // Helper function for standard responses
-  const sendResponse = (status, responseCode, balance = null) => {
-    const xmlContent =
-      balance !== null
-        ? `<TransferResponse><ResponseCode>${responseCode}</ResponseCode><Balance>${balance}</Balance></TransferResponse>`
-        : `<TransferResponse><ResponseCode>${responseCode}</ResponseCode></TransferResponse>`;
-
-    const responseXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${xmlContent}`;
-
-    res.set("Content-Type", "text/xml");
-    res.set("X-Integration-API-host", "api-1.operator.com");
-    return res.status(status).send(responseXml);
-  };
-
   try {
-    // Get the raw XML body
-    let xmlData = "";
+    const xmlData = await parseXMLBody(req);
+    const result = await parser.parseStringPromise(xmlData);
+    const record = result.Data.Record;
 
-    req.on("data", (chunk) => {
-      xmlData += chunk.toString();
-    });
+    if (!record.sessionToken || !record.playname || !record.transactionType) {
+      return sendResponse(res, 400, "INVALID_DATA");
+    }
 
-    req.on("end", async () => {
-      try {
-        // Parse the XML to JSON
-        const result = await parser.parseStringPromise(xmlData);
+    const trimmedCode = trimAfterUnderscore(playaceAgentCode);
 
-        const record = result.Data.Record;
-        if (
-          !record.sessionToken ||
-          !record.playname ||
-          !record.transactionType
-        ) {
-          return sendResponse(400, "INVALID_DATA");
-        }
+    const username = extractPlayerName(record.playname, trimmedCode);
 
-        const trimmedCode = trimAfterUnderscore(playaceAgentCode);
+    // Get user in one efficient query with projection
+    const currentUser = await User.findOne(
+      {
+        gameId: username,
+        playaceGameToken: record.sessionToken,
+      },
+      {
+        _id: 1,
+        wallet: 1,
+        username: 1,
+        "gameLock.playace.lock": 1,
+        playaceGameToken: 1,
+        gameId: 1,
+      }
+    );
 
-        const username = extractPlayerName(record.playname, trimmedCode);
+    if (!currentUser) {
+      return sendResponse(res, 403, "INCORRECT_SESSION_TYPE");
+    }
 
-        // Get user in one efficient query with projection
-        const currentUser = await User.findOne(
-          {
-            gameId: username,
-            playaceGameToken: record.sessionToken,
-          },
-          {
-            _id: 1,
-            wallet: 1,
-            username: 1,
-            "gameLock.playace.lock": 1,
-            playaceGameToken: 1,
-            gameId: 1,
-          }
+    const transactionType = record.transactionType || "";
+
+    if (transactionType === "BALANCE") {
+      const balance = new Decimal(currentUser.wallet)
+        .toDecimalPlaces(4)
+        .toNumber();
+      return sendResponse(res, 200, "OK", balance);
+    } else if (transactionType === "WITHDRAW") {
+      const transferAmount = new Decimal(record.amount)
+        .toDecimalPlaces(4)
+        .toNumber();
+
+      if (currentUser.gameLock.playace.lock) {
+        return sendResponse(res, 500, "ERROR");
+      }
+
+      // Check for existing bet with projection
+      const existingBet = await SlotLivePlayAceModal.findOne(
+        { betId: record.transactionID, bet: true },
+        { _id: 1 }
+      ).lean();
+
+      if (existingBet) {
+        return sendResponse(
+          res,
+          200,
+          "OK",
+          roundToTwoDecimals(currentUser.wallet)
         );
+      }
 
-        if (!currentUser) {
-          return sendResponse(403, "INCORRECT_SESSION_TYPE");
-        }
+      const updatedUser = await User.findOneAndUpdate(
+        {
+          _id: currentUser._id,
+          wallet: { $gte: transferAmount },
+        },
+        { $inc: { wallet: -transferAmount } },
+        { new: true, projection: { wallet: 1 } }
+      ).lean();
 
-        const transactionType = record.transactionType || "";
+      if (!updatedUser) {
+        return sendResponse(res, 409, "INSUFFICIENT_FUNDS");
+      }
 
-        if (transactionType === "BALANCE") {
-          const newBalance = new Decimal(currentUser.wallet).toDecimalPlaces(4);
+      await SlotLivePlayAceModal.create({
+        username: username,
+        betId: record.transactionID,
+        bet: true,
+        betamount: transferAmount,
+        gametype: "SLOT",
+        billNo: record.billNo,
+      });
 
-          return sendResponse(200, "OK", newBalance.toNumber());
-        } else if (transactionType === "WITHDRAW") {
-          const transferAmount = new Decimal(record.amount)
-            .toDecimalPlaces(4)
-            .toNumber();
+      return sendResponse(
+        res,
+        200,
+        "OK",
+        roundToTwoDecimals(updatedUser.wallet)
+      );
+    } else if (transactionType === "DEPOSIT") {
+      const winAmount = new Decimal(record.amount || 0)
+        .toDecimalPlaces(4)
+        .toNumber();
 
-          if (currentUser.gameLock.playace.lock) {
-            return sendResponse(500, "ERROR");
-          }
+      // Run these checks in parallel
+      const [existingBet, existingTransaction] = await Promise.all([
+        SlotLivePlayAceModal.findOne(
+          { billNo: record.billNo },
+          { settleId: 1 }
+        ).lean(),
+        SlotLivePlayAceModal.findOne(
+          {
+            settleId: record.transactionID,
+          },
+          { _id: 1 }
+        ).lean(),
+      ]);
 
-          // Check for existing bet with projection
-          const existingBet = await SlotLivePlayAceModal.findOne(
-            { betId: record.transactionID, bet: true },
-            { _id: 1 }
-          );
+      if (!existingBet) {
+        return sendResponse(res, 404, "INVALID_TRANSACTION");
+      }
 
-          if (existingBet) {
-            return sendResponse(
-              200,
-              "OK",
-              roundToTwoDecimals(currentUser.wallet)
-            );
-          }
+      if (existingTransaction) {
+        return sendResponse(
+          res,
+          200,
+          "OK",
+          roundToTwoDecimals(currentUser.wallet)
+        );
+      }
 
-          // Use bulkWrite for better performance
-          const bulkOps = [
-            {
-              updateOne: {
-                filter: {
-                  _id: currentUser._id,
-                  wallet: { $gte: transferAmount },
-                },
-                update: { $inc: { wallet: -transferAmount } },
-                upsert: false,
-              },
+      const [updatedUser, existingBetRecord] = await Promise.all([
+        User.findOneAndUpdate(
+          { _id: currentUser._id },
+          { $inc: { wallet: winAmount } },
+          { new: true, projection: { wallet: 1 } }
+        ).lean(),
+        SlotLivePlayAceModal.findOne(
+          { billNo: record.billNo, settle: true },
+          { _id: 1 }
+        ).lean(),
+      ]);
+
+      // // Then update or create bet record as needed
+      if (!existingBetRecord) {
+        await SlotLivePlayAceModal.findOneAndUpdate(
+          { billNo: record.billNo },
+          {
+            $set: {
+              settle: true,
+              settleamount: winAmount,
+              settleId: record.transactionID,
             },
-          ];
+          },
+          { upsert: true }
+        );
+      } else {
+        const relatedWithdrawTxnId = record.transactionID.endsWith("P")
+          ? record.transactionID.slice(0, -1)
+          : null;
 
-          const result = await User.bulkWrite(bulkOps);
-
-          // Check if update was successful (matched count > 0)
-          if (result.matchedCount === 0) {
-            return sendResponse(409, "INSUFFICIENT_FUNDS");
-          }
-
-          // Create bet record and get updated user in parallel
-          const [newBet, updatedUser] = await Promise.all([
-            SlotLivePlayAceModal.create({
-              username: username,
-              betId: record.transactionID,
-              bet: true,
-              betamount: transferAmount,
-              gametype: "SLOT",
-              billNo: record.billNo,
-            }),
-            User.findById(currentUser._id, { wallet: 1 }),
-          ]);
-
-          return sendResponse(
-            200,
-            "OK",
-            roundToTwoDecimals(updatedUser.wallet)
-          );
-        } else if (transactionType === "DEPOSIT") {
-          const winAmount = new Decimal(record.amount || 0)
-            .toDecimalPlaces(4)
-            .toNumber();
-
-          // Run these checks in parallel
-          const [existingBet, existingTransaction] = await Promise.all([
-            SlotLivePlayAceModal.findOne(
-              { billNo: record.billNo },
-              { settleId: 1 }
-            ),
-            SlotLivePlayAceModal.findOne(
-              {
+        if (relatedWithdrawTxnId) {
+          await SlotLivePlayAceModal.findOneAndUpdate(
+            { betId: relatedWithdrawTxnId },
+            {
+              $set: {
+                settle: true,
+                settleamount: winAmount,
                 settleId: record.transactionID,
               },
-              { _id: 1 }
-            ),
-          ]);
-
-          if (!existingBet) {
-            return sendResponse(404, "INVALID_TRANSACTION");
-          }
-
-          if (existingTransaction) {
-            return sendResponse(
-              200,
-              "OK",
-              roundToTwoDecimals(currentUser.wallet)
-            );
-          }
-
-          // Update user balance first
-          const updatedUser = await User.findByIdAndUpdate(
-            currentUser._id,
-            { $inc: { wallet: winAmount } },
-            { new: true, projection: { wallet: 1 } }
-          );
-
-          const existingBetRecord = await SlotLivePlayAceModal.findOne({
-            billNo: record.billNo,
-            settle: true,
-          });
-
-          // // Then update or create bet record as needed
-          if (!existingBetRecord) {
-            await SlotLivePlayAceModal.findOneAndUpdate(
-              { billNo: record.billNo },
-              {
-                $set: {
-                  settle: true,
-                  settleamount: winAmount,
-                  settleId: record.transactionID,
-                },
-              },
-              { upsert: true, new: true }
-            );
-          } else {
-            const relatedWithdrawTxnId = record.transactionID.endsWith("P")
-              ? record.transactionID.slice(0, -1)
-              : null;
-
-            await SlotLivePlayAceModal.findOneAndUpdate(
-              { betId: relatedWithdrawTxnId },
-              {
-                $set: {
-                  settle: true,
-                  settleamount: winAmount,
-                  settleId: record.transactionID,
-                },
-              },
-              { upsert: true, new: true }
-            );
-          }
-
-          return sendResponse(
-            200,
-            "OK",
-            roundToTwoDecimals(updatedUser.wallet)
-          );
-        }
-        // Optimized REFUND transaction handling
-        else if (transactionType === "ROLLBACK") {
-          const transferAmount = new Decimal(record.amount || 0)
-            .toDecimalPlaces(4)
-            .toNumber();
-
-          const existingBet = await SlotLivePlayAceModal.findOne(
-            { billNo: record.billNo },
-            { _id: 1 }
-          );
-
-          if (!existingBet) {
-            return sendResponse(404, "INVALID_TRANSACTION");
-          }
-
-          const existingTransaction = await SlotLivePlayAceModal.findOne(
-            { billNo: record.billNo, cancel: true },
-            { _id: 1 }
-          );
-
-          if (existingTransaction) {
-            return sendResponse(
-              200,
-              "OK",
-              roundToTwoDecimals(currentUser.wallet)
-            );
-          }
-
-          // Use findOneAndUpdate with conditions to handle insufficient funds
-          const updatedUser = await User.findOneAndUpdate(
-            {
-              _id: currentUser._id,
             },
-            { $inc: { wallet: transferAmount } },
-            { new: true, projection: { wallet: 1 } }
-          );
-
-          await SlotLivePlayAceModal.updateOne(
-            { billNo: record.billNo },
-            { $set: { cancel: true } },
             { upsert: true }
           );
-
-          return sendResponse(
-            200,
-            "OK",
-            roundToTwoDecimals(updatedUser.wallet)
-          );
-        } else {
-          return sendResponse(400, "INVALID_DATA");
         }
-      } catch (parseError) {
-        console.error("Error parsing XML:", parseError);
-        return sendResponse(400, "INVALID_DATA");
       }
-    });
+
+      return sendResponse(
+        res,
+        200,
+        "OK",
+        roundToTwoDecimals(updatedUser.wallet)
+      );
+    }
+    // Optimized REFUND transaction handling
+    else if (transactionType === "ROLLBACK") {
+      const transferAmount = new Decimal(record.amount || 0)
+        .toDecimalPlaces(4)
+        .toNumber();
+
+      const [existingBet, existingTransaction] = await Promise.all([
+        SlotLivePlayAceModal.findOne(
+          { billNo: record.billNo },
+          { _id: 1 }
+        ).lean(),
+        SlotLivePlayAceModal.findOne(
+          { billNo: record.billNo, cancel: true },
+          { _id: 1 }
+        ).lean(),
+      ]);
+
+      if (!existingBet) {
+        return sendResponse(res, 404, "INVALID_TRANSACTION");
+      }
+
+      if (existingTransaction) {
+        return sendResponse(
+          res,
+          200,
+          "OK",
+          roundToTwoDecimals(currentUser.wallet)
+        );
+      }
+
+      const [updatedUser] = await Promise.all([
+        User.findOneAndUpdate(
+          { _id: currentUser._id },
+          { $inc: { wallet: transferAmount } },
+          { new: true, projection: { wallet: 1 } }
+        ).lean(),
+        SlotLivePlayAceModal.findOneAndUpdate(
+          { billNo: record.billNo },
+          {
+            cancel: true,
+          },
+          { new: false }
+        ),
+      ]);
+
+      return sendResponse(
+        res,
+        200,
+        "OK",
+        roundToTwoDecimals(updatedUser.wallet)
+      );
+    } else {
+      return sendResponse(res, 400, "INVALID_DATA");
+    }
   } catch (error) {
     console.error("LivePLAYACE API Error:", error);
-    return sendResponse(500, "ERROR");
+    return sendResponse(res, 500, "ERROR");
   }
 });
 
