@@ -112,6 +112,230 @@ async function GameWalletLogAttempt(
   });
 }
 
+// async function updatePlayAceManualOrderTimestamps() {
+//   try {
+//     // List of gameIDs in order (SC03 = latest, MJ02 = oldest)
+//     const gameIds = [
+//       "SC03",
+//       "SB01",
+//       "SB49",
+//       "SB08",
+//       "FRU",
+//       "WH48",
+//       "SB56",
+//       "FRU2",
+//       "SC07",
+//       "VG01",
+//       "SB57",
+//       "SB02",
+//       "SC05",
+//       "WH62",
+//       "SB64",
+//       "SB58",
+//       "SB28",
+//       "SB45",
+//       "SB06",
+//       "SB72",
+//       "SB66",
+//       "SB62",
+//       "SB67",
+//       "EP03",
+//       "SB59",
+//       "EP02",
+//       "SB30",
+//       "WH28",
+//       "SB50",
+//       "SB68",
+//       "SB47",
+//       "AP02",
+//       "SB33",
+//       "MA08",
+//       "SB07",
+//       "SX02",
+//       "SB60",
+//       "WH31",
+//       "AP15",
+//       "WH44",
+//       "SB11",
+//       "WH40",
+//       "WH12",
+//       "SC06",
+//       "MA31",
+//       "WH56",
+//       "WH10",
+//       "WH22",
+//       "WH11",
+//       "SB34",
+//       "WH06",
+//       "WH58",
+//       "WH07",
+//       "WH42",
+//       "SB51",
+//       "WH30",
+//       "PKBJ",
+//       "SB70",
+//       "WH20",
+//       "WH01",
+//       "WH26",
+//       "XG02",
+//       "WH52",
+//       "WH54",
+//       "SB37",
+//       "SB55",
+//       "WH35",
+//       "WH23",
+//       "WH38",
+//       "SB73",
+//       "SB10",
+//       "WH24",
+//       "WH25",
+//       "WH17",
+//       "WH65",
+//       "WH21",
+//       "MA27",
+//       "WA01",
+//       "WH49",
+//       "WH34",
+//       "WH36",
+//       "SB63",
+//       "MA51",
+//       "WH55",
+//       "PKBD",
+//       "MA01",
+//       "MA04",
+//       "PKBB",
+//       "VG02",
+//       "XG01",
+//       "WH19",
+//       "MA16",
+//       "WH03",
+//       "WH18",
+//       "WH32",
+//       "WH29",
+//       "SB09",
+//       "WH04",
+//       "MA15",
+//       "MA22",
+//       "WH27",
+//       "WH02",
+//       "SV41",
+//       "XG06",
+//       "MA33",
+//       "XG05",
+//       "MA06",
+//       "XG03",
+//       "XG04",
+//       "XG16",
+//       "XG13",
+//       "XG12",
+//       "XG11",
+//       "XG09",
+//       "XG08",
+//       "XG10",
+//       "XG07",
+//       "MJ01",
+//       "MJ02",
+//     ];
+
+//     // Start from current time + 5 months for the latest game (SC03)
+//     const currentTime = new Date();
+//     const startTime = new Date(
+//       currentTime.getTime() + 5 * 30 * 24 * 60 * 60 * 1000
+//     ); // Add 5 months (150 days)
+
+//     console.log(`Starting PlayAce timestamp update...`);
+//     console.log(`Total games to update: ${gameIds.length}`);
+//     console.log(`Start time (latest game): ${startTime.toISOString()}`);
+
+//     // Process each gameID with 30-minute intervals
+//     for (let i = 0; i < gameIds.length; i++) {
+//       const gameId = gameIds[i];
+
+//       // Calculate timestamp: latest game gets start time (current + 5 months), each subsequent game is 30 minutes older
+//       const timestamp = new Date(startTime.getTime() - i * 30 * 60 * 1000); // 30 minutes = 30 * 60 * 1000 milliseconds
+
+//       // Update the document directly in the collection, bypassing schema timestamps
+//       const result = await GamePlayAceGameModal.collection.updateOne(
+//         { gameID: gameId },
+//         {
+//           $set: {
+//             createdAt: timestamp,
+//             updatedAt: new Date(),
+//           },
+//         }
+//       );
+
+//       if (result.matchedCount > 0) {
+//         console.log(
+//           `✅ Updated PlayAce gameID ${gameId} with timestamp: ${timestamp.toISOString()}`
+//         );
+//       } else {
+//         console.log(`❌ PlayAce GameID ${gameId} not found in database`);
+//       }
+//     }
+
+//     console.log("\n✅ PlayAce manual order timestamp update completed!");
+//     console.log(
+//       `Start time was set to: ${startTime.toISOString()} (current time + 5 months)`
+//     );
+
+//     // Verify the updates by fetching and displaying the results
+//     const updatedGames = await GamePlayAceGameModal.find(
+//       { gameID: { $in: gameIds } },
+//       { gameID: 1, createdAt: 1, gameNameEN: 1, gameNameCN: 1, hot: 1 }
+//     ).sort({ createdAt: -1 });
+
+//     console.log(
+//       "\n📊 Verification - PlayAce Games ordered by createdAt (newest first):"
+//     );
+//     updatedGames.forEach((game, index) => {
+//       console.log(
+//         `${index + 1}. GameID: ${game.gameID.padEnd(
+//           6
+//         )} | CreatedAt: ${game.createdAt.toISOString()} | Hot: ${
+//           game.hot || false
+//         } | Name: ${game.gameNameEN || game.gameNameCN || "N/A"}`
+//       );
+//     });
+
+//     console.log(
+//       `\n📈 Total games updated: ${updatedGames.length}/${gameIds.length}`
+//     );
+
+//     // Show games that were not found
+//     const foundGameIds = updatedGames.map((g) => g.gameID);
+//     const notFoundGameIds = gameIds.filter((id) => !foundGameIds.includes(id));
+
+//     if (notFoundGameIds.length > 0) {
+//       console.log(
+//         `\n⚠️  Games not found in database (${notFoundGameIds.length}):`
+//       );
+//       notFoundGameIds.forEach((id) => console.log(`   - ${id}`));
+//     }
+
+//     // Display time range
+//     if (updatedGames.length > 0) {
+//       const oldestTimestamp = new Date(
+//         startTime.getTime() - (gameIds.length - 1) * 30 * 60 * 1000
+//       );
+//       console.log(`\n⏰ Time range:`);
+//       console.log(`   Latest (SC03): ${startTime.toISOString()}`);
+//       console.log(`   Oldest (MJ02): ${oldestTimestamp.toISOString()}`);
+//       console.log(
+//         `   Total span: ${(gameIds.length - 1) * 30} minutes (${(
+//           ((gameIds.length - 1) * 30) /
+//           60
+//         ).toFixed(1)} hours)`
+//       );
+//     }
+//   } catch (error) {
+//     console.error("❌ Error updating PlayAce manual order timestamps:", error);
+//   }
+// }
+
+// // Call the function
+// updatePlayAceManualOrderTimestamps();
+
 router.post("/api/playace/getgamelist", async (req, res) => {
   try {
     const games = await GamePlayAceGameModal.find({
@@ -366,14 +590,12 @@ router.post("/api/playace/launchGame", authenticateToken, async (req, res) => {
     const sid = `${playaceAgentCode}${sequence}`;
 
     const rawParams = `cagent=${playaceAgentCode}/\\\\/loginname=${user.gameId}/\\\\/actype=1/\\\\/password=${user.playaceGamePW}/\\\\/dm=${webURL}/\\\\/sid=${sid}/\\\\/lang=${lang}/\\\\/gameType=${gameCode}/\\\\/oddtype=A/\\\\/session_token=${token}/\\\\/cur=MYR/\\\\/mh5=${platform}`;
-    console.log(rawParams);
     const encryptedParams = encryptParams(rawParams);
     const key = generateMD5Key(encryptedParams);
 
     const gameUrl = `${playaceAPIURL2}/forwardGame.do?params=${encodeURIComponent(
       encryptedParams
     )}&key=${key}`;
-    console.log(gameUrl);
     const updatedUser = await User.findOneAndUpdate(
       { _id: user._id },
       {
