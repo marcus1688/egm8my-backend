@@ -1901,6 +1901,7 @@ router.post(
       const depositLog = new BankTransactionLog({
         bankName: bank.bankname,
         ownername: bank.ownername,
+        bankAccount: bank.bankaccount,
         remark: deposit.remark,
         lastBalance: updatedBank.currentbalance - deposit.amount,
         currentBalance: updatedBank.currentbalance,
@@ -2126,6 +2127,7 @@ router.post(
       const withdrawLog = new BankTransactionLog({
         bankName: bank.bankname,
         ownername: bank.ownername,
+        bankAccount: bank.bankaccount,
         remark: withdraw.remark,
         lastBalance: updatedBank.currentbalance + actualWithdrawAmount,
         currentBalance: updatedBank.currentbalance,
@@ -2745,6 +2747,7 @@ router.post(
         const transactionLog = new BankTransactionLog({
           bankName: bank.bankname,
           ownername: bank.ownername,
+          bankAccount: bank.bankaccount,
           remark: deposit.remark || "-",
           lastBalance: bank.currentbalance + deposit.amount,
           currentBalance: bank.currentbalance,
@@ -2904,11 +2907,12 @@ router.post(
       const transactionLog = new BankTransactionLog({
         bankName: bank.bankname,
         ownername: bank.ownername,
+        bankAccount: bank.bankaccount,
         remark: withdraw.remark || "-",
         lastBalance: bank.currentbalance - withdraw.amount,
         currentBalance: bank.currentbalance,
         processby: adminuser.username,
-        transactiontype: "reverted deposit",
+        transactiontype: "reverted withdraw",
         amount: withdraw.amount,
         qrimage: bank.qrimage,
         playerusername: user.username,

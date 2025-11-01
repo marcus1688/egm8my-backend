@@ -5,6 +5,7 @@ const bankTransactionLogSchema = new mongoose.Schema(
   {
     bankName: String,
     ownername: String,
+    bankAccount: String,
     remark: {
       type: String,
       default: "-",

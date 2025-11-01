@@ -360,6 +360,7 @@ router.patch(
       const transactionLog = new BankTransactionLog({
         bankName: bank.bankname,
         ownername: bank.ownername,
+        bankAccount: bank.bankaccount,
         remark: remark,
         lastBalance: oldBalance,
         currentBalance: bank.currentbalance,
@@ -428,6 +429,7 @@ router.post("/admin/api/cashin", authenticateAdminToken, async (req, res) => {
     const transactionLog = new BankTransactionLog({
       bankName: bank.bankname,
       ownername: bank.ownername,
+      bankAccount: bank.bankaccount,
       remark: remark,
       lastBalance: oldBalance,
       currentBalance: bank.currentbalance,
@@ -504,6 +506,7 @@ router.post("/admin/api/cashout", authenticateAdminToken, async (req, res) => {
     const transactionLog = new BankTransactionLog({
       bankName: bank.bankname,
       ownername: bank.ownername,
+      bankAccount: bank.bankaccount,
       remark: remark,
       lastBalance: oldBalance,
       currentBalance: bank.currentbalance,
