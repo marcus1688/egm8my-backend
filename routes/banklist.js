@@ -8,6 +8,8 @@ const {
   DeleteObjectCommand,
 } = require("@aws-sdk/client-s3");
 const BankList = require("../models/banklist.model");
+const Deposit = require("../models/deposit.model");
+const Withdraw = require("../models/withdraw.model");
 const BankTransactionLog = require("../models/banktransactionlog.model");
 const { adminUser } = require("../models/adminuser.model");
 const moment = require("moment");
@@ -542,7 +544,6 @@ router.get(
     try {
       const { startDate, endDate } = req.query;
       const banks = await BankList.find({});
-
       const dateFilter = {};
       if (startDate && endDate) {
         dateFilter.createdAt = {
@@ -551,38 +552,64 @@ router.get(
         };
       }
 
-      const stats = await BankTransactionLog.aggregate([
+      const depositStats = await Deposit.aggregate([
         {
           $match: {
-            bankName: { $in: banks.map((b) => b.bankname) },
+            status: "approved",
+            reverted: false,
+            bankid: { $in: banks.map((b) => b._id.toString()) },
             ...dateFilter,
           },
         },
         {
           $group: {
-            _id: "$bankName",
-            totalDeposits: {
-              $sum: {
-                $cond: [
-                  { $eq: [{ $toLower: "$transactiontype" }, "deposit"] },
-                  "$amount",
-                  0,
-                ],
-              },
+            _id: "$bankid",
+            totalDeposits: { $sum: "$amount" },
+          },
+        },
+      ]);
+
+      const withdrawStats = await Withdraw.aggregate([
+        {
+          $match: {
+            status: "approved",
+            reverted: false,
+            withdrawbankid: { $in: banks.map((b) => b._id.toString()) },
+            ...dateFilter,
+          },
+        },
+        {
+          $group: {
+            _id: "$withdrawbankid",
+            totalWithdrawals: { $sum: "$amount" },
+          },
+        },
+      ]);
+
+      const cashStats = await BankTransactionLog.aggregate([
+        {
+          $match: {
+            bankAccount: { $in: banks.map((b) => b.bankaccount) },
+            transactiontype: {
+              $in: [
+                "cashin",
+                "cashout",
+                "CashIn",
+                "CashOut",
+                "CASHIN",
+                "CASHOUT",
+              ],
             },
-            totalWithdrawals: {
-              $sum: {
-                $cond: [
-                  { $eq: [{ $toLower: "$transactiontype" }, "withdraw"] },
-                  "$amount",
-                  0,
-                ],
-              },
-            },
+            ...dateFilter,
+          },
+        },
+        {
+          $group: {
+            _id: "$bankAccount",
             totalCashIn: {
               $sum: {
                 $cond: [
-                  { $eq: [{ $toLower: "$transactiontype" }, "cashin"] },
+                  { $in: [{ $toLower: "$transactiontype" }, ["cashin"]] },
                   "$amount",
                   0,
                 ],
@@ -591,7 +618,7 @@ router.get(
             totalCashOut: {
               $sum: {
                 $cond: [
-                  { $eq: [{ $toLower: "$transactiontype" }, "cashout"] },
+                  { $in: [{ $toLower: "$transactiontype" }, ["cashout"]] },
                   "$amount",
                   0,
                 ],
@@ -601,18 +628,25 @@ router.get(
         },
       ]);
 
-      const statsMap = new Map(stats.map((s) => [s._id, s]));
+      const depositMap = new Map(depositStats.map((s) => [s._id, s]));
+      const withdrawMap = new Map(withdrawStats.map((s) => [s._id, s]));
+      const cashMap = new Map(cashStats.map((s) => [s._id, s]));
 
       const reportData = banks.map((bank) => {
-        const bankStats = statsMap.get(bank.bankname) || {};
+        const bankIdStr = bank._id.toString();
+        const depositStat = depositMap.get(bankIdStr) || {};
+        const withdrawStat = withdrawMap.get(bankIdStr) || {};
+        const cashStat = cashMap.get(bank.bankaccount) || {};
+
         return {
           id: bank._id,
           bankName: bank.bankname,
+          bankAccount: bank.bankaccount,
           ownername: bank.ownername,
-          totalDeposit: bankStats.totalDeposits || 0,
-          totalWithdraw: bankStats.totalWithdrawals || 0,
-          totalCashIn: bankStats.totalCashIn || 0,
-          totalCashOut: bankStats.totalCashOut || 0,
+          totalDeposit: depositStat.totalDeposits || 0,
+          totalWithdraw: withdrawStat.totalWithdrawals || 0,
+          totalCashIn: cashStat.totalCashIn || 0,
+          totalCashOut: cashStat.totalCashOut || 0,
           currentBalance: bank.currentbalance,
         };
       });
@@ -637,7 +671,7 @@ router.get(
       });
     } catch (error) {
       console.error("Error generating bank report:", error);
-      res.status(200).json({
+      res.status(500).json({
         success: false,
         message: "Internal server error",
         error: error.toString(),
