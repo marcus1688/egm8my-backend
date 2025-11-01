@@ -407,7 +407,11 @@ router.post("/admin/api/login", loginLimiter, async (req, res) => {
           "Login unsuccessful. Please ensure your details are correct and try again or contact customer service for assistance!",
       });
     }
-    if (user.role !== "superadmin" && user.role !== "admin") {
+    const hasLockIP = user.permissions?.some(
+      (perm) => perm.module === "setting" && perm.actions.includes("lockip")
+    );
+
+    if (hasLockIP) {
       const whitelistDocs = await WhitelistIP.find({});
       const whitelistedIPs = whitelistDocs.reduce((acc, doc) => {
         return [...acc, ...doc.ips];

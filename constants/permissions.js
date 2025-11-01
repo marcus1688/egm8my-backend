@@ -176,6 +176,7 @@ const modulePermissions = {
     permissions: [
       { value: "whitelistip", label: "Whitelist IP" },
       { value: "changepassword", label: "Change Password" },
+      { value: "lockip", label: "Lock IP (Require Whitelist)" },
     ],
   },
 };
