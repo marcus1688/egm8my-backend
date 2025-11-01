@@ -10,6 +10,7 @@ const { authenticateToken } = require("../auth/auth");
 const { authenticateAdminToken } = require("../auth/adminAuth");
 const { adminUser } = require("../models/adminuser.model");
 const Deposit = require("../models/deposit.model");
+const { general } = require("../models/general.model");
 const { v4: uuidv4 } = require("uuid");
 const Bonus = require("../models/bonus.model");
 const BankList = require("../models/banklist.model");
@@ -223,13 +224,28 @@ router.post(
         });
       }
 
-      if (req.body.depositAmount < 10) {
+      const generalSettings = await general.findOne();
+      const minDeposit = generalSettings?.minDeposit || 10;
+      const maxDeposit = generalSettings?.maxDeposit || 0;
+
+      if (req.body.depositAmount < minDeposit) {
         return res.status(200).json({
           success: false,
           message: {
-            en: "Minimum deposit amount is RM10",
-            zh: "最低存款金额为RM10",
-            ms: "Jumlah deposit minimum adalah RM10",
+            en: `Minimum deposit amount is RM${minDeposit}`,
+            zh: `最低存款金额为RM${minDeposit}`,
+            ms: `Jumlah deposit minimum adalah RM${minDeposit}`,
+          },
+        });
+      }
+
+      if (maxDeposit > 0 && req.body.depositAmount > maxDeposit) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: `Maximum deposit amount is RM${maxDeposit}`,
+            zh: `最高存款金额为RM${maxDeposit}`,
+            ms: `Jumlah deposit maksimum adalah RM${maxDeposit}`,
           },
         });
       }
@@ -395,6 +411,31 @@ router.post("/admin/api/deposit", authenticateAdminToken, async (req, res) => {
         },
       });
     }
+
+    const generalSettings = await general.findOne();
+    const minDeposit = generalSettings?.minDeposit || 20;
+    const maxDeposit = generalSettings?.maxDeposit || 0;
+
+    if (parseFloat(amount) < minDeposit) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: `Minimum deposit amount is ${minDeposit}`,
+          zh: `最低存款金额为 ${minDeposit}`,
+        },
+      });
+    }
+
+    if (maxDeposit > 0 && parseFloat(amount) > maxDeposit) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: `Maximum deposit amount is ${maxDeposit}`,
+          zh: `最高存款金额为 ${maxDeposit}`,
+        },
+      });
+    }
+
     const user = await User.findById(userid);
     if (!user) {
       return res.status(200).json({

@@ -4,6 +4,7 @@ const { authenticateToken } = require("../auth/auth");
 const Withdraw = require("../models/withdraw.model");
 const { User } = require("../models/users.model");
 const { authenticateAdminToken } = require("../auth/adminAuth");
+const { general } = require("../models/general.model");
 const { adminUser } = require("../models/adminuser.model");
 const { v4: uuidv4 } = require("uuid");
 const UserWalletLog = require("../models/userwalletlog.model");
@@ -432,13 +433,28 @@ router.post("/api/withdraw", authenticateToken, async (req, res) => {
       });
     }
 
-    if (withdrawAmount < 50) {
+    const generalSettings = await general.findOne();
+    const minWithdraw = generalSettings?.minWithdraw || 50;
+    const maxWithdraw = generalSettings?.maxWithdraw || 0;
+
+    if (withdrawAmount < minWithdraw) {
       return res.status(200).json({
         success: false,
         message: {
-          en: "Minimum withdrawal amount is RM50",
-          zh: "最低提款金额为RM50",
-          ms: "Jumlah pengeluaran minimum adalah RM50",
+          en: `Minimum withdrawal amount is RM${minWithdraw}`,
+          zh: `最低提款金额为RM${minWithdraw}`,
+          ms: `Jumlah pengeluaran minimum adalah RM${minWithdraw}`,
+        },
+      });
+    }
+
+    if (maxWithdraw > 0 && withdrawAmount > maxWithdraw) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: `Maximum withdrawal amount is RM${maxWithdraw}`,
+          zh: `最高提款金额为RM${maxWithdraw}`,
+          ms: `Jumlah pengeluaran maksimum adalah RM${maxWithdraw}`,
         },
       });
     }
@@ -741,6 +757,30 @@ router.post("/admin/api/withdraw", authenticateAdminToken, async (req, res) => {
         },
       });
     }
+    const generalSettings = await general.findOne();
+    const minWithdraw = generalSettings?.minWithdraw || 50;
+    const maxWithdraw = generalSettings?.maxWithdraw || 0;
+
+    if (parseFloat(amount) < minWithdraw) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: `Minimum withdrawal amount is ${minWithdraw}`,
+          zh: `最低提款金额为 ${minWithdraw}`,
+        },
+      });
+    }
+
+    if (maxWithdraw > 0 && parseFloat(amount) > maxWithdraw) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: `Maximum withdrawal amount is ${maxWithdraw}`,
+          zh: `最高提款金额为 ${maxWithdraw}`,
+        },
+      });
+    }
+
     const user = await User.findById(userid);
     if (!user) {
       return res.status(200).json({

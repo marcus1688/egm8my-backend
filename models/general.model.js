@@ -29,6 +29,22 @@ const generalSchema = new mongoose.Schema(
     gmail: String,
     youtube: String,
     whatsapp: String,
+    minDeposit: {
+      type: Number,
+      default: 0,
+    },
+    maxDeposit: {
+      type: Number,
+      default: 0,
+    },
+    minWithdraw: {
+      type: Number,
+      default: 0,
+    },
+    maxWithdraw: {
+      type: Number,
+      default: 0,
+    },
   },
   {
     timestamps: {
