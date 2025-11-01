@@ -8,6 +8,7 @@ const {
 } = require("../models/users.model");
 const TelegramBot = require("node-telegram-bot-api");
 const UserBankList = require("../models/userbanklist.model");
+const Lock = require("../models/lock.model");
 const promotion = require("../models/promotion.model");
 const { adminUser, adminLog } = require("../models/adminuser.model");
 const router = express.Router();
@@ -1705,10 +1706,36 @@ async function checkAndUpdateVIPLevel(userId) {
   }
 }
 
+function preventDuplicate(getKey) {
+  return async (req, res, next) => {
+    const key = getKey(req);
+    try {
+      await Lock.create({ key });
+      res.on("finish", async () => {
+        await Lock.deleteOne({ key }).catch(() => {});
+      });
+
+      next();
+    } catch (error) {
+      if (error.code === 11000) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "This request is already being processed, please wait",
+            zh: "此请求正在处理中，请稍候",
+          },
+        });
+      }
+      next();
+    }
+  };
+}
+
 // Admin Approve Deposit
 router.post(
   "/admin/api/approvedeposit/:depositId",
   authenticateAdminToken,
+  preventDuplicate((req) => `deposit-${req.params.depositId}`),
   async (req, res) => {
     const { depositId } = req.params;
     const { depositname } = req.body;
@@ -1943,6 +1970,7 @@ router.post(
 router.post(
   "/admin/api/approvewithdraw/:withdrawId",
   authenticateAdminToken,
+  preventDuplicate((req) => `withdraw-${req.params.withdrawId}`),
   async (req, res) => {
     const { withdrawId } = req.params;
     const { bankId, cashoutAmount } = req.body;
@@ -2166,6 +2194,7 @@ router.post(
 router.post(
   "/admin/api/approvebonus/:bonusId",
   authenticateAdminToken,
+  preventDuplicate((req) => `bonus-${req.params.bonusId}`),
   async (req, res) => {
     const { bonusId } = req.params;
     const userId = req.user.userId;
@@ -2292,6 +2321,7 @@ router.post(
 router.post(
   "/admin/api/rejectdeposit/:depositId",
   authenticateAdminToken,
+  preventDuplicate((req) => `deposit-${req.params.depositId}`),
   async (req, res) => {
     const { depositId } = req.params;
     const { rejectRemark } = req.body;
@@ -2378,6 +2408,7 @@ router.post(
 router.post(
   "/admin/api/rejectwithdraw/:withdrawId",
   authenticateAdminToken,
+  preventDuplicate((req) => `withdraw-${req.params.withdrawId}`),
   async (req, res) => {
     const { withdrawId } = req.params;
     const { rejectRemark } = req.body;
@@ -2479,6 +2510,7 @@ router.post(
 router.post(
   "/admin/api/rejectbonus/:bonusId",
   authenticateAdminToken,
+  preventDuplicate((req) => `bonus-${req.params.bonusId}`),
   async (req, res) => {
     const { bonusId } = req.params;
     const { rejectRemark } = req.body;
@@ -2564,6 +2596,7 @@ router.post(
 router.post(
   "/admin/api/revertdeposit/:depositId",
   authenticateAdminToken,
+  preventDuplicate((req) => `deposit-${req.params.depositId}`),
   async (req, res) => {
     try {
       const { depositId } = req.params;
@@ -2763,6 +2796,7 @@ router.post(
 router.post(
   "/admin/api/revertwithdraw/:withdrawId",
   authenticateAdminToken,
+  preventDuplicate((req) => `withdraw-${req.params.withdrawId}`),
   async (req, res) => {
     try {
       const { withdrawId } = req.params;
@@ -2920,6 +2954,7 @@ router.post(
 router.post(
   "/admin/api/revertbonus/:bonusId",
   authenticateAdminToken,
+  preventDuplicate((req) => `bonus-${req.params.bonusId}`),
   async (req, res) => {
     try {
       const { bonusId } = req.params;
