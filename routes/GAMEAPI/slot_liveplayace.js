@@ -446,8 +446,6 @@ async function registerAGUser(username) {
 
 async function createAGPlayerSession(username, token, wallet) {
   try {
-    console.log(process.env.PLAYACE_DESKEY, "hi");
-
     const requestURL = `${playaceCreateSessionAPIURL}?productid=${playaceProductId}&username=${username}&session_token=${token}&credit=${roundToTwoDecimals(
       wallet
     )}`;
