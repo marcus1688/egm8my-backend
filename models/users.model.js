@@ -289,6 +289,7 @@ const userSchema = new mongoose.Schema(
       bng: { type: gameLockSchema, default: () => ({}) },
       dctgame: { type: gameLockSchema, default: () => ({}) },
       jili: { type: gameLockSchema, default: () => ({}) },
+      fastspin: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },

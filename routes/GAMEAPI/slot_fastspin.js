@@ -17,9 +17,9 @@ const GameFastSpinGameModal = require("../../models/slot_fastspinDatabase.model"
 
 require("dotenv").config();
 
-const fastSpingMerchant = "JLIHCNY";
+const fastSpingMerchant = "EGM8MYR";
 const fastSpinSecret = process.env.FASTSPIN_SECRET;
-const webURL = "https://www.jinlihui.net/";
+const webURL = "http://egm8my.vip/";
 const fastSpinAPIURL = "https://api.fastspinzone.com/api";
 
 function roundToTwoDecimals(num) {
@@ -78,24 +78,32 @@ function generateUniqueTransactionId(prefix) {
 //   try {
 //     // List of gameIDs in order (S-GS05 = latest, S-WM04 = oldest)
 //     const gameIds = [
-//       "S-GS05",
 //       "S-AW01",
+//       "S-GS05",
 //       "S-MP03",
+//       "S-WC04",
+//       "S-JQ01",
+//       "S-PG02",
+//       "S-MD01",
 //       "S-RH02",
+//       "S-RK02",
+//       "S-YB01",
+//       "S-AS01",
+//       "S-TN01",
 //       "S-MS01",
 //       "S-RS01",
+//       "S-MT01",
+//       "S-TR01",
+//       "S-SW01",
+//       "S-ME01",
+//       "S-MM02",
+//       "S-WW02",
 //       "F-FT01",
 //       "F-OC01",
-//       "S-RK02",
-//       "S-MM02",
-//       "S-MD01",
-//       "S-SW01",
+//       "S-PW03",
 //       "S-NR01",
-//       "S-YB01",
 //       "S-VB01",
-//       "S-TR01",
-//       "S-TN01",
-//       "S-AS01",
+//       "S-LO01",
 //       "S-CJ01",
 //       "S-WM04",
 //     ];
@@ -178,7 +186,7 @@ router.post("/api/fastspin/comparegame", async (req, res) => {
     const data = {
       merchantCode: fastSpingMerchant,
       language: lang,
-      currency: "CNY",
+      currency: "MYR",
       serialNo: serialNumber,
     };
 
@@ -319,7 +327,7 @@ router.post("/api/fastspin/getprovidergamelist", async (req, res) => {
     const data = {
       merchantCode: fastSpingMerchant,
       language: lang,
-      currency: "CNY",
+      currency: "MYR",
       serialNo: serialNumber,
     };
 
@@ -486,7 +494,7 @@ router.post("/api/fastspin/launchGame", authenticateToken, async (req, res) => {
         acctId: user.gameId,
         userName: user.username,
         siteId: webURL,
-        currency: "CNY",
+        currency: "MYR",
       },
       language: lang,
       token: token,
@@ -590,7 +598,7 @@ router.post("/api/fastspin", async (req, res) => {
           ? {
               acctInfo: {
                 userName: null,
-                currency: "CNY",
+                currency: "MYR",
                 acctId: null,
                 balance: 0.0,
               },
@@ -618,7 +626,7 @@ router.post("/api/fastspin", async (req, res) => {
           ? {
               acctInfo: {
                 userName: null,
-                currency: "CNY",
+                currency: "MYR",
                 acctId: null,
                 balance: 0.0,
               },
@@ -652,7 +660,7 @@ router.post("/api/fastspin", async (req, res) => {
       return res.status(200).json({
         acctInfo: {
           userName: user.username,
-          currency: "CNY",
+          currency: "MYR",
           acctId: acctId,
           balance: currentBalance,
         },
