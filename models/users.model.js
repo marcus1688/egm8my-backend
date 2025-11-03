@@ -288,6 +288,7 @@ const userSchema = new mongoose.Schema(
       playace: { type: gameLockSchema, default: () => ({}) },
       bng: { type: gameLockSchema, default: () => ({}) },
       dctgame: { type: gameLockSchema, default: () => ({}) },
+      jili: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },
@@ -346,6 +347,9 @@ const userSchema = new mongoose.Schema(
       type: String,
     },
     relaxgamingGameToken: {
+      type: String,
+    },
+    jiliGameToken: {
       type: String,
     },
   },

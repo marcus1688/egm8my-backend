@@ -40,6 +40,7 @@ const BankTransactionLog = require("../models/banktransactionlog.model");
 const SlotEpicWinModal = require("../models/slot_epicwin.model");
 const SlotFachaiModal = require("../models/slot_fachai.model");
 const SlotLivePlayAceModal = require("../models/slot_liveplayace.model");
+const SlotJiliModal = require("../models/slot_jili.model");
 
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
@@ -5072,6 +5073,12 @@ router.get(
           }),
 
           getAllUsersTurnover(SlotLivePlayAceModal, {
+            cancel: { $ne: true },
+            settle: true,
+          }),
+
+          // Jili
+          getAllUsersTurnover(SlotJiliModal, {
             cancel: { $ne: true },
             settle: true,
           }),
