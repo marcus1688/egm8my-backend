@@ -27,10 +27,6 @@ function roundToTwoDecimals(num) {
   return Math.round(num * 100) / 100;
 }
 
-function getCurrentFormattedDate() {
-  return moment.utc().format("YYYY-MM-DD HH:mm:ss");
-}
-
 const generateRandomCode = () => {
   const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let result = "";
@@ -54,6 +50,14 @@ const generatePassword = () => {
 
   return result;
 };
+
+function generateTraceCode() {
+  return uuidv4();
+}
+
+function generateDateTime() {
+  return moment().utc().format("YYYY-MM-DDTHH:mm:ss.SSSZ");
+}
 
 async function GameWalletLogAttempt(
   username,
@@ -597,7 +601,16 @@ router.post(
         lang = "zh-TW";
       }
 
-      let token = `${user.gameId}:${generateRandomCode()}`;
+      let token = `${user.gameId}:${gameCode}:${generateRandomCode()}`;
+
+      const updatedUser = await User.findOneAndUpdate(
+        { _id: user._id },
+        {
+          ygrGameToken: token,
+        },
+        { new: true }
+      );
+
       const response = await axios.get(
         `${ygrLaunchAPIURL}/launch?token=${token}&language=${lang}`,
         {
@@ -608,6 +621,8 @@ router.post(
           },
         }
       );
+      console.log(response.data);
+
       if (response.data.status.code !== 1000) {
         console.log("YGR error in launching game", response.data);
 
@@ -675,59 +690,99 @@ router.post(
   "/api/yesgetrich/token/authorizationConnectToken",
   async (req, res) => {
     try {
-      console.log(req.params, "param");
-      console.log(req.query, "query");
-      console.log(req.body, "body");
-      console.log(req.headers, "header");
-      return;
+      const { connectToken } = req.body;
 
-      const validationResult = validateRequest(req);
-      if (validationResult.error) {
-        return res.status(200).json(validationResult.response);
-      }
-
-      const { AgentCode, Params, Sign } = req.body;
-
-      const decryptedParams = aesDecrypt(Params, fachaiSecret);
-      if (!verifySignature(decryptedParams, Sign)) {
+      if (!connectToken) {
         return res.status(200).json({
-          Result: 604,
-          MainPoints: 0,
-          ErrorText: "Verification failed",
+          data: null,
+          status: {
+            code: "201",
+            message: "Bad parameter",
+            dateTime: generateDateTime(),
+            traceCode: generateTraceCode(),
+          },
         });
       }
 
-      const originalPayload = JSON.parse(decryptedParams);
-
-      const { Ts, MemberAccount, Currency, GameID } = originalPayload;
+      const [gameId, gameCode] = connectToken.split(":");
 
       const currentUser = await User.findOne(
-        { gameId: MemberAccount },
-        { wallet: 1 }
+        { gameId: gameId },
+        { wallet: 1, _id: 1, ygrGameToken: 1 }
       ).lean();
 
       if (!currentUser) {
         return res.status(200).json({
-          Result: 500,
-          MainPoints: 0,
-          ErrorText: "Player ID not exist",
+          data: null,
+          status: {
+            code: "205",
+            message: "Account not exist",
+            dateTime: generateDateTime(),
+            traceCode: generateTraceCode(),
+          },
+        });
+      }
+
+      if (currentUser.ygrGameToken !== connectToken) {
+        return res.status(200).json({
+          data: null,
+          status: {
+            code: "401",
+            message: "Unauthorized",
+            dateTime: generateDateTime(),
+            traceCode: generateTraceCode(),
+          },
+        });
+      }
+
+      const existingGame = await GameYGRGameModal.findOne(
+        { gameID: gameCode },
+        { _id: 1 }
+      ).lean();
+
+      if (!existingGame) {
+        console.log("gam enot exist ygr");
+        return res.status(200).json({
+          data: null,
+          status: {
+            code: "206",
+            message: "Game not exist",
+            dateTime: generateDateTime(),
+            traceCode: generateTraceCode(),
+          },
         });
       }
 
       return res.status(200).json({
-        Result: 0,
-        MainPoints: roundToTwoDecimals(currentUser.wallet),
-        ErrorText: "Success",
+        data: {
+          gameId: gameCode,
+          userId: user.gameId,
+          nickname: user.username,
+          ownerId: ygrHeaders,
+          parentId: ygrHeaders,
+          currency: "MYR",
+          amount: roundToTwoDecimals(currentUser.wallet),
+        },
+        status: {
+          code: "0",
+          message: "Success",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
       });
     } catch (error) {
       console.error(
-        "FACHAI: Error in game provider calling ae96 get balance api:",
+        "YGR: Error in game provider calling ae96 get balance api:",
         error.message
       );
       return res.status(200).json({
-        Result: 999,
-        MainPoints: 0,
-        ErrorText: "Unknown errors",
+        data: null,
+        status: {
+          code: "999",
+          message: "Something wrong",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
       });
     }
   }

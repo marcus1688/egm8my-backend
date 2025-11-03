@@ -354,6 +354,9 @@ const userSchema = new mongoose.Schema(
     jiliGameToken: {
       type: String,
     },
+    ygrGameToken: {
+      type: String,
+    },
   },
   {
     toJSON: { getters: true },
