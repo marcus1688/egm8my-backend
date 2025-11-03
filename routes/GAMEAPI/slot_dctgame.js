@@ -441,8 +441,8 @@ router.post("/api/hacksaw/login", async (req, res) => {
     }
 
     const user = await User.findOne(
-      { username: brand_uid },
-      { username: 1, wallet: 1, hacksawGameToken: 1 }
+      { gameId: brand_uid },
+      { wallet: 1, hacksawGameToken: 1 }
     ).lean();
 
     if (!user) {
@@ -458,7 +458,7 @@ router.post("/api/hacksaw/login", async (req, res) => {
 
       const invalidUser = await User.findOne(
         { hacksawGameToken: token },
-        { username: 1 }
+        { _id: 1 }
       ).lean();
 
       if (invalidUser) {
@@ -478,7 +478,7 @@ router.post("/api/hacksaw/login", async (req, res) => {
       code: 1000,
       msg: "Success",
       data: {
-        brand_uid: user.username,
+        brand_uid: brand_uid,
         currency: "MYR",
         balance: roundToTwoDecimals(user.wallet),
       },
@@ -521,8 +521,8 @@ router.post("/api/hacksaw/getBalance", async (req, res) => {
     }
 
     const user = await User.findOne(
-      { username: brand_uid },
-      { username: 1, wallet: 1, hacksawGameToken: 1 }
+      { gameId: brand_uid },
+      { wallet: 1, hacksawGameToken: 1 }
     ).lean();
 
     if (!user) {
@@ -535,7 +535,7 @@ router.post("/api/hacksaw/getBalance", async (req, res) => {
     if (user.hacksawGameToken !== token) {
       const invalidUser = await User.findOne(
         { hacksawGameToken: token },
-        { username: 1 }
+        { _id: 1 }
       ).lean();
 
       if (invalidUser) {
@@ -555,7 +555,7 @@ router.post("/api/hacksaw/getBalance", async (req, res) => {
       code: 1000,
       msg: "Success",
       data: {
-        brand_uid: user.username,
+        brand_uid: brand_uid,
         currency: "MYR",
         balance: roundToTwoDecimals(user.wallet),
       },
@@ -608,9 +608,8 @@ router.post("/api/hacksaw/wager", async (req, res) => {
 
     const [currentUser, existingBet] = await Promise.all([
       User.findOne(
-        { username: brand_uid },
+        { gameId: brand_uid },
         {
-          username: 1,
           wallet: 1,
           "gameLock.hacksaw.lock": 1,
           hacksawGameToken: 1,
@@ -632,7 +631,7 @@ router.post("/api/hacksaw/wager", async (req, res) => {
     if (currentUser.hacksawGameToken !== token) {
       const invalidUser = await User.findOne(
         { hacksawGameToken: token },
-        { username: 1 }
+        { _id: 1 }
       ).lean();
 
       if (invalidUser) {
@@ -669,7 +668,7 @@ router.post("/api/hacksaw/wager", async (req, res) => {
 
     const updatedUserBalance = await User.findOneAndUpdate(
       {
-        username: brand_uid,
+        gameId: brand_uid,
         wallet: { $gte: roundToTwoDecimals(amount || 0) },
       },
       { $inc: { wallet: -roundToTwoDecimals(amount || 0) } },
@@ -689,7 +688,7 @@ router.post("/api/hacksaw/wager", async (req, res) => {
     }
 
     await SlotDCTGameModal.create({
-      username: currentUser.username,
+      username: brand_uid,
       betamount: roundToTwoDecimals(amount),
       betId: wager_id,
       tranId: round_id,
@@ -743,7 +742,7 @@ router.post("/api/hacksaw/cancelWager", async (req, res) => {
     }
 
     const [currentUser, existingBet] = await Promise.all([
-      User.findOne({ username: brand_uid }, { wallet: 1 }).lean(),
+      User.findOne({ gameId: brand_uid }, { wallet: 1 }).lean(),
       SlotDCTGameModal.findOne(
         { tranId: round_id, betId: wager_id },
         { cancel: 1, betamount: 1 }
@@ -783,7 +782,7 @@ router.post("/api/hacksaw/cancelWager", async (req, res) => {
 
     const [updatedUserBalance] = await Promise.all([
       User.findOneAndUpdate(
-        { username: brand_uid },
+        { gameId: brand_uid },
         { $inc: { wallet: roundToTwoDecimals(existingBet.betamount || 0) } },
         { new: true, projection: { wallet: 1 } }
       ).lean(),
@@ -841,7 +840,7 @@ router.post("/api/hacksaw/appendWager", async (req, res) => {
     }
 
     const [currentUser, existingBet] = await Promise.all([
-      User.findOne({ username: brand_uid }, { wallet: 1 }).lean(),
+      User.findOne({ gameId: brand_uid }, { wallet: 1 }).lean(),
       SlotDCTGameModal.findOne({ appendId: wager_id }, { _id: 1 }).lean(),
     ]);
 
@@ -865,7 +864,7 @@ router.post("/api/hacksaw/appendWager", async (req, res) => {
 
     const [updatedUserBalance] = await Promise.all([
       User.findOneAndUpdate(
-        { username: brand_uid },
+        { gameId: brand_uid },
         { $inc: { wallet: roundToTwoDecimals(amount || 0) } },
         { new: true, projection: { wallet: 1 } }
       ).lean(),
@@ -929,7 +928,7 @@ router.post("/api/hacksaw/endWager", async (req, res) => {
     }
 
     const [currentUser, existingBet, duplicateWager] = await Promise.all([
-      User.findOne({ username: brand_uid }, { wallet: 1 }).lean(),
+      User.findOne({ gameId: brand_uid }, { wallet: 1 }).lean(),
       SlotDCTGameModal.findOne(
         { tranId: round_id },
         { _id: 1, settle: 1, settleId: 1, settleamount: 1 }
@@ -993,7 +992,7 @@ router.post("/api/hacksaw/endWager", async (req, res) => {
 
     const [updatedUserBalance] = await Promise.all([
       User.findOneAndUpdate(
-        { username: brand_uid },
+        { gameId: brand_uid },
         { $inc: { wallet: roundToTwoDecimals(amount || 0) } },
         { new: true, projection: { wallet: 1 } }
       ).lean(),
@@ -1048,7 +1047,7 @@ router.post("/api/hacksaw/freeSpinResult", async (req, res) => {
     }
 
     const [currentUser, existingBet] = await Promise.all([
-      User.findOne({ username: brand_uid }, { wallet: 1 }).lean(),
+      User.findOne({ gameId: brand_uid }, { wallet: 1 }).lean(),
       SlotDCTGameModal.findOne({ freespinId: wager_id }, { _id: 1 }).lean(),
     ]);
 
@@ -1073,7 +1072,7 @@ router.post("/api/hacksaw/freeSpinResult", async (req, res) => {
 
     const [updatedUserBalance] = await Promise.all([
       User.findOneAndUpdate(
-        { username: brand_uid },
+        { gameId: brand_uid },
         { $inc: { wallet: roundToTwoDecimals(amount || 0) } },
         { new: true, projection: { wallet: 1 } }
       ).lean(),
@@ -1146,7 +1145,7 @@ router.post("/api/hacksaw/promoPayout", async (req, res) => {
     }
 
     const [currentUser, existingBet] = await Promise.all([
-      User.findOne({ username: brand_uid }, { wallet: 1 }).lean(),
+      User.findOne({ gameId: brand_uid }, { wallet: 1 }).lean(),
       SlotDCTGameModal.findOne(
         { betId: promotion_id, tranId: trans_id },
         { _id: 1 }
@@ -1174,14 +1173,14 @@ router.post("/api/hacksaw/promoPayout", async (req, res) => {
 
     const [updatedUserBalance] = await Promise.all([
       User.findOneAndUpdate(
-        { username: brand_uid },
+        { gameId: brand_uid },
         { $inc: { wallet: roundToTwoDecimals(amount || 0) } },
         { new: true, projection: { wallet: 1 } }
       ).lean(),
     ]);
 
     await SlotDCTGameModal.create({
-      username: currentUser.username,
+      username: brand_uid,
       betamount: 0,
       settleamount: roundToTwoDecimals(amount),
       betId: promotion_id,

@@ -707,10 +707,19 @@ router.post("/api/bng/launchGame", authenticateToken, async (req, res) => {
       });
     }
 
-    const updatedUser = await User.findOneAndUpdate(
-      { _id: user._id },
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+
+    await User.findByIdAndUpdate(
+      user._id,
       {
-        bngGameToken: logintoken,
+        $push: {
+          bngGameTokens: {
+            token: logintoken,
+            createdAt: now,
+            expiresAt: expiresAt,
+          },
+        },
       },
       { new: true }
     );
@@ -788,7 +797,7 @@ router.post("/api/boongo", async (req, res) => {
           { gameId: username },
           {
             wallet: 1,
-            bngGameToken: 1,
+            bngGameTokens: 1,
             gameId: 1,
             bngbalanceVersion: 1,
             _id: 1,
@@ -803,8 +812,12 @@ router.post("/api/boongo", async (req, res) => {
           });
         }
 
-        if (currentUser.bngGameToken !== token) {
-          console.log("❌ Token mismatch");
+        const validToken = currentUser.bngGameTokens?.find(
+          (t) => t.token === token
+        );
+
+        if (!validToken) {
+          console.log("❌ Token not found");
           return res.status(200).json({
             uid: uid,
             error: { code: "EXPIRED_TOKEN" },
@@ -865,7 +878,7 @@ router.post("/api/boongo", async (req, res) => {
           {
             wallet: 1,
             "gameLock.bng.lock": 1,
-            bngGameToken: 1,
+            bngGameTokens: 1,
             bngbalanceVersion: 1,
             _id: 1,
           }
@@ -894,7 +907,11 @@ router.post("/api/boongo", async (req, res) => {
           });
         }
 
-        if (currentUser.bngGameToken !== token) {
+        const validToken = currentUser.bngGameTokens?.find(
+          (t) => t.token === token
+        );
+
+        if (!validToken) {
           console.log("❌ Invalid token in transaction");
           return res.status(200).json({
             uid: uid,

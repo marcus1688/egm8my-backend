@@ -169,24 +169,15 @@ router.post("/api/importGameList/168168", async (req, res) => {
   }
 });
 
-router.post("/api/importImgUrl/yesgetrich", async (req, res) => {
+router.post("/api/importImgUrl/relaxgaming", async (req, res) => {
   try {
     const bucket = "allgameslist";
     const basePathEN = "dctrelaxgaming/en/";
 
     // Get all games from the database that need images
-    const allGames = await GameYGRGameModal.find(
+    const allGames = await GameRelaxGamingGameModal.find(
       {
-        $or: [
-          { imageUrlEN: { $exists: false } },
-          { imageUrlEN: "" },
-          { imageUrlCN: { $exists: false } },
-          { imageUrlCN: "" },
-          { imageUrlHK: { $exists: false } },
-          { imageUrlHK: "" },
-          { imageUrlID: { $exists: false } },
-          { imageUrlID: "" },
-        ],
+        $or: [{ imageUrlEN: { $exists: false } }, { imageUrlEN: "" }],
         gameID: { $exists: true, $ne: "" },
       },
       { gameID: 1, gameNameEN: 1, _id: 1 }
@@ -203,21 +194,18 @@ router.post("/api/importImgUrl/yesgetrich", async (req, res) => {
 
     /**
      * Extract game ID from AWS filename
-     * Format: "Y_001_500x500_04_en.png" or "Y_002_500x500_04_zh.png"
-     * Returns: "1" (removes leading zeros)
+     * Format: "150010_White+Rabbit.png" or "150010_Game+Name.jpg"
+     * Returns: "150010"
      */
     const extractGameIDFromFilename = (filename) => {
       console.log(`  Processing filename: ${filename}`);
 
-      // Match pattern: Y_{gameID}_500x500_{number}_{lang}.{ext}
-      const match = filename.match(
-        /^Y_(\d+)_500x500_\d+_(en|zh|hk|id|cn|tw)\.(jpg|jpeg|png|gif|webp)$/i
-      );
+      // Split by underscore and take the first part
+      const parts = filename.split("_");
 
-      if (match) {
-        const gameIDWithZeros = match[1]; // e.g., "001"
-        const gameID = String(parseInt(gameIDWithZeros, 10)); // Convert to "1" (remove leading zeros)
-        console.log(`  Extracted game ID: ${gameIDWithZeros} -> ${gameID}`);
+      if (parts.length >= 2) {
+        const gameID = parts[0];
+        console.log(`  Extracted game ID: ${gameID}`);
         return gameID;
       }
 
@@ -225,52 +213,27 @@ router.post("/api/importImgUrl/yesgetrich", async (req, res) => {
       return null;
     };
 
-    // Get all objects from S3 for all language paths
-    const [enObjectsResult, cnObjectsResult, hkObjectsResult, idObjectsResult] =
-      await Promise.all([
-        s3Client.send(
-          new ListObjectsV2Command({
-            Bucket: bucket,
-            Prefix: basePathEN,
-          })
-        ),
-        s3Client.send(
-          new ListObjectsV2Command({
-            Bucket: bucket,
-            Prefix: basePathCN,
-          })
-        ),
-        s3Client.send(
-          new ListObjectsV2Command({
-            Bucket: bucket,
-            Prefix: basePathHK,
-          })
-        ),
-        s3Client.send(
-          new ListObjectsV2Command({
-            Bucket: bucket,
-            Prefix: basePathID,
-          })
-        ),
-      ]);
+    // Get all objects from S3 for EN language path
+    const enObjectsResult = await s3Client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: basePathEN,
+      })
+    );
 
-    // Create lookup maps based on game ID
+    // Create lookup map based on game ID
     const enImageMap = {};
-    const cnImageMap = {};
-    const hkImageMap = {};
-    const idImageMap = {};
 
     console.log("\n=== Processing EN Images ===");
+
     // Process EN images
     if (enObjectsResult.Contents) {
       enObjectsResult.Contents.forEach((object) => {
         const filename = object.Key.split("/").pop(); // Get filename without path
 
-        // Only process files matching pattern: Y_{number}_500x500_{number}_en.{ext}
-        if (
-          !filename.match(/^Y_\d+_500x500_\d+_en\.(jpg|jpeg|png|gif|webp)$/i)
-        ) {
-          console.log(`  Skipping non-matching file: ${filename}`);
+        // Only process image files (skip folders and non-image files)
+        if (!filename.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+          console.log(`  Skipping non-image file: ${filename}`);
           return;
         }
 
@@ -284,92 +247,11 @@ router.post("/api/importImgUrl/yesgetrich", async (req, res) => {
       });
     }
 
-    console.log("\n=== Processing CN Images ===");
-    // Process CN images
-    if (cnObjectsResult.Contents) {
-      cnObjectsResult.Contents.forEach((object) => {
-        const filename = object.Key.split("/").pop();
-
-        // Only process files matching pattern: Y_{number}_500x500_{number}_zh.{ext}
-        if (
-          !filename.match(/^Y_\d+_500x500_\d+_cn\.(jpg|jpeg|png|gif|webp)$/i)
-        ) {
-          console.log(`  Skipping non-matching file: ${filename}`);
-          return;
-        }
-
-        const gameID = extractGameIDFromFilename(filename);
-
-        if (gameID) {
-          const imageUrl = `https://${bucket}.s3.ap-southeast-1.amazonaws.com/${object.Key}`;
-          cnImageMap[gameID] = imageUrl;
-          console.log(`  ✅ Mapped gameID ${gameID} -> ${imageUrl}`);
-        }
-      });
-    }
-
-    console.log("\n=== Processing HK Images ===");
-    // Process HK images
-    if (hkObjectsResult.Contents) {
-      hkObjectsResult.Contents.forEach((object) => {
-        const filename = object.Key.split("/").pop();
-
-        // Only process files matching pattern: Y_{number}_500x500_{number}_hk.{ext}
-        if (
-          !filename.match(/^Y_\d+_500x500_\d+_tw\.(jpg|jpeg|png|gif|webp)$/i)
-        ) {
-          console.log(`  Skipping non-matching file: ${filename}`);
-          return;
-        }
-
-        const gameID = extractGameIDFromFilename(filename);
-
-        if (gameID) {
-          const imageUrl = `https://${bucket}.s3.ap-southeast-1.amazonaws.com/${object.Key}`;
-          hkImageMap[gameID] = imageUrl;
-          console.log(`  ✅ Mapped gameID ${gameID} -> ${imageUrl}`);
-        }
-      });
-    }
-
-    console.log("\n=== Processing ID Images ===");
-    // Process ID images
-    if (idObjectsResult.Contents) {
-      idObjectsResult.Contents.forEach((object) => {
-        const filename = object.Key.split("/").pop();
-
-        // Only process files matching pattern: Y_{number}_500x500_{number}_id.{ext}
-        if (
-          !filename.match(/^Y_\d+_500x500_\d+_id\.(jpg|jpeg|png|gif|webp)$/i)
-        ) {
-          console.log(`  Skipping non-matching file: ${filename}`);
-          return;
-        }
-
-        const gameID = extractGameIDFromFilename(filename);
-
-        if (gameID) {
-          const imageUrl = `https://${bucket}.s3.ap-southeast-1.amazonaws.com/${object.Key}`;
-          idImageMap[gameID] = imageUrl;
-          console.log(`  ✅ Mapped gameID ${gameID} -> ${imageUrl}`);
-        }
-      });
-    }
-
     console.log(
       `\nEN Image Map created with ${Object.keys(enImageMap).length} entries`
     );
-    console.log(
-      `CN Image Map created with ${Object.keys(cnImageMap).length} entries`
-    );
-    console.log(
-      `HK Image Map created with ${Object.keys(hkImageMap).length} entries`
-    );
-    console.log(
-      `ID Image Map created with ${Object.keys(idImageMap).length} entries`
-    );
 
-    // Update each game document with the corresponding image URLs
+    // Update each game document with the corresponding image URL
     const updatePromises = allGames.map(async (game) => {
       const updates = {};
 
@@ -386,37 +268,16 @@ router.post("/api/importImgUrl/yesgetrich", async (req, res) => {
         console.log(`  ❌ EN image NOT found for gameID: ${game.gameID}`);
       }
 
-      if (cnImageMap[game.gameID]) {
-        updates.imageUrlCN = cnImageMap[game.gameID];
-        console.log(`  ✅ CN image found: ${cnImageMap[game.gameID]}`);
-      } else {
-        console.log(`  ❌ CN image NOT found for gameID: ${game.gameID}`);
-      }
-
-      if (hkImageMap[game.gameID]) {
-        updates.imageUrlHK = hkImageMap[game.gameID];
-        console.log(`  ✅ HK image found: ${hkImageMap[game.gameID]}`);
-      } else {
-        console.log(`  ❌ HK image NOT found for gameID: ${game.gameID}`);
-      }
-
-      if (idImageMap[game.gameID]) {
-        updates.imageUrlID = idImageMap[game.gameID];
-        console.log(`  ✅ ID image found: ${idImageMap[game.gameID]}`);
-      } else {
-        console.log(`  ❌ ID image NOT found for gameID: ${game.gameID}`);
-      }
-
-      // Only update if we found at least one matching image
+      // Only update if we found a matching image
       if (Object.keys(updates).length > 0) {
-        console.log(`  ✅ Updating game ${game.gameID} with images`);
-        return GameYGRGameModal.findByIdAndUpdate(
+        console.log(`  ✅ Updating game ${game.gameID} with image`);
+        return GameRelaxGamingGameModal.findByIdAndUpdate(
           game._id,
           { $set: updates },
           { new: true }
         );
       } else {
-        console.log(`  ⚠️ No images found for game ${game.gameID}`);
+        console.log(`  ⚠️ No image found for game ${game.gameID}`);
       }
 
       return null;
@@ -445,9 +306,6 @@ router.post("/api/importImgUrl/yesgetrich", async (req, res) => {
         gameID: game.gameID,
         gameNameEN: game.gameNameEN,
         imageUrlEN: game.imageUrlEN || "Not set",
-        imageUrlCN: game.imageUrlCN || "Not set",
-        imageUrlHK: game.imageUrlHK || "Not set",
-        imageUrlID: game.imageUrlID || "Not set",
       }));
 
     return res.status(200).json({
@@ -457,14 +315,11 @@ router.post("/api/importImgUrl/yesgetrich", async (req, res) => {
       updatedGames: updatedCount,
       unmatchedGames: allGames.length - updatedCount,
       enImagesAvailable: Object.keys(enImageMap).length,
-      cnImagesAvailable: Object.keys(cnImageMap).length,
-      hkImagesAvailable: Object.keys(hkImageMap).length,
-      idImagesAvailable: Object.keys(idImageMap).length,
       matchedExamples: matchedGames,
       unmatchedExamples: unmatchedGames,
     });
   } catch (error) {
-    console.error("Error syncing YesGetRich images:", error);
+    console.error("Error syncing Relax Gaming images:", error);
 
     return res.status(500).json({
       success: false,
@@ -474,6 +329,7 @@ router.post("/api/importImgUrl/yesgetrich", async (req, res) => {
     });
   }
 });
+
 // Add this route to your existing file
 
 router.post("/api/cleanupGameImages/168168", async (req, res) => {
@@ -708,17 +564,8 @@ router.post("/api/jili/updateMalayName", async (req, res) => {
 router.post("/api/jili/getgamelistMissing", async (req, res) => {
   try {
     // Fetch all games from the database (or add filters as needed)
-    const missingImageGames = await GameYGRGameModal.find({
-      $or: [
-        { imageUrlEN: { $exists: false } },
-        { imageUrlEN: "" },
-        { imageUrlCN: { $exists: false } },
-        { imageUrlCN: "" },
-        { imageUrlHK: { $exists: false } },
-        { imageUrlHK: "" },
-        { imageUrlID: { $exists: false } },
-        { imageUrlID: "" },
-      ],
+    const missingImageGames = await GameRelaxGamingGameModal.find({
+      $or: [{ imageUrlEN: { $exists: false } }, { imageUrlEN: "" }],
       maintenance: false,
     });
     console.log(missingImageGames.length);

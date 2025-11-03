@@ -322,9 +322,22 @@ const userSchema = new mongoose.Schema(
     playaceGameToken: {
       type: String,
     },
-    bngGameToken: {
-      type: String,
-    },
+    bngGameTokens: [
+      {
+        token: {
+          type: String,
+          required: true,
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+        expiresAt: {
+          type: Date,
+          required: true,
+        },
+      },
+    ],
     bngbalanceVersion: {
       type: Number,
       default: 0,

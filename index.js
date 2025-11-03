@@ -857,6 +857,34 @@ app.use(myPromotionRouter);
 
 // app.use(sportSabaRouter);
 
+if (process.env.NODE_ENV !== "development") {
+  cron.schedule("*/15 * * * *", async () => {
+    try {
+      const now = new Date();
+      const result = await User.updateMany(
+        { "bngGameTokens.expiresAt": { $lt: now } },
+        {
+          $pull: {
+            bngGameTokens: {
+              expiresAt: { $lt: now },
+            },
+          },
+        }
+      );
+
+      if (result.modifiedCount > 0) {
+        console.log(
+          `[BNG Token Cleanup] Removed expired tokens from ${
+            result.modifiedCount
+          } users at ${now.toISOString()}`
+        );
+      }
+    } catch (error) {
+      console.error("[BNG Token Cleanup] Error:", error);
+    }
+  });
+}
+
 // cron.schedule(
 //   "0 0 * * *", // runs at 00:00 (12 AM) every day
 //   async () => {
