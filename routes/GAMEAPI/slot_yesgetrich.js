@@ -623,10 +623,10 @@ router.post(
       );
       console.log(response.data);
 
-      if (response.data.status.code !== 1000) {
+      if (response.data.ErrorCode !== 0) {
         console.log("YGR error in launching game", response.data);
 
-        if (response.data.status.code === 4001) {
+        if (response.data.ErrorCode === 104) {
           return res.status(200).json({
             success: false,
             message: {
@@ -661,7 +661,7 @@ router.post(
 
       return res.status(200).json({
         success: true,
-        gameLobby: response.data.data.game_url,
+        gameLobby: response.data.Data.Url,
         message: {
           en: "Game launched successfully.",
           zh: "游戏启动成功。",
@@ -752,7 +752,7 @@ router.post(
           },
         });
       }
-
+      console.log("success");
       return res.status(200).json({
         data: {
           gameId: gameCode,
