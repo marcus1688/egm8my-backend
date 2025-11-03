@@ -621,7 +621,6 @@ router.post(
           },
         }
       );
-      console.log(response.data);
 
       if (response.data.ErrorCode !== 0) {
         console.log("YGR error in launching game", response.data);
@@ -739,7 +738,7 @@ router.post(
         { gameID: gameCode },
         { _id: 1 }
       ).lean();
-
+      console.log(existingGame, "game exists");
       if (!existingGame) {
         console.log("gam enot exist ygr");
         return res.status(200).json({
