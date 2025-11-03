@@ -22,6 +22,8 @@ const GameEpicWinGameModal = require("../../models/slot_epicwinDatabase.model");
 const GameFachaiGameModal = require("../../models/slot_fachaiDatabase.model");
 const GamePlayAceGameModal = require("../../models/slot_liveplayaceDatabase.model");
 const GameBNGGameModal = require("../../models/slot_bngDatabase.model");
+const GameHacksawGameModal = require("../../models/slot_dcthacksawDatabase.model");
+const GameRelaxGamingGameModal = require("../../models/slot_dctrelaxDatabase.model");
 
 const { S3Client, ListObjectsV2Command } = require("@aws-sdk/client-s3");
 const multer = require("multer");
@@ -68,7 +70,7 @@ function parseRTP(rtpRaw) {
 
 router.post("/api/playtech/import-games", async (req, res) => {
   try {
-    const importFilePath = path.join(__dirname, "../../public/bng.json");
+    const importFilePath = path.join(__dirname, "../../public/hacksaw.json");
     console.log(importFilePath);
 
     // Check if file exists
@@ -94,9 +96,9 @@ router.post("/api/playtech/import-games", async (req, res) => {
 
     console.log("pass");
     console.log(`Found ${gameList.length} games to import`);
-    await GameBNGGameModal.deleteMany();
+    await GameHacksawGameModal.deleteMany();
     // Insert into MongoDB
-    await GameBNGGameModal.insertMany(gameList);
+    await GameHacksawGameModal.insertMany(gameList);
 
     return res.status(200).json({
       success: true,
@@ -153,7 +155,7 @@ router.post("/api/importGameList/168168", async (req, res) => {
         .json({ success: false, message: "No valid games to import." });
     }
 
-    await GameYGRGameModal.insertMany(games);
+    await GameRelaxGamingGameModal.insertMany(games);
     res.status(200).json({
       success: true,
       imported: games.length,
@@ -170,10 +172,7 @@ router.post("/api/importGameList/168168", async (req, res) => {
 router.post("/api/importImgUrl/yesgetrich", async (req, res) => {
   try {
     const bucket = "allgameslist";
-    const basePathEN = "yesgetrich/en/";
-    const basePathCN = "yesgetrich/zh/";
-    const basePathHK = "yesgetrich/hk/";
-    const basePathID = "yesgetrich/id/";
+    const basePathEN = "dctrelaxgaming/en/";
 
     // Get all games from the database that need images
     const allGames = await GameYGRGameModal.find(

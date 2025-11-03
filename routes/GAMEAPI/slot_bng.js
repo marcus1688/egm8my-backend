@@ -669,7 +669,7 @@ router.post("/api/bng/launchGame", authenticateToken, async (req, res) => {
       platform = "mobile";
     }
 
-    let logintoken = `${user.gameId}:${generateRandomCode()}`;
+    let logintoken = `${user.gameId}_${generateRandomCode()}`;
 
     const timestamp = Date.now();
 
@@ -781,7 +781,7 @@ router.post("/api/boongo", async (req, res) => {
           });
         }
 
-        const tokenParts = token.split(":");
+        const tokenParts = token.split("_");
         const username = tokenParts[0];
 
         const currentUser = await User.findOne(
@@ -835,7 +835,7 @@ router.post("/api/boongo", async (req, res) => {
       }
 
       case "transaction": {
-        const tokenParts = token.split(":");
+        const tokenParts = token.split("_");
         const username = tokenParts[0];
 
         if (
@@ -994,7 +994,7 @@ router.post("/api/boongo", async (req, res) => {
       }
 
       case "getbalance": {
-        const tokenParts = token.split(":");
+        const tokenParts = token.split("_");
         const username = tokenParts[0];
 
         const currentUser = await User.findOne(

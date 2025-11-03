@@ -287,6 +287,7 @@ const userSchema = new mongoose.Schema(
       fachai: { type: gameLockSchema, default: () => ({}) },
       playace: { type: gameLockSchema, default: () => ({}) },
       bng: { type: gameLockSchema, default: () => ({}) },
+      dctgame: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },
@@ -327,6 +328,12 @@ const userSchema = new mongoose.Schema(
     bngbalanceVersion: {
       type: Number,
       default: 0,
+    },
+    hacksawGameToken: {
+      type: String,
+    },
+    relaxgamingGameToken: {
+      type: String,
     },
   },
   {
