@@ -18,8 +18,8 @@ const SlotYGRModal = require("../../models/slot_yesgetrich.model");
 const Decimal = require("decimal.js");
 require("dotenv").config();
 
-const ygrHeaders = "JINLIHUICNY";
-const webURL = "https://www.jinlihui.net/";
+const ygrHeaders = "EGM8MYR";
+const webURL = "http://egm8my.vip/";
 const ygrAPIURL = "https://tyche8w-service.yahutech.com";
 const ygrLaunchAPIURL = "https://tyche8w-service.yahutech.com";
 
@@ -71,221 +71,221 @@ async function GameWalletLogAttempt(
   });
 }
 
-router.post("/api/yesgetrich/updatetimestampsbyorder", async (req, res) => {
-  try {
-    const mongoose = require("mongoose");
-    const { startDateTime = null } = req.body;
+// router.post("/api/yesgetrich/updatetimestampsbyorder", async (req, res) => {
+//   try {
+//     const mongoose = require("mongoose");
+//     const { startDateTime = null } = req.body;
 
-    console.log(
-      "Starting YesGetRich timestamp update based on custom order..."
-    );
+//     console.log(
+//       "Starting YesGetRich timestamp update based on custom order..."
+//     );
 
-    // Define the game order (84 is latest, 97 is oldest)
-    const gameCodesInOrder = [
-      "84",
-      "75",
-      "111",
-      "112",
-      "113",
-      "90",
-      "110",
-      "71",
-      "106",
-      "95",
-      "35",
-      "105",
-      "77",
-      "4",
-      "21",
-      "109",
-      "43",
-      "108",
-      "25",
-      "97",
-    ];
+//     // Define the game order (84 is latest, 97 is oldest)
+//     const gameCodesInOrder = [
+//       "84",
+//       "75",
+//       "111",
+//       "112",
+//       "30",
+//       "113",
+//       "90",
+//       "110",
+//       "71",
+//       "106",
+//       "95",
+//       "70",
+//       "18",
+//       "35",
+//       "105",
+//       "77",
+//       "4",
+//       "21",
+//       "109",
+//       "43",
+//     ];
 
-    console.log(`Total games to update: ${gameCodesInOrder.length}`);
-    console.log("Game codes in specified order:", gameCodesInOrder.join(", "));
+//     console.log(`Total games to update: ${gameCodesInOrder.length}`);
+//     console.log("Game codes in specified order:", gameCodesInOrder.join(", "));
 
-    // Use custom start time or current time
-    const startTime = startDateTime
-      ? moment(startDateTime).utc()
-      : moment().utc().add(5, "months");
+//     // Use custom start time or current time
+//     const startTime = startDateTime
+//       ? moment(startDateTime).utc()
+//       : moment().utc().add(5, "months");
 
-    if (startDateTime && !startTime.isValid()) {
-      return res.status(400).json({
-        success: false,
-        message: {
-          en: "Invalid startDateTime format. Please use ISO 8601 format (e.g., '2024-01-01T00:00:00Z').",
-          zh: "无效的开始时间格式。请使用 ISO 8601 格式。",
-          ms: "Format masa permulaan tidak sah. Sila gunakan format ISO 8601.",
-          zh_hk: "無效的開始時間格式。請使用 ISO 8601 格式。",
-          id: "Format waktu mulai tidak valid. Silakan gunakan format ISO 8601.",
-        },
-      });
-    }
+//     if (startDateTime && !startTime.isValid()) {
+//       return res.status(400).json({
+//         success: false,
+//         message: {
+//           en: "Invalid startDateTime format. Please use ISO 8601 format (e.g., '2024-01-01T00:00:00Z').",
+//           zh: "无效的开始时间格式。请使用 ISO 8601 格式。",
+//           ms: "Format masa permulaan tidak sah. Sila gunakan format ISO 8601.",
+//           zh_hk: "無效的開始時間格式。請使用 ISO 8601 格式。",
+//           id: "Format waktu mulai tidak valid. Silakan gunakan format ISO 8601.",
+//         },
+//       });
+//     }
 
-    console.log(`Starting timestamp: ${startTime.toISOString()}`);
+//     console.log(`Starting timestamp: ${startTime.toISOString()}`);
 
-    // Use direct MongoDB collection to bypass Mongoose timestamps
-    const db = mongoose.connection.db;
-    const collection = db.collection("gameygrgamemodals"); // YesGetRich collection name
+//     // Use direct MongoDB collection to bypass Mongoose timestamps
+//     const db = mongoose.connection.db;
+//     const collection = db.collection("gameygrgamemodals"); // YesGetRich collection name
 
-    const bulkOps = [];
+//     const bulkOps = [];
 
-    // Prepare timestamp updates for games based on specified order
-    for (let i = 0; i < gameCodesInOrder.length; i++) {
-      const gameCode = gameCodesInOrder[i];
+//     // Prepare timestamp updates for games based on specified order
+//     for (let i = 0; i < gameCodesInOrder.length; i++) {
+//       const gameCode = gameCodesInOrder[i];
 
-      // Calculate timestamp: first game (84) gets current time, each subsequent game gets 30 minutes earlier
-      const gameTimestamp = moment(startTime)
-        .subtract(i * 30, "minutes")
-        .utc()
-        .toDate();
+//       // Calculate timestamp: first game (84) gets current time, each subsequent game gets 30 minutes earlier
+//       const gameTimestamp = moment(startTime)
+//         .subtract(i * 30, "minutes")
+//         .utc()
+//         .toDate();
 
-      console.log(
-        `Game ${i + 1}: ID ${gameCode} will get timestamp: ${moment(
-          gameTimestamp
-        ).toISOString()}`
-      );
+//       console.log(
+//         `Game ${i + 1}: ID ${gameCode} will get timestamp: ${moment(
+//           gameTimestamp
+//         ).toISOString()}`
+//       );
 
-      bulkOps.push({
-        updateOne: {
-          filter: { gameID: gameCode },
-          update: {
-            $set: {
-              createdAt: gameTimestamp,
-              updatedAt: new Date(),
-            },
-          },
-        },
-      });
-    }
+//       bulkOps.push({
+//         updateOne: {
+//           filter: { gameID: gameCode },
+//           update: {
+//             $set: {
+//               createdAt: gameTimestamp,
+//               updatedAt: new Date(),
+//             },
+//           },
+//         },
+//       });
+//     }
 
-    // Execute bulk operation directly on MongoDB collection
-    console.log("Executing bulk timestamp updates via direct MongoDB...");
-    const bulkResult = await collection.bulkWrite(bulkOps);
+//     // Execute bulk operation directly on MongoDB collection
+//     console.log("Executing bulk timestamp updates via direct MongoDB...");
+//     const bulkResult = await collection.bulkWrite(bulkOps);
 
-    console.log("Bulk write result:", {
-      matchedCount: bulkResult.matchedCount,
-      modifiedCount: bulkResult.modifiedCount,
-      upsertedCount: bulkResult.upsertedCount,
-    });
+//     console.log("Bulk write result:", {
+//       matchedCount: bulkResult.matchedCount,
+//       modifiedCount: bulkResult.modifiedCount,
+//       upsertedCount: bulkResult.upsertedCount,
+//     });
 
-    // Verify the updates by fetching the updated documents
-    const updatedGames = await GameYGRGameModal.find(
-      { gameID: { $in: gameCodesInOrder } },
-      {
-        gameID: 1,
-        gameNameEN: 1,
-        gameNameCN: 1,
-        gameNameHK: 1,
-        createdAt: 1,
-        updatedAt: 1,
-      }
-    ).sort({ createdAt: -1 });
+//     // Verify the updates by fetching the updated documents
+//     const updatedGames = await GameYGRGameModal.find(
+//       { gameID: { $in: gameCodesInOrder } },
+//       {
+//         gameID: 1,
+//         gameNameEN: 1,
+//         gameNameCN: 1,
+//         gameNameHK: 1,
+//         createdAt: 1,
+//         updatedAt: 1,
+//       }
+//     ).sort({ createdAt: -1 });
 
-    // Separate found and not found games
-    const foundGameIds = updatedGames.map((game) => game.gameID);
-    const notFoundGames = gameCodesInOrder.filter(
-      (code) => !foundGameIds.includes(code)
-    );
+//     // Separate found and not found games
+//     const foundGameIds = updatedGames.map((game) => game.gameID);
+//     const notFoundGames = gameCodesInOrder.filter(
+//       (code) => !foundGameIds.includes(code)
+//     );
 
-    const foundGames = updatedGames.map((game) => ({
-      gameID: game.gameID,
-      gameNameEN: game.gameNameEN,
-      gameNameCN: game.gameNameCN,
-      gameNameHK: game.gameNameHK,
-      newCreatedAt: game.createdAt,
-      specifiedPosition: gameCodesInOrder.indexOf(game.gameID) + 1,
-      minutesFromLatest: gameCodesInOrder.indexOf(game.gameID) * 30,
-    }));
+//     const foundGames = updatedGames.map((game) => ({
+//       gameID: game.gameID,
+//       gameNameEN: game.gameNameEN,
+//       gameNameCN: game.gameNameCN,
+//       gameNameHK: game.gameNameHK,
+//       newCreatedAt: game.createdAt,
+//       specifiedPosition: gameCodesInOrder.indexOf(game.gameID) + 1,
+//       minutesFromLatest: gameCodesInOrder.indexOf(game.gameID) * 30,
+//     }));
 
-    // Get detailed info about missing games
-    const missingGamesDetails = notFoundGames.map((code) => ({
-      gameCode: code,
-      specifiedPosition: gameCodesInOrder.indexOf(code) + 1,
-      expectedTimestamp: moment(startTime)
-        .subtract(gameCodesInOrder.indexOf(code) * 30, "minutes")
-        .utc()
-        .toISOString(),
-    }));
+//     // Get detailed info about missing games
+//     const missingGamesDetails = notFoundGames.map((code) => ({
+//       gameCode: code,
+//       specifiedPosition: gameCodesInOrder.indexOf(code) + 1,
+//       expectedTimestamp: moment(startTime)
+//         .subtract(gameCodesInOrder.indexOf(code) * 30, "minutes")
+//         .utc()
+//         .toISOString(),
+//     }));
 
-    console.log(
-      `Successfully updated timestamps for ${foundGames.length} games`
-    );
-    console.log(`Games not found in database: ${notFoundGames.length}`);
+//     console.log(
+//       `Successfully updated timestamps for ${foundGames.length} games`
+//     );
+//     console.log(`Games not found in database: ${notFoundGames.length}`);
 
-    return res.status(200).json({
-      success: true,
-      message: {
-        en: `Successfully updated timestamps for ${bulkResult.modifiedCount} YesGetRich games based on specified order.`,
-        zh: `成功根据指定顺序更新了 ${bulkResult.modifiedCount} 个 YesGetRich 游戏的时间戳。`,
-        ms: `Berjaya mengemas kini cap masa untuk ${bulkResult.modifiedCount} permainan YesGetRich berdasarkan urutan yang ditetapkan.`,
-        zh_hk: `成功根據指定順序更新了 ${bulkResult.modifiedCount} 個 YesGetRich 遊戲的時間戳。`,
-        id: `Berhasil memperbarui timestamp untuk ${bulkResult.modifiedCount} permainan YesGetRich berdasarkan urutan yang ditentukan.`,
-      },
-      data: {
-        totalGamesInOrder: gameCodesInOrder.length,
-        gamesFoundAndUpdated: bulkResult.modifiedCount,
-        gamesMatched: bulkResult.matchedCount,
-        gamesNotFoundInDb: notFoundGames.length,
-        timeRange: {
-          latest: {
-            gameID: foundGames[0]?.gameID,
-            gameName: foundGames[0]?.gameNameEN,
-            createdAt: foundGames[0]?.newCreatedAt,
-            position: 1,
-          },
-          oldest: {
-            gameID: foundGames[foundGames.length - 1]?.gameID,
-            gameName: foundGames[foundGames.length - 1]?.gameNameEN,
-            createdAt: foundGames[foundGames.length - 1]?.newCreatedAt,
-            position: foundGames.length,
-          },
-        },
-        updatedGames: foundGames.map((game) => ({
-          gameID: game.gameID,
-          gameNameEN: game.gameNameEN,
-          gameNameCN: game.gameNameCN,
-          gameNameHK: game.gameNameHK,
-          specifiedPosition: game.specifiedPosition,
-          minutesFromLatest: game.minutesFromLatest,
-          createdAt: game.newCreatedAt,
-        })),
-        gamesNotFoundInDatabase: missingGamesDetails,
-        bulkWriteStats: {
-          matchedCount: bulkResult.matchedCount,
-          modifiedCount: bulkResult.modifiedCount,
-          upsertedCount: bulkResult.upsertedCount,
-        },
-        specifiedOrder: gameCodesInOrder,
-        timestampInfo: {
-          startTime: startTime.toISOString(),
-          intervalMinutes: 30,
-          totalTimeSpan: `${(gameCodesInOrder.length - 1) * 30} minutes`,
-          endTime: moment(startTime)
-            .subtract((gameCodesInOrder.length - 1) * 30, "minutes")
-            .utc()
-            .toISOString(),
-        },
-      },
-    });
-  } catch (error) {
-    console.error("Error in YesGetRich timestamp update:", error);
-    return res.status(500).json({
-      success: false,
-      error: error.message,
-      message: {
-        en: "YesGetRich: Timestamp update failed. Please try again or contact customer service for assistance.",
-        zh: "YesGetRich: 时间戳更新失败，请重试或联系客服以获得帮助。",
-        ms: "YesGetRich: Kemaskini cap masa gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
-        zh_hk: "YesGetRich: 時間戳更新失敗，請重試或聯絡客服以獲得幫助。",
-        id: "YesGetRich: Pembaruan timestamp gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
-      },
-    });
-  }
-});
+//     return res.status(200).json({
+//       success: true,
+//       message: {
+//         en: `Successfully updated timestamps for ${bulkResult.modifiedCount} YesGetRich games based on specified order.`,
+//         zh: `成功根据指定顺序更新了 ${bulkResult.modifiedCount} 个 YesGetRich 游戏的时间戳。`,
+//         ms: `Berjaya mengemas kini cap masa untuk ${bulkResult.modifiedCount} permainan YesGetRich berdasarkan urutan yang ditetapkan.`,
+//         zh_hk: `成功根據指定順序更新了 ${bulkResult.modifiedCount} 個 YesGetRich 遊戲的時間戳。`,
+//         id: `Berhasil memperbarui timestamp untuk ${bulkResult.modifiedCount} permainan YesGetRich berdasarkan urutan yang ditentukan.`,
+//       },
+//       data: {
+//         totalGamesInOrder: gameCodesInOrder.length,
+//         gamesFoundAndUpdated: bulkResult.modifiedCount,
+//         gamesMatched: bulkResult.matchedCount,
+//         gamesNotFoundInDb: notFoundGames.length,
+//         timeRange: {
+//           latest: {
+//             gameID: foundGames[0]?.gameID,
+//             gameName: foundGames[0]?.gameNameEN,
+//             createdAt: foundGames[0]?.newCreatedAt,
+//             position: 1,
+//           },
+//           oldest: {
+//             gameID: foundGames[foundGames.length - 1]?.gameID,
+//             gameName: foundGames[foundGames.length - 1]?.gameNameEN,
+//             createdAt: foundGames[foundGames.length - 1]?.newCreatedAt,
+//             position: foundGames.length,
+//           },
+//         },
+//         updatedGames: foundGames.map((game) => ({
+//           gameID: game.gameID,
+//           gameNameEN: game.gameNameEN,
+//           gameNameCN: game.gameNameCN,
+//           gameNameHK: game.gameNameHK,
+//           specifiedPosition: game.specifiedPosition,
+//           minutesFromLatest: game.minutesFromLatest,
+//           createdAt: game.newCreatedAt,
+//         })),
+//         gamesNotFoundInDatabase: missingGamesDetails,
+//         bulkWriteStats: {
+//           matchedCount: bulkResult.matchedCount,
+//           modifiedCount: bulkResult.modifiedCount,
+//           upsertedCount: bulkResult.upsertedCount,
+//         },
+//         specifiedOrder: gameCodesInOrder,
+//         timestampInfo: {
+//           startTime: startTime.toISOString(),
+//           intervalMinutes: 30,
+//           totalTimeSpan: `${(gameCodesInOrder.length - 1) * 30} minutes`,
+//           endTime: moment(startTime)
+//             .subtract((gameCodesInOrder.length - 1) * 30, "minutes")
+//             .utc()
+//             .toISOString(),
+//         },
+//       },
+//     });
+//   } catch (error) {
+//     console.error("Error in YesGetRich timestamp update:", error);
+//     return res.status(500).json({
+//       success: false,
+//       error: error.message,
+//       message: {
+//         en: "YesGetRich: Timestamp update failed. Please try again or contact customer service for assistance.",
+//         zh: "YesGetRich: 时间戳更新失败，请重试或联系客服以获得帮助。",
+//         ms: "YesGetRich: Kemaskini cap masa gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+//         zh_hk: "YesGetRich: 時間戳更新失敗，請重試或聯絡客服以獲得幫助。",
+//         id: "YesGetRich: Pembaruan timestamp gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+//       },
+//     });
+//   }
+// });
 router.post("/api/yesgetrich/comparegamelist", async (req, res) => {
   try {
     // Fetch games from YGR API
@@ -459,7 +459,7 @@ router.post("/api/yesgetrich/getprovidergamelist", async (req, res) => {
       }
     );
 
-    console.log("Ninja GetGameList Response:", response.data);
+    console.log("YGR GetGameList Response:", response.data);
 
     return res.status(200).json({
       success: true,
@@ -598,19 +598,18 @@ router.post(
       }
 
       let token = `${user.gameId}:${generateRandomCode()}`;
-      console.log(`${ygrLaunchAPIURL}/launch?token=${token}&language=${lang}`);
       const response = await axios.get(
         `${ygrLaunchAPIURL}/launch?token=${token}&language=${lang}`,
         {
           headers: {
             "Content-Type": "application/json",
             Authorization: ygrHeaders,
+            Supplier: ygrHeaders,
           },
         }
       );
-      console.log(response.data);
       if (response.data.status.code !== 1000) {
-        console.log("NINJA error in launching game", response.data);
+        console.log("YGR error in launching game", response.data);
 
         if (response.data.status.code === 4001) {
           return res.status(200).json({
@@ -628,11 +627,11 @@ router.post(
         return res.status(200).json({
           success: false,
           message: {
-            en: "NINJA: Game launch failed. Please try again or customer service for assistance.",
-            zh: "NINJA: 游戏启动失败，请重试或联系客服以获得帮助。",
-            ms: "NINJA: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
-            zh_hk: "NINJA: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
-            id: "NINJA: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+            en: "YGR: Game launch failed. Please try again or customer service for assistance.",
+            zh: "YGR: 游戏启动失败，请重试或联系客服以获得帮助。",
+            ms: "YGR: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+            zh_hk: "YGR: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+            id: "YGR: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
           },
         });
       }
@@ -642,7 +641,7 @@ router.post(
         "Transfer In",
         "Seamless",
         roundToTwoDecimals(user.wallet),
-        "NINJA"
+        "YGR"
       );
 
       return res.status(200).json({
@@ -657,19 +656,80 @@ router.post(
         },
       });
     } catch (error) {
-      console.log("NINJA error in launching game", error);
+      console.log("YGR error in launching game", error);
       return res.status(200).json({
         success: false,
         message: {
-          en: "NINJA: Game launch failed. Please try again or customer service for assistance.",
-          zh: "NINJA: 游戏启动失败，请重试或联系客服以获得帮助。",
-          ms: "NINJA: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
-          zh_hk: "NINJA: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
-          id: "NINJA: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+          en: "YGR: Game launch failed. Please try again or customer service for assistance.",
+          zh: "YGR: 游戏启动失败，请重试或联系客服以获得帮助。",
+          ms: "YGR: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          zh_hk: "YGR: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+          id: "YGR: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
         },
       });
     }
   }
 );
 
+router.post(
+  "/api/yesgetrich/token/authorizationConnectToken",
+  async (req, res) => {
+    try {
+      console.log(req.params, "param");
+      console.log(req.query, "query");
+      console.log(req.body, "body");
+      console.log(req.headers, "header");
+      return;
+
+      const validationResult = validateRequest(req);
+      if (validationResult.error) {
+        return res.status(200).json(validationResult.response);
+      }
+
+      const { AgentCode, Params, Sign } = req.body;
+
+      const decryptedParams = aesDecrypt(Params, fachaiSecret);
+      if (!verifySignature(decryptedParams, Sign)) {
+        return res.status(200).json({
+          Result: 604,
+          MainPoints: 0,
+          ErrorText: "Verification failed",
+        });
+      }
+
+      const originalPayload = JSON.parse(decryptedParams);
+
+      const { Ts, MemberAccount, Currency, GameID } = originalPayload;
+
+      const currentUser = await User.findOne(
+        { gameId: MemberAccount },
+        { wallet: 1 }
+      ).lean();
+
+      if (!currentUser) {
+        return res.status(200).json({
+          Result: 500,
+          MainPoints: 0,
+          ErrorText: "Player ID not exist",
+        });
+      }
+
+      return res.status(200).json({
+        Result: 0,
+        MainPoints: roundToTwoDecimals(currentUser.wallet),
+        ErrorText: "Success",
+      });
+    } catch (error) {
+      console.error(
+        "FACHAI: Error in game provider calling ae96 get balance api:",
+        error.message
+      );
+      return res.status(200).json({
+        Result: 999,
+        MainPoints: 0,
+        ErrorText: "Unknown errors",
+      });
+    }
+  }
+);
 module.exports = router;
