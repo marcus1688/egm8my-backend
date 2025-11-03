@@ -738,7 +738,7 @@ router.post(
         { gameID: gameCode },
         { _id: 1 }
       ).lean();
-      console.log(existingGame, "game exists");
+
       if (!existingGame) {
         console.log("gam enot exist ygr");
         return res.status(200).json({
@@ -751,7 +751,6 @@ router.post(
           },
         });
       }
-      console.log("success");
       return res.status(200).json({
         data: {
           gameId: gameCode,
