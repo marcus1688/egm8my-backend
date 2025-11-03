@@ -756,8 +756,8 @@ router.post(
       return res.status(200).json({
         data: {
           gameId: gameCode,
-          userId: user.gameId,
-          nickname: user.username,
+          userId: currentUser.gameId,
+          nickname: currentUser.username,
           ownerId: ygrHeaders,
           parentId: ygrHeaders,
           currency: "MYR",
