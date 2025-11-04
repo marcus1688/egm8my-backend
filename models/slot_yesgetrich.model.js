@@ -16,8 +16,17 @@ const slotYGRschema = new mongoose.Schema(
     settleamount: {
       type: Number,
     },
+    depositamount: {
+      type: Number,
+    },
+    withdrawamount: {
+      type: Number,
+    },
     username: {
       type: String,
+    },
+    fish: {
+      type: Boolean,
     },
     bet: {
       type: Boolean,
@@ -28,6 +37,9 @@ const slotYGRschema = new mongoose.Schema(
     settle: {
       type: Boolean,
       default: false,
+    },
+    gametype: {
+      type: String,
     },
   },
   {

@@ -707,7 +707,7 @@ router.post(
 
       const currentUser = await User.findOne(
         { gameId: gameId },
-        { wallet: 1, _id: 1, ygrGameToken: 1 }
+        { wallet: 1, _id: 1, ygrGameToken: 1, username: 1 }
       ).lean();
 
       if (!currentUser) {
@@ -754,7 +754,7 @@ router.post(
       return res.status(200).json({
         data: {
           gameId: gameCode,
-          userId: currentUser.gameId,
+          userId: gameId,
           nickname: currentUser.username,
           ownerId: ygrHeaders,
           parentId: ygrHeaders,
@@ -785,4 +785,834 @@ router.post(
     }
   }
 );
+
+router.get("/api/yesgetrich/token/getConnectTokenAmount", async (req, res) => {
+  try {
+    const { connectToken } = req.params;
+
+    if (!connectToken) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "201",
+          message: "Bad parameter",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    const [gameId, gameCode] = connectToken.split(":");
+
+    const currentUser = await User.findOne(
+      { gameId: gameId },
+      { wallet: 1, _id: 1 }
+    ).lean();
+
+    if (!currentUser) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "205",
+          message: "Account not exist",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    return res.status(200).json({
+      data: {
+        currency: "MYR",
+        amount: roundToTwoDecimals(currentUser.wallet),
+      },
+      status: {
+        code: "0",
+        message: "Success",
+        dateTime: generateDateTime(),
+        traceCode: generateTraceCode(),
+      },
+    });
+  } catch (error) {
+    console.error(
+      "YGR: Error in game provider calling ae96 get balance api:",
+      error.message
+    );
+    return res.status(200).json({
+      data: null,
+      status: {
+        code: "999",
+        message: "Something wrong",
+        dateTime: generateDateTime(),
+        traceCode: generateTraceCode(),
+      },
+    });
+  }
+});
+
+router.post("/api/yesgetrich/token/delConnectToken", async (req, res) => {
+  try {
+    const { connectToken } = req.body;
+
+    if (!connectToken) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "201",
+          message: "Bad parameter",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    const [gameId, gameCode] = connectToken.split(":");
+
+    const currentUser = await User.findOne(
+      { gameId: gameId },
+      { wallet: 1, _id: 1 }
+    ).lean();
+
+    if (!currentUser) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "205",
+          message: "Account not exist",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+    await User.updateOne(
+      { _id: currentUser._id },
+      { $unset: { ygrGameToken: "" } }
+    );
+
+    return res.status(200).json({
+      data: {},
+      status: {
+        code: "0",
+        message: "Success",
+        dateTime: generateDateTime(),
+        traceCode: generateTraceCode(),
+      },
+    });
+  } catch (error) {
+    console.error(
+      "YGR: Error in game provider calling ae96 get balance api:",
+      error.message
+    );
+    return res.status(200).json({
+      data: null,
+      status: {
+        code: "999",
+        message: "Something wrong",
+        dateTime: generateDateTime(),
+        traceCode: generateTraceCode(),
+      },
+    });
+  }
+});
+
+router.post("/api/yesgetrich/transaction/addGameResult", async (req, res) => {
+  try {
+    const {
+      connectToken,
+      transID,
+      roundID,
+      betAmount,
+      payoutAmount,
+      winLoseAmount,
+      freeGame,
+    } = req.body;
+
+    if (
+      !connectToken ||
+      !transID ||
+      !roundID ||
+      betAmount === undefined ||
+      betAmount === null ||
+      payoutAmount === undefined ||
+      payoutAmount === null ||
+      winLoseAmount === undefined ||
+      winLoseAmount === null
+    ) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "201",
+          message: "Bad parameter",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    const [gameId, gameCode] = connectToken.split(":");
+
+    const [currentUser, existingTransaction] = await Promise.all([
+      User.findOne(
+        { gameId: gameId },
+        {
+          wallet: 1,
+          "gameLock.yesgetrich.lock": 1,
+          _id: 1,
+        }
+      ).lean(),
+      SlotYGRModal.findOne({ tranId: transID }, { _id: 1 }).lean(),
+    ]);
+
+    if (!currentUser) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "205",
+          message: "Account not exist",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    if (currentUser.gameLock?.yesgetrich?.lock) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "401",
+          message: "Unauthorized",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    if (existingTransaction) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "203",
+          message: "Transaction ID duplicated",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    const updatedUserBalancePromise = User.findOneAndUpdate(
+      {
+        gameId: gameId,
+        wallet: { $gte: roundToTwoDecimals(betAmount) },
+      },
+      { $inc: { wallet: roundToTwoDecimals(winLoseAmount) } },
+      { new: true, projection: { wallet: 1 } }
+    ).lean();
+
+    const updatedUserBalance = await updatedUserBalancePromise;
+
+    if (!updatedUserBalance) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "204",
+          message: "Insufficient balance",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    SlotYGRModal.create({
+      betId: roundID,
+      tranId: transID,
+      bet: true,
+      settle: true,
+      username: gameId,
+      betamount: roundToTwoDecimals(betAmount),
+      settleamount: roundToTwoDecimals(payoutAmount),
+      gametype: "SLOT",
+    }).catch((error) => {
+      console.error("Error creating YGR transaction:", error.message);
+    });
+
+    return res.status(200).json({
+      data: {
+        currency: "MYR",
+        balance: roundToTwoDecimals(updatedUserBalance.wallet),
+      },
+      status: {
+        code: "0",
+        message: "Success",
+        dateTime: generateDateTime(),
+        traceCode: generateTraceCode(),
+      },
+    });
+  } catch (error) {
+    console.error(
+      "YGR: Error in game provider calling ae96 get balance api:",
+      error.message
+    );
+    return res.status(200).json({
+      data: null,
+      status: {
+        code: "999",
+        message: "Something wrong",
+        dateTime: generateDateTime(),
+        traceCode: generateTraceCode(),
+      },
+    });
+  }
+});
+
+router.post("/api/yesgetrich/transaction/rollOut", async (req, res) => {
+  try {
+    const { connectToken, transID, roundID, amount, takeAll } = req.body;
+
+    if (
+      !connectToken ||
+      !transID ||
+      !roundID ||
+      amount === undefined ||
+      amount === null
+    ) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "201",
+          message: "Bad parameter",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    const [gameId, gameCode] = connectToken.split(":");
+
+    const [currentUser, existingTransaction] = await Promise.all([
+      User.findOne(
+        { gameId: gameId },
+        {
+          wallet: 1,
+          "gameLock.yesgetrich.lock": 1,
+          ygrGameToken: 1,
+          _id: 1,
+        }
+      ).lean(),
+      SlotYGRModal.findOne({ tranId: transID }, { _id: 1 }).lean(),
+    ]);
+
+    if (!currentUser) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "205",
+          message: "Account not exist",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    if (
+      currentUser.gameLock?.yesgetrich?.lock ||
+      currentUser.ygrGameToken !== connectToken
+    ) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "401",
+          message: "Unauthorized",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    if (existingTransaction) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "203",
+          message: "Transaction ID duplicated",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    let deductedAmount;
+    let updatedUserBalance;
+
+    if (takeAll) {
+      updatedUserBalance = await User.findOneAndUpdate(
+        {
+          _id: currentUser._id,
+          wallet: { $gt: 0 },
+        },
+        [
+          {
+            $set: {
+              deductedAmount: "$wallet",
+              wallet: 0,
+            },
+          },
+        ],
+        { new: true, projection: { wallet: 1, deductedAmount: 1 } }
+      ).lean();
+
+      deductedAmount = updatedUserBalance.deductedAmount;
+    } else {
+      updatedUserBalance = await User.findOneAndUpdate(
+        {
+          _id: currentUser._id,
+          wallet: { $gte: roundToTwoDecimals(amount) },
+        },
+        { $inc: { wallet: -roundToTwoDecimals(amount) } },
+        { new: true, projection: { wallet: 1 } }
+      ).lean();
+
+      deductedAmount = roundToTwoDecimals(amount);
+    }
+
+    if (!updatedUserBalance) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "204",
+          message: "Insufficient balance",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    SlotYGRModal.create({
+      betId: roundID,
+      tranId: transID,
+      fish: true,
+      bet: true,
+      settle: false,
+      username: gameId,
+      depositamount: roundToTwoDecimals(amount),
+      gametype: "FISH",
+    }).catch((error) => {
+      console.error("Error creating YGR transaction:", error.message);
+    });
+
+    return res.status(200).json({
+      data: {
+        amount: roundToTwoDecimals(deductedAmount),
+        currency: "MYR",
+        balance: roundToTwoDecimals(updatedUserBalance.wallet),
+      },
+      status: {
+        code: "0",
+        message: "Success",
+        dateTime: generateDateTime(),
+        traceCode: generateTraceCode(),
+      },
+    });
+  } catch (error) {
+    console.error(
+      "YGR: Error in game provider calling ae96 get balance api:",
+      error.message
+    );
+    return res.status(200).json({
+      data: null,
+      status: {
+        code: "999",
+        message: "Something wrong",
+        dateTime: generateDateTime(),
+        traceCode: generateTraceCode(),
+      },
+    });
+  }
+});
+
+router.post("/api/yesgetrich/transaction/rollIn", async (req, res) => {
+  try {
+    const {
+      connectToken,
+      transID,
+      roundID,
+      amount,
+      betAmount,
+      payoutAmount,
+      winLoseAmount,
+    } = req.body;
+
+    if (
+      !connectToken ||
+      !transID ||
+      !roundID ||
+      amount === undefined ||
+      amount === null ||
+      betAmount === undefined ||
+      betAmount === null ||
+      payoutAmount === undefined ||
+      payoutAmount === null ||
+      winLoseAmount === undefined ||
+      winLoseAmount === null
+    ) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "201",
+          message: "Bad parameter",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    const [gameId, gameCode] = connectToken.split(":");
+
+    const [currentUser, existingTransaction] = await Promise.all([
+      User.findOne(
+        { gameId: gameId },
+        {
+          wallet: 1,
+          _id: 1,
+        }
+      ).lean(),
+      SlotYGRModal.findOne(
+        { tranId: transID },
+        { _id: 1, settle: 1, cancel: 1 }
+      ).lean(),
+    ]);
+
+    if (!currentUser) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "205",
+          message: "Account not exist",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    if (!existingBet) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "404",
+          message: "Not Found",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    if (existingTransaction.settle || existingTransaction.cancel) {
+      return res.status(200).json({
+        data: {
+          currency: "MYR",
+          balance: roundToTwoDecimals(currentUser.wallet),
+        },
+        status: {
+          code: "0",
+          message: "Success",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    const [updatedUserBalance] = await Promise.all([
+      User.findByIdAndUpdate(
+        currentUser._id,
+        { $inc: { wallet: roundToTwoDecimals(amount) } },
+        { new: true, projection: { wallet: 1 } }
+      ).lean(),
+
+      SlotYGRModal.findOneAndUpdate(
+        { tranId: transID },
+        {
+          $set: {
+            settle: true,
+            betamount: roundToTwoDecimals(betAmount),
+            settleamount: roundToTwoDecimals(payoutAmount),
+            withdrawamount: roundToTwoDecimals(amount),
+          },
+        },
+        { upsert: true }
+      ),
+    ]);
+
+    return res.status(200).json({
+      data: {
+        currency: "MYR",
+        balance: roundToTwoDecimals(updatedUserBalance.wallet),
+      },
+      status: {
+        code: "0",
+        message: "Success",
+        dateTime: generateDateTime(),
+        traceCode: generateTraceCode(),
+      },
+    });
+  } catch (error) {
+    console.error(
+      "YGR: Error in game provider calling ae96 get balance api:",
+      error.message
+    );
+    return res.status(200).json({
+      data: null,
+      status: {
+        code: "999",
+        message: "Something wrong",
+        dateTime: generateDateTime(),
+        traceCode: generateTraceCode(),
+      },
+    });
+  }
+});
+
+router.post("/api/yesgetrich/transaction/refund", async (req, res) => {
+  try {
+    const { connectToken, transID } = req.body;
+
+    if (!connectToken || !transID) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "201",
+          message: "Bad parameter",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    const [gameId, gameCode] = connectToken.split(":");
+
+    const [currentUser, existingTransaction] = await Promise.all([
+      User.findOne(
+        { gameId: gameId },
+        {
+          wallet: 1,
+          _id: 1,
+        }
+      ).lean(),
+      SlotYGRModal.findOne(
+        { tranId: transID },
+        { _id: 1, settle: 1, cancel: 1, depositamount: 1 }
+      ).lean(),
+    ]);
+
+    if (!currentUser) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "205",
+          message: "Account not exist",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    if (!existingTransaction) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "404",
+          message: "Not Found",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    if (existingTransaction.settle || existingTransaction.cancel) {
+      return res.status(200).json({
+        data: {
+          currency: "MYR",
+          balance: roundToTwoDecimals(currentUser.wallet),
+        },
+        status: {
+          code: "0",
+          message: "Success",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    const [updatedUserBalance] = await Promise.all([
+      User.findByIdAndUpdate(
+        currentUser._id,
+        {
+          $inc: {
+            wallet: roundToTwoDecimals(existingTransaction.depositamount || 0),
+          },
+        },
+        { new: true, projection: { wallet: 1 } }
+      ).lean(),
+
+      SlotYGRModal.findOneAndUpdate(
+        { tranId: transID },
+        {
+          $set: {
+            cancel: true,
+          },
+        },
+        { upsert: true }
+      ),
+    ]);
+
+    return res.status(200).json({
+      data: {
+        currency: "MYR",
+        balance: roundToTwoDecimals(updatedUserBalance.wallet),
+      },
+      status: {
+        code: "0",
+        message: "Success",
+        dateTime: generateDateTime(),
+        traceCode: generateTraceCode(),
+      },
+    });
+  } catch (error) {
+    console.error(
+      "YGR: Error in game provider calling ae96 get balance api:",
+      error.message
+    );
+    return res.status(200).json({
+      data: null,
+      status: {
+        code: "999",
+        message: "Something wrong",
+        dateTime: generateDateTime(),
+        traceCode: generateTraceCode(),
+      },
+    });
+  }
+});
+
+router.post("/api/yesgetrich/betSlip/roundCheck", async (req, res) => {
+  try {
+    console.log(req.body, "this is betslip roundcheck ygr");
+    return;
+    const { connectToken, transID } = req.body;
+
+    if (!connectToken || !transID) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "201",
+          message: "Bad parameter",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    const [gameId, gameCode] = connectToken.split(":");
+
+    const [currentUser, existingTransaction] = await Promise.all([
+      User.findOne(
+        { gameId: gameId },
+        {
+          wallet: 1,
+          _id: 1,
+        }
+      ).lean(),
+      SlotYGRModal.findOne(
+        { tranId: transID },
+        { _id: 1, settle: 1, cancel: 1, depositamount: 1 }
+      ).lean(),
+    ]);
+
+    if (!currentUser) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "205",
+          message: "Account not exist",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    if (!existingTransaction) {
+      return res.status(200).json({
+        data: null,
+        status: {
+          code: "404",
+          message: "Not Found",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    if (existingTransaction.settle || existingTransaction.cancel) {
+      return res.status(200).json({
+        data: {
+          currency: "MYR",
+          balance: roundToTwoDecimals(currentUser.wallet),
+        },
+        status: {
+          code: "0",
+          message: "Success",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
+    const [updatedUserBalance] = await Promise.all([
+      User.findByIdAndUpdate(
+        currentUser._id,
+        {
+          $inc: {
+            wallet: roundToTwoDecimals(existingTransaction.depositamount || 0),
+          },
+        },
+        { new: true, projection: { wallet: 1 } }
+      ).lean(),
+
+      SlotYGRModal.findOneAndUpdate(
+        { tranId: transID },
+        {
+          $set: {
+            cancel: true,
+          },
+        },
+        { upsert: true }
+      ),
+    ]);
+
+    return res.status(200).json({
+      data: {
+        currency: "MYR",
+        balance: roundToTwoDecimals(updatedUserBalance.wallet),
+      },
+      status: {
+        code: "0",
+        message: "Success",
+        dateTime: generateDateTime(),
+        traceCode: generateTraceCode(),
+      },
+    });
+  } catch (error) {
+    console.error(
+      "YGR: Error in game provider calling ae96 get balance api:",
+      error.message
+    );
+    return res.status(200).json({
+      data: null,
+      status: {
+        code: "999",
+        message: "Something wrong",
+        dateTime: generateDateTime(),
+        traceCode: generateTraceCode(),
+      },
+    });
+  }
+});
 module.exports = router;
