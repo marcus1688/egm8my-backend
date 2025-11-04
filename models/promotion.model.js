@@ -84,6 +84,10 @@ const promotionSchema = new mongoose.Schema(
     withdrawtype: String,
     turnoverrequiremnt: Number,
     winloserequirement: Number,
+    allowedGameDatabaseNames: {
+      type: [String],
+      default: [],
+    },
   },
   { timestamps: true }
 );
