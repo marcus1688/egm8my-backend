@@ -4987,7 +4987,9 @@ router.get(
       const getAllUsersTurnover = async (
         model,
         matchConditions,
-        turnoverExpression = { $ifNull: ["$betamount", 0] }
+        turnoverExpression = {
+          $ifNull: [{ $ifNull: ["$validbetamount", "$betamount"] }, 0],
+        }
       ) => {
         try {
           // Add date filter to match conditions

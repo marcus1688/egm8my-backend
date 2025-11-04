@@ -564,7 +564,7 @@ router.post("/api/sagaming/PlayerWin", async (req, res) => {
                     settle: true,
                     settleId: txnid,
                     settleamount: settleAmount,
-                    betamount: roundToTwoDecimals(validbetamount),
+                    validbetamount: validbetamount,
                   },
                 },
               },
@@ -731,7 +731,7 @@ router.post("/api/sagaming/PlayerLost", async (req, res) => {
                     settle: true,
                     settleId: txnid,
                     settleamount: 0,
-                    betamount: validbetamount,
+                    validbetamount: validbetamount,
                   },
                 },
               },
@@ -1175,7 +1175,7 @@ router.post("/api/sagaming/getturnoverforrebate", async (req, res) => {
         playerSummary[actualUsername] = { turnover: 0, winloss: 0 };
       }
 
-      playerSummary[actualUsername].turnover += record.betamount || 0;
+      playerSummary[actualUsername].turnover += record.validbetamount || 0;
 
       playerSummary[actualUsername].winloss +=
         (record.settleamount || 0) - (record.betamount || 0);
@@ -1237,7 +1237,7 @@ router.get(
       let totalWinLoss = 0;
 
       records.forEach((record) => {
-        totalTurnover += record.betamount || 0;
+        totalTurnover += record.validbetamount || 0;
         totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
       });
 
@@ -1369,7 +1369,7 @@ router.get(
       let totalWinLoss = 0;
 
       records.forEach((record) => {
-        totalTurnover += record.betamount || 0;
+        totalTurnover += record.validbetamount || 0;
 
         totalWinLoss += (record.betamount || 0) - (record.settleamount || 0);
       });
