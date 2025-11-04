@@ -11,6 +11,10 @@ const depositschema = new mongoose.Schema(
     username: {
       type: String,
     },
+    isNewCycle: {
+      type: Boolean,
+      default: false,
+    },
     fullname: {
       type: String,
     },

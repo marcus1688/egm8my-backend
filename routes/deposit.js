@@ -144,6 +144,7 @@ async function submitLuckySpin(
       isLuckySpin: true,
       processtime,
       duplicateIP: user.duplicateIP,
+      isNewCycle: user.wallet <= 5,
     });
     await NewBonusTransaction.save();
     const walletLog = new UserWalletLog({
@@ -340,6 +341,7 @@ router.post(
           duplicateIP: user.duplicateIP,
           remark: req.body.remark || "-",
           transactionId: transactionId,
+          isNewCycle: user.wallet <= 5,
           balanceFetchErrors:
             Object.keys(balanceFetchErrors).length > 0
               ? balanceFetchErrors
@@ -531,6 +533,7 @@ router.post("/admin/api/deposit", authenticateAdminToken, async (req, res) => {
       bankid: bankid,
       status: "pending",
       duplicateIP: user.duplicateIP,
+      isNewCycle: user.wallet <= 5,
     });
     await deposit.save();
 
@@ -1121,6 +1124,7 @@ router.post(
         promotionId: promotionId,
         isCheckinBonus: true,
         processtime: "00:00:00",
+        isNewCycle: user.wallet <= 5,
       });
       await newBonusTransaction.save();
       const walletLog = new UserWalletLog({
@@ -1316,6 +1320,7 @@ router.post(
         promotionId: promotionId,
         isCheckinBonus: true,
         processtime: "00:00:00",
+        isNewCycle: user.wallet <= 5,
       });
       await newBonusTransaction.save();
       const walletLog = new UserWalletLog({

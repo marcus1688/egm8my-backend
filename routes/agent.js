@@ -689,6 +689,7 @@ router.post(
         promotionnameEN: promotion.maintitleEN,
         promotionId: promotion._id,
         processtime: "00:00:00",
+        isNewCycle: agent.wallet <= 5,
       });
       await NewBonusTransaction.save();
 
@@ -1048,6 +1049,7 @@ const calculateWinLoseCommission = async () => {
               promotionnameEN: promotion.maintitleEN,
               promotionId: promotion._id,
               processtime: "00:00:00",
+              isNewCycle: agent.wallet <= 5,
             });
             await NewBonusTransaction.save();
             bonusTransactionId = NewBonusTransaction._id;

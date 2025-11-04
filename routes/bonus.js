@@ -177,6 +177,7 @@ router.post(
         promotionId: promotionId,
         depositId,
         duplicateIP: user.duplicateIP,
+        isNewCycle: user.wallet <= 5,
       });
       await NewBonusTransaction.save();
       const walletLog = new UserWalletLog({
@@ -355,6 +356,7 @@ router.post(
         promotionId: promotion._id,
         depositId,
         duplicateIP: user.duplicateIP,
+        isNewCycle: user.wallet <= 5,
       });
       await NewBonusTransaction.save();
       const walletLog = new UserWalletLog({
@@ -520,6 +522,7 @@ router.post("/admin/api/bonus", authenticateAdminToken, async (req, res) => {
       promotionId: promotionData._id,
       duplicateIP: user.duplicateIP,
       duplicateBank: user.duplicateBank,
+      isNewCycle: user.wallet <= 5,
     });
     await NewBonusTransaction.save();
 

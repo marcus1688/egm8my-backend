@@ -159,9 +159,14 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "-",
     },
+
     registerIp: {
       type: String,
       default: "-",
+    },
+    turnoverResetAt: {
+      type: Date,
+      default: null,
     },
     referrals: [
       {

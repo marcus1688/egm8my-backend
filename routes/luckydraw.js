@@ -184,6 +184,7 @@ router.post("/api/luckydraw9grid/spin", authenticateToken, async (req, res) => {
       promotionId: promotionId,
       isCheckinBonus: true,
       processtime: "00:00:00",
+      isNewCycle: user.wallet <= 5,
     });
 
     const walletLog = new UserWalletLog({

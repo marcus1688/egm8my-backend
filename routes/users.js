@@ -5522,6 +5522,7 @@ router.post(
         promotionnameEN: promotiondata.maintitleEN,
         promotionId: promotionId,
         processtime: "00:00:00",
+        isNewCycle: user.wallet <= 5,
       });
       await NewBonusTransaction.save();
       const walletLog = new UserWalletLog({

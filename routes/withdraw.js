@@ -21,10 +21,301 @@ const {
 const axios = require("axios");
 
 // Check Turnover Requirement
+// const checkTurnoverRequirements = async (userId) => {
+//   try {
+//     const DEFAULT_TURNOVER_MULTIPLIER = 1;
+//     const DEFAULT_WINOVER_MULTIPLIER = 3;
+//     const latestWithdraw = await Withdraw.findOne({
+//       userId,
+//       status: "approved",
+//     }).sort({ createdAt: -1 });
+//     const latestDeposit = await Deposit.findOne({
+//       userId,
+//       status: "approved",
+//     }).sort({ createdAt: -1 });
+
+//     let latestBonus = await Bonus.findOne({
+//       userId,
+//       status: "approved",
+//     }).sort({ createdAt: -1 });
+//     if (
+//       latestWithdraw &&
+//       (!latestDeposit || latestWithdraw.createdAt > latestDeposit.createdAt) &&
+//       (!latestBonus || latestWithdraw.createdAt > latestBonus.createdAt)
+//     ) {
+//       return {
+//         success: true,
+//         message: "No turnover requirements to check",
+//       };
+//     }
+//     let isDepositLatest =
+//       latestDeposit &&
+//       (!latestBonus || latestDeposit.createdAt > latestBonus.createdAt);
+//     let isBonusLatest =
+//       latestBonus &&
+//       (!latestDeposit || latestBonus.createdAt > latestDeposit.createdAt);
+//     // if (isBonusLatest && latestBonus && latestBonus.processBy === "system") {
+//     //   const previousBonus = await Bonus.findOne({
+//     //     userId,
+//     //     status: "approved",
+//     //     createdAt: { $lt: latestBonus.createdAt },
+//     //   }).sort({ createdAt: -1 });
+//     //   if (previousBonus) {
+//     //     latestBonus = previousBonus;
+//     //   } else {
+//     //     if (latestDeposit) {
+//     //       isDepositLatest = true;
+//     //       isBonusLatest = false;
+//     //     } else {
+//     //       return {
+//     //         success: true,
+//     //         message: "No turnover requirements to check",
+//     //       };
+//     //     }
+//     //   }
+//     // }
+//     let requirementType = "none";
+//     let turnoverRequirement = 0;
+//     let withdrawType = "turnover";
+//     if (isDepositLatest) {
+//       const relatedBonus = await Bonus.findOne({
+//         depositId: latestDeposit._id,
+//         status: "approved",
+//       });
+//       if (!relatedBonus) {
+//         turnoverRequirement =
+//           latestDeposit.amount * DEFAULT_TURNOVER_MULTIPLIER;
+//         requirementType = "turnover";
+//       } else {
+//         const promotionData = await promotion.findById(
+//           relatedBonus.promotionId
+//         );
+//         if (!promotionData) {
+//           turnoverRequirement =
+//             (parseFloat(latestDeposit.amount) +
+//               parseFloat(relatedBonus.amount)) *
+//             DEFAULT_TURNOVER_MULTIPLIER;
+//           requirementType = "turnover";
+//         } else {
+//           withdrawType = promotionData.withdrawtype || "turnover";
+//           if (withdrawType === "winover") {
+//             const user = await User.findById(userId);
+//             if (!user) {
+//               return {
+//                 success: false,
+//                 message: "User not found",
+//               };
+//             }
+//             const multiplier =
+//               promotionData.winloserequirement || DEFAULT_WINOVER_MULTIPLIER;
+//             const totalAmount =
+//               parseFloat(latestDeposit.amount) +
+//               parseFloat(relatedBonus.amount);
+//             const winoverRequirement = totalAmount * multiplier;
+//             if (user.wallet >= winoverRequirement) {
+//               return {
+//                 success: true,
+//                 message: "Winover requirement met",
+//               };
+//             } else {
+//               return {
+//                 success: false,
+//                 message: "Winover requirement not met",
+//                 requiredAmount: winoverRequirement,
+//                 currentBalance: user.wallet,
+//                 remainingAmount: winoverRequirement - user.wallet,
+//               };
+//             }
+//           } else {
+//             const multiplier =
+//               promotionData.turnoverrequiremnt || DEFAULT_TURNOVER_MULTIPLIER;
+//             const totalAmount =
+//               parseFloat(latestDeposit.amount) +
+//               parseFloat(relatedBonus.amount);
+//             turnoverRequirement = totalAmount * multiplier;
+//             requirementType = "turnover";
+//           }
+//         }
+//       }
+//     } else if (isBonusLatest) {
+//       if (!latestBonus.depositId) {
+//         const promotionData = await promotion.findById(latestBonus.promotionId);
+//         if (!promotionData) {
+//           return {
+//             success: true,
+//             message: "No turnover requirements for this bonus",
+//           };
+//         }
+//         withdrawType = promotionData.withdrawtype || "turnover";
+//         if (withdrawType === "winover") {
+//           const user = await User.findById(userId);
+//           if (!user) {
+//             return {
+//               success: false,
+//               message: "User not found",
+//             };
+//           }
+//           const multiplier =
+//             promotionData.winloserequirement || DEFAULT_WINOVER_MULTIPLIER;
+//           const winoverRequirement = latestBonus.amount * multiplier;
+//           if (user.wallet >= winoverRequirement) {
+//             return {
+//               success: true,
+//               message: "Winover requirement met",
+//             };
+//           } else {
+//             return {
+//               success: false,
+//               message: "Winover requirement not met",
+//               requiredAmount: winoverRequirement,
+//               currentBalance: user.wallet,
+//               remainingAmount: winoverRequirement - user.wallet,
+//             };
+//           }
+//         } else {
+//           const multiplier =
+//             promotionData.turnoverrequiremnt || DEFAULT_TURNOVER_MULTIPLIER;
+//           turnoverRequirement = latestBonus.amount * multiplier;
+//           requirementType = "turnover";
+//         }
+//       } else {
+//         const relatedDeposit = await Deposit.findById(latestBonus.depositId);
+//         const promotionData = await promotion.findById(latestBonus.promotionId);
+//         if (!promotionData) {
+//           if (relatedDeposit) {
+//             turnoverRequirement =
+//               (parseFloat(relatedDeposit.amount) +
+//                 parseFloat(latestBonus.amount)) *
+//               DEFAULT_TURNOVER_MULTIPLIER;
+//           } else {
+//             turnoverRequirement =
+//               latestBonus.amount * DEFAULT_TURNOVER_MULTIPLIER;
+//           }
+//           requirementType = "turnover";
+//         } else {
+//           withdrawType = promotionData.withdrawtype || "turnover";
+//           if (withdrawType === "winover") {
+//             const user = await User.findById(userId);
+//             if (!user) {
+//               return {
+//                 success: false,
+//                 message: "User not found",
+//               };
+//             }
+//             let totalAmount = latestBonus.amount;
+//             if (relatedDeposit) {
+//               totalAmount += parseFloat(relatedDeposit.amount);
+//             }
+//             const multiplier =
+//               promotionData.winloserequirement || DEFAULT_WINOVER_MULTIPLIER;
+//             const winoverRequirement = totalAmount * multiplier;
+//             if (user.wallet >= winoverRequirement) {
+//               return {
+//                 success: true,
+//                 message: "Winover requirement met",
+//               };
+//             } else {
+//               return {
+//                 success: false,
+//                 message: "Winover requirement not met",
+//                 requiredAmount: winoverRequirement,
+//                 currentBalance: user.wallet,
+//                 remainingAmount: winoverRequirement - user.wallet,
+//               };
+//             }
+//           } else {
+//             let totalAmount = latestBonus.amount;
+//             if (relatedDeposit) {
+//               totalAmount += parseFloat(relatedDeposit.amount);
+//             }
+//             const multiplier =
+//               promotionData.turnoverrequiremnt || DEFAULT_TURNOVER_MULTIPLIER;
+//             turnoverRequirement = totalAmount * multiplier;
+//             requirementType = "turnover";
+//           }
+//         }
+//       }
+//     } else {
+//       return {
+//         success: true,
+//         message: "No transactions found",
+//       };
+//     }
+//     if (requirementType === "turnover" && turnoverRequirement > 0) {
+//       try {
+//         let transactionDate;
+//         if (isBonusLatest) {
+//           transactionDate = moment(latestBonus.createdAt).format(
+//             "YYYY-MM-DD HH:mm:ss"
+//           );
+//         } else if (isDepositLatest) {
+//           transactionDate = moment(latestDeposit.createdAt).format(
+//             "YYYY-MM-DD HH:mm:ss"
+//           );
+//         }
+//         const startDate = transactionDate;
+//         const response = await axios.get(
+//           `${process.env.BASE_URL}api/all/${userId}/dailygamedata`,
+//           {
+//             params: { startDate },
+//           }
+//         );
+//         const data = response.data;
+//         if (!data || !data.success) {
+//           return {
+//             success: false,
+//             message: "Failed to fetch turnover data",
+//           };
+//         }
+//         const userTotalTurnover = data.summary.totalTurnover || 0;
+//         if (userTotalTurnover >= turnoverRequirement) {
+//           return {
+//             success: true,
+//             message: "Turnover requirement met",
+//           };
+//         } else {
+//           return {
+//             success: false,
+//             message: "Turnover requirement not met",
+//             requiredTurnover: turnoverRequirement,
+//             currentTurnover: userTotalTurnover,
+//             remainingTurnover: turnoverRequirement - userTotalTurnover,
+//           };
+//         }
+//       } catch (error) {
+//         console.error("Error fetching turnover data:", error);
+//         return {
+//           success: false,
+//           message: "Error checking turnover requirements",
+//           error: error.message,
+//         };
+//       }
+//     }
+//     return {
+//       success: true,
+//       message: "No turnover requirements",
+//     };
+//   } catch (error) {
+//     console.error("Error checking turnover requirements:", error);
+//     return {
+//       success: false,
+//       message: "Error checking turnover requirements",
+//       error: error.message,
+//     };
+//   }
+// };
+
 const checkTurnoverRequirements = async (userId) => {
   try {
     const DEFAULT_TURNOVER_MULTIPLIER = 1;
     const DEFAULT_WINOVER_MULTIPLIER = 3;
+    const user = await User.findById(userId);
+    if (!user) {
+      return {
+        success: false,
+        message: "User not found",
+      };
+    }
     const latestWithdraw = await Withdraw.findOne({
       userId,
       status: "approved",
@@ -33,231 +324,173 @@ const checkTurnoverRequirements = async (userId) => {
       userId,
       status: "approved",
     }).sort({ createdAt: -1 });
-
-    let latestBonus = await Bonus.findOne({
+    const latestBonus = await Bonus.findOne({
       userId,
       status: "approved",
     }).sort({ createdAt: -1 });
+
+    let effectiveResetDate = null;
+    if (latestWithdraw && user.turnoverResetAt) {
+      effectiveResetDate =
+        latestWithdraw.createdAt > user.turnoverResetAt
+          ? latestWithdraw.createdAt
+          : user.turnoverResetAt;
+    } else if (latestWithdraw) {
+      effectiveResetDate = latestWithdraw.createdAt;
+    } else if (user.turnoverResetAt) {
+      effectiveResetDate = user.turnoverResetAt;
+    }
     if (
-      latestWithdraw &&
-      (!latestDeposit || latestWithdraw.createdAt > latestDeposit.createdAt) &&
-      (!latestBonus || latestWithdraw.createdAt > latestBonus.createdAt)
+      effectiveResetDate &&
+      (!latestDeposit || effectiveResetDate > latestDeposit.createdAt) &&
+      (!latestBonus || effectiveResetDate > latestBonus.createdAt)
     ) {
       return {
         success: true,
-        message: "No turnover requirements to check",
+        message:
+          "No turnover requirements (last action was withdrawal or reset)",
       };
     }
-    let isDepositLatest =
-      latestDeposit &&
-      (!latestBonus || latestDeposit.createdAt > latestBonus.createdAt);
-    let isBonusLatest =
-      latestBonus &&
-      (!latestDeposit || latestBonus.createdAt > latestDeposit.createdAt);
-    // if (isBonusLatest && latestBonus && latestBonus.processBy === "system") {
-    //   const previousBonus = await Bonus.findOne({
-    //     userId,
-    //     status: "approved",
-    //     createdAt: { $lt: latestBonus.createdAt },
-    //   }).sort({ createdAt: -1 });
-    //   if (previousBonus) {
-    //     latestBonus = previousBonus;
-    //   } else {
-    //     if (latestDeposit) {
-    //       isDepositLatest = true;
-    //       isBonusLatest = false;
-    //     } else {
-    //       return {
-    //         success: true,
-    //         message: "No turnover requirements to check",
-    //       };
-    //     }
-    //   }
-    // }
-    let requirementType = "none";
-    let turnoverRequirement = 0;
-    let withdrawType = "turnover";
-    if (isDepositLatest) {
-      const relatedBonus = await Bonus.findOne({
-        depositId: latestDeposit._id,
-        status: "approved",
-      });
-      if (!relatedBonus) {
-        turnoverRequirement =
-          latestDeposit.amount * DEFAULT_TURNOVER_MULTIPLIER;
-        requirementType = "turnover";
-      } else {
-        const promotionData = await promotion.findById(
-          relatedBonus.promotionId
-        );
-        if (!promotionData) {
-          turnoverRequirement =
-            (parseFloat(latestDeposit.amount) +
-              parseFloat(relatedBonus.amount)) *
-            DEFAULT_TURNOVER_MULTIPLIER;
-          requirementType = "turnover";
-        } else {
-          withdrawType = promotionData.withdrawtype || "turnover";
-          if (withdrawType === "winover") {
-            const user = await User.findById(userId);
-            if (!user) {
-              return {
-                success: false,
-                message: "User not found",
-              };
-            }
-            const multiplier =
-              promotionData.winloserequirement || DEFAULT_WINOVER_MULTIPLIER;
-            const totalAmount =
-              parseFloat(latestDeposit.amount) +
-              parseFloat(relatedBonus.amount);
-            const winoverRequirement = totalAmount * multiplier;
-            if (user.wallet >= winoverRequirement) {
-              return {
-                success: true,
-                message: "Winover requirement met",
-              };
-            } else {
-              return {
-                success: false,
-                message: "Winover requirement not met",
-                requiredAmount: winoverRequirement,
-                currentBalance: user.wallet,
-                remainingAmount: winoverRequirement - user.wallet,
-              };
-            }
-          } else {
-            const multiplier =
-              promotionData.turnoverrequiremnt || DEFAULT_TURNOVER_MULTIPLIER;
-            const totalAmount =
-              parseFloat(latestDeposit.amount) +
-              parseFloat(relatedBonus.amount);
-            turnoverRequirement = totalAmount * multiplier;
-            requirementType = "turnover";
-          }
-        }
-      }
-    } else if (isBonusLatest) {
-      if (!latestBonus.depositId) {
-        const promotionData = await promotion.findById(latestBonus.promotionId);
-        if (!promotionData) {
-          return {
-            success: true,
-            message: "No turnover requirements for this bonus",
-          };
-        }
-        withdrawType = promotionData.withdrawtype || "turnover";
-        if (withdrawType === "winover") {
-          const user = await User.findById(userId);
-          if (!user) {
-            return {
-              success: false,
-              message: "User not found",
-            };
-          }
-          const multiplier =
-            promotionData.winloserequirement || DEFAULT_WINOVER_MULTIPLIER;
-          const winoverRequirement = latestBonus.amount * multiplier;
-          if (user.wallet >= winoverRequirement) {
-            return {
-              success: true,
-              message: "Winover requirement met",
-            };
-          } else {
-            return {
-              success: false,
-              message: "Winover requirement not met",
-              requiredAmount: winoverRequirement,
-              currentBalance: user.wallet,
-              remainingAmount: winoverRequirement - user.wallet,
-            };
-          }
-        } else {
-          const multiplier =
-            promotionData.turnoverrequiremnt || DEFAULT_TURNOVER_MULTIPLIER;
-          turnoverRequirement = latestBonus.amount * multiplier;
-          requirementType = "turnover";
-        }
-      } else {
-        const relatedDeposit = await Deposit.findById(latestBonus.depositId);
-        const promotionData = await promotion.findById(latestBonus.promotionId);
-        if (!promotionData) {
-          if (relatedDeposit) {
-            turnoverRequirement =
-              (parseFloat(relatedDeposit.amount) +
-                parseFloat(latestBonus.amount)) *
-              DEFAULT_TURNOVER_MULTIPLIER;
-          } else {
-            turnoverRequirement =
-              latestBonus.amount * DEFAULT_TURNOVER_MULTIPLIER;
-          }
-          requirementType = "turnover";
-        } else {
-          withdrawType = promotionData.withdrawtype || "turnover";
-          if (withdrawType === "winover") {
-            const user = await User.findById(userId);
-            if (!user) {
-              return {
-                success: false,
-                message: "User not found",
-              };
-            }
-            let totalAmount = latestBonus.amount;
-            if (relatedDeposit) {
-              totalAmount += parseFloat(relatedDeposit.amount);
-            }
-            const multiplier =
-              promotionData.winloserequirement || DEFAULT_WINOVER_MULTIPLIER;
-            const winoverRequirement = totalAmount * multiplier;
-            if (user.wallet >= winoverRequirement) {
-              return {
-                success: true,
-                message: "Winover requirement met",
-              };
-            } else {
-              return {
-                success: false,
-                message: "Winover requirement not met",
-                requiredAmount: winoverRequirement,
-                currentBalance: user.wallet,
-                remainingAmount: winoverRequirement - user.wallet,
-              };
-            }
-          } else {
-            let totalAmount = latestBonus.amount;
-            if (relatedDeposit) {
-              totalAmount += parseFloat(relatedDeposit.amount);
-            }
-            const multiplier =
-              promotionData.turnoverrequiremnt || DEFAULT_TURNOVER_MULTIPLIER;
-            turnoverRequirement = totalAmount * multiplier;
-            requirementType = "turnover";
-          }
-        }
-      }
-    } else {
+    const depositsAfterWithdraw = await Deposit.find({
+      userId,
+      status: "approved",
+      ...(effectiveResetDate && { createdAt: { $gt: effectiveResetDate } }),
+    }).sort({ createdAt: 1 });
+    const bonusesAfterWithdraw = await Bonus.find({
+      userId,
+      status: "approved",
+      ...(effectiveResetDate && { createdAt: { $gt: effectiveResetDate } }),
+    }).sort({ createdAt: 1 });
+    const allTransactions = [
+      ...depositsAfterWithdraw.map((d) => ({
+        type: "deposit",
+        data: d,
+        date: d.createdAt,
+        isNewCycle: d.isNewCycle || false,
+      })),
+      ...bonusesAfterWithdraw.map((b) => ({
+        type: "bonus",
+        data: b,
+        date: b.createdAt,
+        isNewCycle: b.isNewCycle || false,
+      })),
+    ].sort((a, b) => a.date - b.date);
+    if (allTransactions.length === 0) {
       return {
         success: true,
-        message: "No transactions found",
+        message: "No turnover requirements",
       };
     }
-    if (requirementType === "turnover" && turnoverRequirement > 0) {
-      try {
-        let transactionDate;
-        if (isBonusLatest) {
-          transactionDate = moment(latestBonus.createdAt).format(
-            "YYYY-MM-DD HH:mm:ss"
+    let startIndex = 0;
+    for (let i = allTransactions.length - 1; i >= 0; i--) {
+      if (allTransactions[i].isNewCycle === true) {
+        startIndex = i;
+        break;
+      }
+    }
+    const validTransactions = allTransactions.slice(startIndex);
+    const startDate = validTransactions[0].date;
+    let totalTurnoverRequired = 0;
+    let hasWinoverRequirement = false;
+    let winoverDetails = null;
+    for (let i = 0; i < validTransactions.length; i++) {
+      const tx = validTransactions[i];
+      if (tx.type === "deposit") {
+        const deposit = tx.data;
+        const relatedBonus = bonusesAfterWithdraw.find(
+          (b) =>
+            b.depositId && b.depositId.toString() === deposit._id.toString()
+        );
+        if (relatedBonus) {
+          const promotionData = await promotion.findById(
+            relatedBonus.promotionId
           );
-        } else if (isDepositLatest) {
-          transactionDate = moment(latestDeposit.createdAt).format(
-            "YYYY-MM-DD HH:mm:ss"
-          );
+          if (!promotionData) {
+            const totalAmount =
+              parseFloat(deposit.amount) + parseFloat(relatedBonus.amount);
+            totalTurnoverRequired += totalAmount * DEFAULT_TURNOVER_MULTIPLIER;
+          } else {
+            const withdrawType = promotionData.withdrawtype || "turnover";
+            if (withdrawType === "winover") {
+              hasWinoverRequirement = true;
+              const multiplier =
+                promotionData.winloserequirement || DEFAULT_WINOVER_MULTIPLIER;
+              const totalAmount =
+                parseFloat(deposit.amount) + parseFloat(relatedBonus.amount);
+              const winoverRequirement = totalAmount * multiplier;
+              winoverDetails = {
+                requiredAmount: winoverRequirement,
+                depositAmount: deposit.amount,
+                bonusAmount: relatedBonus.amount,
+                multiplier: multiplier,
+              };
+            } else {
+              const multiplier =
+                promotionData.turnoverrequiremnt || DEFAULT_TURNOVER_MULTIPLIER;
+              const totalAmount =
+                parseFloat(deposit.amount) + parseFloat(relatedBonus.amount);
+              totalTurnoverRequired += totalAmount * multiplier;
+            }
+          }
+        } else {
+          totalTurnoverRequired +=
+            parseFloat(deposit.amount) * DEFAULT_TURNOVER_MULTIPLIER;
         }
-        const startDate = transactionDate;
+      } else if (tx.type === "bonus") {
+        const bonus = tx.data;
+        if (bonus.depositId) {
+          continue;
+        }
+        const promotionData = await promotion.findById(bonus.promotionId);
+        if (!promotionData) {
+          totalTurnoverRequired +=
+            parseFloat(bonus.amount) * DEFAULT_TURNOVER_MULTIPLIER;
+        } else {
+          const withdrawType = promotionData.withdrawtype || "turnover";
+          if (withdrawType === "winover") {
+            hasWinoverRequirement = true;
+            const multiplier =
+              promotionData.winloserequirement || DEFAULT_WINOVER_MULTIPLIER;
+            const winoverRequirement = parseFloat(bonus.amount) * multiplier;
+            winoverDetails = {
+              requiredAmount: winoverRequirement,
+              bonusAmount: bonus.amount,
+              multiplier: multiplier,
+            };
+          } else {
+            const multiplier =
+              promotionData.turnoverrequiremnt || DEFAULT_TURNOVER_MULTIPLIER;
+            totalTurnoverRequired += parseFloat(bonus.amount) * multiplier;
+          }
+        }
+      }
+    }
+
+    if (hasWinoverRequirement && winoverDetails) {
+      if (user.wallet >= winoverDetails.requiredAmount) {
+        return {
+          success: true,
+          message: "Winover requirement met",
+        };
+      } else {
+        return {
+          success: false,
+          message: "Winover requirement not met",
+          requiredAmount: winoverDetails.requiredAmount,
+          currentBalance: user.wallet,
+          remainingAmount: winoverDetails.requiredAmount - user.wallet,
+        };
+      }
+    }
+
+    if (totalTurnoverRequired > 0) {
+      try {
         const response = await axios.get(
           `${process.env.BASE_URL}api/all/${userId}/dailygamedata`,
           {
-            params: { startDate },
+            params: {
+              startDate: moment(startDate).format("YYYY-MM-DD HH:mm:ss"),
+            },
           }
         );
         const data = response.data;
@@ -268,7 +501,7 @@ const checkTurnoverRequirements = async (userId) => {
           };
         }
         const userTotalTurnover = data.summary.totalTurnover || 0;
-        if (userTotalTurnover >= turnoverRequirement) {
+        if (userTotalTurnover >= totalTurnoverRequired) {
           return {
             success: true,
             message: "Turnover requirement met",
@@ -277,9 +510,9 @@ const checkTurnoverRequirements = async (userId) => {
           return {
             success: false,
             message: "Turnover requirement not met",
-            requiredTurnover: turnoverRequirement,
+            requiredTurnover: totalTurnoverRequired,
             currentTurnover: userTotalTurnover,
-            remainingTurnover: turnoverRequirement - userTotalTurnover,
+            remainingTurnover: totalTurnoverRequired - userTotalTurnover,
           };
         }
       } catch (error) {
@@ -1096,5 +1329,45 @@ router.get("/api/withdrawlogs", async (req, res) => {
     });
   }
 });
+
+// Admin Reset Turnover
+router.post(
+  "/admin/api/user/:userId/clear-turnover",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: {
+            en: "User not found",
+            zh: "找不到用户",
+          },
+        });
+      }
+      user.turnoverResetAt = new Date();
+      await user.save();
+      res.status(200).json({
+        success: true,
+        message: {
+          en: "Turnover requirements cleared successfully",
+          zh: "流水要求清零成功",
+        },
+        resetAt: user.turnoverResetAt,
+      });
+    } catch (error) {
+      console.error("Error clearing turnover:", error);
+      res.status(500).json({
+        success: false,
+        message: {
+          en: "Failed to clear turnover requirements",
+          zh: "清零流水要求失败",
+        },
+      });
+    }
+  }
+);
 
 module.exports = router;

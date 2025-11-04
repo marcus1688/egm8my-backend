@@ -14,6 +14,10 @@ const bonusschema = new mongoose.Schema(
     fullname: {
       type: String,
     },
+    isNewCycle: {
+      type: Boolean,
+      default: false,
+    },
     walletType: {
       type: String,
       default: "Main",

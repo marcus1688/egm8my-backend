@@ -350,6 +350,7 @@ router.post(
         promotionnameEN: promotion.maintitleEN,
         promotionId: promotion._id,
         processtime: "00:00:00",
+        isNewCycle: user.wallet <= 5,
       });
       await NewBonusTransaction.save();
 
@@ -558,6 +559,7 @@ async function calculateWinLoseRebate(
               promotionnameEN: promotion.maintitleEN,
               promotionId: promotion._id,
               processtime: "00:00:00",
+              isNewCycle: user.wallet <= 5,
             });
             await NewBonusTransaction.save();
 
