@@ -881,26 +881,32 @@ if (process.env.NODE_ENV !== "development") {
   cron.schedule("*/15 * * * *", async () => {
     try {
       const now = new Date();
+
+      // Clean up both BNG and YGR tokens in one update
       const result = await User.updateMany(
-        { "bngGameTokens.expiresAt": { $lt: now } },
+        {
+          $or: [
+            { "bngGameTokens.expiresAt": { $lt: now } },
+            { "ygrGameTokens.expiresAt": { $lt: now } },
+          ],
+        },
         {
           $pull: {
-            bngGameTokens: {
-              expiresAt: { $lt: now },
-            },
+            bngGameTokens: { expiresAt: { $lt: now } },
+            ygrGameTokens: { expiresAt: { $lt: now } },
           },
         }
       );
 
       if (result.modifiedCount > 0) {
         console.log(
-          `[BNG Token Cleanup] Removed expired tokens from ${
+          `[Token Cleanup] Removed expired BNG and YGR tokens from ${
             result.modifiedCount
           } users at ${now.toISOString()}`
         );
       }
     } catch (error) {
-      console.error("[BNG Token Cleanup] Error:", error);
+      console.error("[Token Cleanup] Error:", error);
     }
   });
 }
