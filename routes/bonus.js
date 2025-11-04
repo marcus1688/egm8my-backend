@@ -160,7 +160,7 @@ router.post(
       }
 
       const totalWalletAmount = Number(user.wallet || 0) + totalGameBalance;
-      const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+      const hasSportPendingMatch = await checkSportPendingMatch(user.gameId);
       const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
       const NewBonusTransaction = new Bonus({
         transactionId: transactionId,
@@ -340,7 +340,7 @@ router.post(
       }
 
       const totalWalletAmount = Number(user.wallet || 0) + totalGameBalance;
-      const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+      const hasSportPendingMatch = await checkSportPendingMatch(user.gameId);
       const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
       const NewBonusTransaction = new Bonus({
         transactionId: transactionId,
@@ -508,7 +508,7 @@ router.post("/admin/api/bonus", authenticateAdminToken, async (req, res) => {
     }
 
     const transactionId = uuidv4();
-    const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+    const hasSportPendingMatch = await checkSportPendingMatch(user.gameId);
     const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
     const NewBonusTransaction = new Bonus({
       transactionId: transactionId,

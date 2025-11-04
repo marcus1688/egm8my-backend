@@ -168,7 +168,7 @@ router.post("/api/luckydraw9grid/spin", authenticateToken, async (req, res) => {
     const selectedPrize = selectPrizeByRate();
     const newWalletBalance = user.wallet + selectedPrize.value;
     const transactionId = uuidv4();
-    const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+    const hasSportPendingMatch = await checkSportPendingMatch(user.gameId);
     const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
     const bonusTransaction = new Bonus({
       transactionId: transactionId,

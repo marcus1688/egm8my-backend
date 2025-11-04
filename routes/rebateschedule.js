@@ -335,7 +335,7 @@ router.post(
         .tz("Asia/Kuala_Lumpur")
         .subtract(1, "day")
         .format("DD-MM-YYYY");
-      const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+      const hasSportPendingMatch = await checkSportPendingMatch(user.gameId);
       const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
       const NewBonusTransaction = new Bonus({
         transactionId: transactionId,
@@ -546,7 +546,9 @@ async function calculateWinLoseRebate(
             user.wallet += stats.totalRebate;
             await user.save();
             const userTransactionId = uuidv4();
-            const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+            const hasSportPendingMatch = await checkSportPendingMatch(
+              user.gameId
+            );
             const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
             const NewBonusTransaction = new Bonus({
               transactionId: userTransactionId,
