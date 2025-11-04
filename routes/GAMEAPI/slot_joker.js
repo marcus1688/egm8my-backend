@@ -916,7 +916,8 @@ router.post("/api/joker/settle-bet", async (req, res) => {
     if (
       !appid ||
       !hash ||
-      !amount ||
+      amount === null ||
+      amount === undefined ||
       !username ||
       !roundid ||
       appid !== jokerAppID
@@ -1160,7 +1161,8 @@ router.post("/api/joker/bonus-win", async (req, res) => {
     if (
       !appid ||
       !hash ||
-      !amount ||
+      amount === null ||
+      amount === undefined ||
       !username ||
       !roundid ||
       appid !== jokerAppID
@@ -1272,7 +1274,8 @@ router.post("/api/joker/jackpot-win", async (req, res) => {
     if (
       !appid ||
       !hash ||
-      !amount ||
+      amount === null ||
+      amount === undefined ||
       !username ||
       !roundid ||
       appid !== jokerAppID
@@ -1383,7 +1386,14 @@ router.post("/api/joker/transaction", async (req, res) => {
       endbalance,
     } = req.body;
 
-    if (!appid || !hash || !amount || !username || !roundid) {
+    if (
+      !appid ||
+      !hash ||
+      amount === null ||
+      amount === undefined ||
+      !username ||
+      !roundid
+    ) {
       return res.status(200).json({
         Username: null,
         Balance: 0.0,
