@@ -473,6 +473,7 @@ router.post("/api/sagaming/PlayerWin", async (req, res) => {
           const username = urlParams.get("username");
           const currency = urlParams.get("currency");
           const amount = urlParams.get("amount");
+          const rolling = urlParams.get("rolling");
           const txnid = urlParams.get("txnid");
           const payoutdetails = urlParams.get("payoutdetails");
 
@@ -552,6 +553,8 @@ router.post("/api/sagaming/PlayerWin", async (req, res) => {
             }
             // Only the first betId (index 0) gets the amount, rest get 0
             const settleAmount = index === 0 ? roundToTwoDecimals(amount) : 0;
+            const validbetamount =
+              index === 0 ? roundToTwoDecimals(rolling) : 0;
 
             bulkOps.push({
               updateOne: {
@@ -561,6 +564,7 @@ router.post("/api/sagaming/PlayerWin", async (req, res) => {
                     settle: true,
                     settleId: txnid,
                     settleamount: settleAmount,
+                    betamount: roundToTwoDecimals(validbetamount),
                   },
                 },
               },
@@ -626,17 +630,19 @@ router.post("/api/sagaming/PlayerLost", async (req, res) => {
           if (!decryptedData) {
             return res.status(200).set("Content-Type", "application/xml")
               .send(`<?xml version="1.0" encoding="utf-8"?>
-          <RequestResponse>
-              <error>1006</error>
-          </RequestResponse>`);
+            <RequestResponse>
+                <error>1006</error>
+            </RequestResponse>`);
           }
 
           // Step 3: Parse the decrypted URL parameters
           const urlParams = new URLSearchParams(decryptedData);
           const username = urlParams.get("username");
           const currency = urlParams.get("currency");
+          const rolling = urlParams.get("rolling");
           const txnid = urlParams.get("txnid");
           const payoutdetails = urlParams.get("payoutdetails");
+
           // Parse payoutdetails JSON to extract txnid from betlist
           let betTxnIds = [];
 
@@ -678,59 +684,79 @@ router.post("/api/sagaming/PlayerLost", async (req, res) => {
           if (!currentUser) {
             return res.status(200).set("Content-Type", "application/xml")
               .send(`<?xml version="1.0" encoding="utf-8"?>
-        <RequestResponse>
-            <error>1000</error>
-        </RequestResponse>`);
+          <RequestResponse>
+              <error>1000</error>
+          </RequestResponse>`);
           }
 
           if (!existingBets || existingBets.length === 0) {
             return res.status(200).set("Content-Type", "application/xml")
               .send(`<?xml version="1.0" encoding="utf-8"?>
-    <RequestResponse>
-    <username>${username}</username>
-    <currency>${currency}</currency>
-    <amount>${roundToTwoDecimals(currentUser.wallet)}</amount>
-    <error>1005</error>
-    </RequestResponse>`);
+      <RequestResponse>
+      <username>${username}</username>
+      <currency>${currency}</currency>
+      <amount>${roundToTwoDecimals(currentUser.wallet)}</amount>
+      <error>1005</error>
+      </RequestResponse>`);
           }
 
           if (existingResult) {
             return res.status(200).set("Content-Type", "application/xml")
               .send(`<?xml version="1.0" encoding="utf-8"?>
-        <RequestResponse>
-        <username>${username}</username>
-        <currency>${currency}</currency>
-        <amount>${roundToTwoDecimals(currentUser.wallet)}</amount>
-        <error>1005</error>
-        </RequestResponse>`);
+          <RequestResponse>
+          <username>${username}</username>
+          <currency>${currency}</currency>
+          <amount>${roundToTwoDecimals(currentUser.wallet)}</amount>
+          <error>1005</error>
+          </RequestResponse>`);
           }
 
-          const updateResult = await LiveSaGamingModal.updateMany(
-            { betId: { $in: betTxnIds } },
-            {
-              $set: {
-                settle: true,
-                settleId: txnid,
-                settleamount: 0,
-              },
+          // Build bulk operations with rolling amount logic
+          const bulkOps = [];
+          const processedBetIds = new Set();
+
+          betTxnIds.forEach((betTxnId, index) => {
+            if (processedBetIds.has(betTxnId)) {
+              return;
             }
-          );
+            // Only the first betId (index 0) gets the rolling amount, rest get 0
+            const validbetamount =
+              index === 0 ? roundToTwoDecimals(rolling) : 0;
+
+            bulkOps.push({
+              updateOne: {
+                filter: { betId: betTxnId },
+                update: {
+                  $set: {
+                    settle: true,
+                    settleId: txnid,
+                    settleamount: 0,
+                    betamount: validbetamount,
+                  },
+                },
+              },
+            });
+            processedBetIds.add(betTxnId);
+          });
+
+          // Execute bulk update
+          await LiveSaGamingModal.bulkWrite(bulkOps);
 
           return res.status(200).set("Content-Type", "application/xml")
             .send(`<?xml version="1.0" encoding="utf-8"?>
-        <RequestResponse>
-        <username>${username}</username>
-        <currency>${currency}</currency>
-        <amount>${roundToTwoDecimals(currentUser.wallet)}</amount>
-        <error>0</error>
-        </RequestResponse>`);
+          <RequestResponse>
+          <username>${username}</username>
+          <currency>${currency}</currency>
+          <amount>${roundToTwoDecimals(currentUser.wallet)}</amount>
+          <error>0</error>
+          </RequestResponse>`);
         } catch (parseError) {
           console.log("Parse error:", parseError);
           return res.status(200).set("Content-Type", "application/xml")
             .send(`<?xml version="1.0" encoding="utf-8"?>
-          <RequestResponse>
-              <error>1005</error>
-          </RequestResponse>`);
+            <RequestResponse>
+                <error>1005</error>
+            </RequestResponse>`);
         }
       });
 
@@ -740,9 +766,9 @@ router.post("/api/sagaming/PlayerLost", async (req, res) => {
     console.log("SA GAMING Error:", error.message);
     return res.status(200).set("Content-Type", "application/xml")
       .send(`<?xml version="1.0" encoding="utf-8"?>
-          <RequestResponse>
-              <error>9999</error>
-          </RequestResponse>`);
+            <RequestResponse>
+                <error>9999</error>
+            </RequestResponse>`);
   }
 });
 
