@@ -58,7 +58,7 @@ router.get("/api/all/dailygamedata", authenticateToken, async (req, res) => {
   const startTime = Date.now();
   try {
     const { startDate } = req.query;
-
+    console.log(req.query);
     const endDate = moment().format("YYYY-MM-DD HH:mm:ss");
     if (!startDate) {
       return res.status(400).json({
