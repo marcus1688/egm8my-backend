@@ -768,7 +768,6 @@ router.post(
         });
       }
 
-      console.log("succes");
       return res.status(200).json({
         data: {
           gameId: gameCode,
@@ -838,7 +837,6 @@ router.get("/api/yesgetrich/token/getConnectTokenAmount", async (req, res) => {
         },
       });
     }
-    console.log("success get token");
     return res.status(200).json({
       data: {
         currency: "MYR",
@@ -1103,7 +1101,7 @@ router.post("/api/yesgetrich/transaction/addGameResult", async (req, res) => {
 router.post("/api/yesgetrich/transaction/rollOut", async (req, res) => {
   try {
     const { connectToken, transID, roundID, amount, takeAll } = req.body;
-
+    console.log("roll out", req.body);
     if (
       !connectToken ||
       !transID ||
@@ -1223,7 +1221,7 @@ router.post("/api/yesgetrich/transaction/rollOut", async (req, res) => {
       });
     }
 
-    await SlotEpicWinModal.create({
+    await SlotYGRModal.create({
       betId: roundID,
       tranId: transID,
       fish: true,
@@ -1276,7 +1274,7 @@ router.post("/api/yesgetrich/transaction/rollIn", async (req, res) => {
       payoutAmount,
       winLoseAmount,
     } = req.body;
-
+    console.log("roll in", req.body);
     if (
       !connectToken ||
       !transID ||
