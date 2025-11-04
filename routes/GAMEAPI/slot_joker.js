@@ -773,7 +773,7 @@ router.post("/api/joker/bet", async (req, res) => {
   try {
     const { appid, hash, id, amount, username, timestamp, gamecode, roundid } =
       req.body;
-
+    console.log(req.body, "bet");
     if (
       !appid ||
       !hash ||
