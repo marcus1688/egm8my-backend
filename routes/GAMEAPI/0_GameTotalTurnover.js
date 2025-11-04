@@ -287,9 +287,7 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
             $sum: {
               $subtract: [
                 { $ifNull: ["$settleamount", 0] },
-                {
-                  $ifNull: [{ $ifNull: ["$validbetamount", "$betamount"] }, 0],
-                },
+                { $ifNull: ["$betamount", 0] },
               ],
             },
           },
