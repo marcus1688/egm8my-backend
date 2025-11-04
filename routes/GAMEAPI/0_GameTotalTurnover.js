@@ -57,9 +57,10 @@ const getGameDataSummary = async (
   }
 };
 
-router.get("/api/all/dailygamedata", authenticateToken, async (req, res) => {
+router.get("/api/all/:userId/dailygamedata", async (req, res) => {
   const startTime = Date.now();
   try {
+    const { userId } = req.params;
     const { startDate } = req.query;
     const endDate = moment().format("YYYY-MM-DD HH:mm:ss");
     if (!startDate) {
@@ -73,7 +74,6 @@ router.get("/api/all/dailygamedata", authenticateToken, async (req, res) => {
       });
     }
 
-    const userId = req.user.userId;
     const user = await User.findById(userId);
     if (!user) {
       return res.status(200).json({
