@@ -307,6 +307,7 @@ const userSchema = new mongoose.Schema(
       tfgaming: { type: gameLockSchema, default: () => ({}) },
       sagaming: { type: gameLockSchema, default: () => ({}) },
       yeebet: { type: gameLockSchema, default: () => ({}) },
+      wecasino: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },
@@ -393,6 +394,9 @@ const userSchema = new mongoose.Schema(
       type: String,
     },
     tfGamingGameToken: {
+      type: String,
+    },
+    weCasinoGameToken: {
       type: String,
     },
   },

@@ -145,6 +145,10 @@ router.post("/admin/api/getAllTurnoverForRebate", async (req, res) => {
         url: `${PUBLIC_APIURL}api/yeebet/getturnoverforrebate`,
         name: "YEEBET",
       },
+      {
+        url: `${PUBLIC_APIURL}api/wecasino/getturnoverforrebate`,
+        name: "WE CASINO",
+      },
     ];
 
     const routePromises = routes.map((route) =>

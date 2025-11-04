@@ -86,6 +86,7 @@ const esportTFGamingRouter = require("./routes/GAMEAPI/esport_tfgaming");
 
 const liveSaGamingRouter = require("./routes/GAMEAPI/live_sagaming");
 const liveYeebetRouter = require("./routes/GAMEAPI/live_yeebet");
+const liveWECasinoRouter = require("./routes/GAMEAPI/live_wecasino");
 
 const importGameListRouter = require("./routes/GAMEAPI/0_ImportGameList");
 const gameStatusRouter = require("./routes/GAMEAPI/0_GameStatus");
@@ -870,6 +871,7 @@ app.use(esportTFGamingRouter);
 
 app.use(liveSaGamingRouter);
 app.use(liveYeebetRouter);
+app.use(liveWECasinoRouter);
 
 app.use(importGameListRouter);
 app.use(gameStatusRouter);

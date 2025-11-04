@@ -49,6 +49,7 @@ const SlotFunkyModal = require("../models/slot_funky.model");
 const EsportTfGamingModal = require("../models/esport_tfgaming.model");
 const LiveSaGamingModal = require("../models/live_sagaming.model");
 const LiveYeebetModal = require("../models/live_yeebet.model");
+const LiveWeCasinoModal = require("../models/live_wecasino.model");
 
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
@@ -5136,6 +5137,12 @@ router.get(
 
           // Yeebet
           getAllUsersTurnover(LiveYeebetModal, {
+            settle: true,
+            cancel: { $ne: true },
+          }),
+
+          // WE Casino
+          getAllUsersTurnover(LiveWeCasinoModal, {
             settle: true,
             cancel: { $ne: true },
           }),
