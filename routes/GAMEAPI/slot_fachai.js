@@ -476,6 +476,8 @@ router.post("/api/fachai/getgamelist", async (req, res) => {
 
 router.post("/api/fachai/launchGame", authenticateToken, async (req, res) => {
   try {
+    const { gameLang, gameCode, gameType } = req.body;
+
     const userId = req.user.userId;
     const user = await User.findById(userId);
 
@@ -492,7 +494,12 @@ router.post("/api/fachai/launchGame", authenticateToken, async (req, res) => {
       });
     }
 
-    if (user.gameLock.fachai.lock) {
+    const isLocked =
+      gameType === "Fishing"
+        ? currentUser.gameLock?.fachaifish?.lock
+        : currentUser.gameLock?.fachaislot?.lock;
+
+    if (isLocked) {
       return res.status(200).json({
         success: false,
         message: {
@@ -509,8 +516,6 @@ router.post("/api/fachai/launchGame", authenticateToken, async (req, res) => {
     clientIp = clientIp.split(",")[0].trim();
 
     // gameLang ===1  or 2
-    const { gameLang, gameCode, gameType } = req.body;
-    console.log("current gameType", gameType);
     let lang = 1;
 
     if (gameLang === "en") {
