@@ -125,7 +125,7 @@ router.post("/api/sagaming/launchGame", authenticateToken, async (req, res) => {
 
     const TokenTime = moment.utc().format("YYYYMMDDHHmmss");
 
-    const TokenQueryString = `method=LoginRequest&Key=${saGamingSecurity}&Time=${TokenTime}&Username=${user.gameId}&CurrencyType=PGK`;
+    const TokenQueryString = `method=LoginRequest&Key=${saGamingSecurity}&Time=${TokenTime}&Username=${user.gameId}&CurrencyType=MYR`;
 
     const loginQ = encodeURIComponent(
       DESEncrypt(TokenQueryString, saGamingEncrypt)
@@ -260,7 +260,7 @@ router.post("/api/sagaming/GetUserBalance", async (req, res) => {
           const username = urlParams.get("username");
           const currency = urlParams.get("currency");
 
-          if (currency !== "PGK") {
+          if (currency !== "MYR") {
             return res.status(200).set("Content-Type", "application/xml")
               .send(`<?xml version="1.0" encoding="utf-8"?>
 <RequestResponse>
@@ -350,7 +350,7 @@ router.post("/api/sagaming/PlaceBet", async (req, res) => {
             LiveSaGamingModal.findOne({ betId: txnid }, { _id: 1 }).lean(),
           ]);
 
-          if (currency !== "PGK") {
+          if (currency !== "MYR") {
             return res.status(200).set("Content-Type", "application/xml")
               .send(`<?xml version="1.0" encoding="utf-8"?>
   <RequestResponse>
@@ -789,7 +789,7 @@ router.post("/api/sagaming/PlaceBetCancel", async (req, res) => {
             ).lean(),
           ]);
 
-          if (currency !== "PGK") {
+          if (currency !== "MYR") {
             return res.status(200).set("Content-Type", "application/xml")
               .send(`<?xml version="1.0" encoding="utf-8"?>
   <RequestResponse>

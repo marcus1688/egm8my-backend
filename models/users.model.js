@@ -300,6 +300,7 @@ const userSchema = new mongoose.Schema(
       microgaming: { type: gameLockSchema, default: () => ({}) },
       funky: { type: gameLockSchema, default: () => ({}) },
       tfgaming: { type: gameLockSchema, default: () => ({}) },
+      sagaming: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },
