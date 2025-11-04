@@ -464,4 +464,55 @@ router.post(
     }
   }
 );
+
+router.post(
+  "/admin/api/tfgaming/seamlessstatus/:userId",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      if (!user.gameLock.hasOwnProperty("tfgaming")) {
+        console.log("Error updating seamless game status:", "TF Gaming");
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Internal Server Error. Please contact IT support for further assistance.",
+            zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
+            ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
+          },
+        });
+      }
+
+      user.gameLock["tfgaming"].lock = !user.gameLock["tfgaming"].lock;
+
+      await user.save();
+
+      return res.status(200).json({
+        success: true,
+        message: {
+          en: `Game lock status for TF Gaming updated successfully.`,
+          zh: `TF Gaming 的游戏锁定状态更新成功。`,
+          ms: `Status kunci permainan untuk TF Gaming berjaya dikemas kini.`,
+        },
+        gameLock: user.gameLock["tfgaming"],
+      });
+    } catch (error) {
+      console.error(
+        "Error updating TF Gaming seamless game status:",
+        error.message
+      );
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "Internal Server Error. Please contact IT support for further assistance.",
+          zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
+          ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
+        },
+      });
+    }
+  }
+);
 module.exports = router;

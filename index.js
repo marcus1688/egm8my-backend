@@ -80,6 +80,10 @@ const slotJokerRouter = require("./routes/GAMEAPI/slot_joker");
 const slotLiveMicroGamingRouter = require("./routes/GAMEAPI/slot_livemicrogaming");
 const slotFunkyRouter = require("./routes/GAMEAPI/slot_funky");
 
+const sportSBOBETRouter = require("./routes/GAMEAPI/sport_sbobet");
+
+const esportTFGamingRouter = require("./routes/GAMEAPI/esport_tfgaming");
+
 const importGameListRouter = require("./routes/GAMEAPI/0_ImportGameList");
 const gameStatusRouter = require("./routes/GAMEAPI/0_GameStatus");
 const allGameFunctionRouter = require("./routes/GAMEAPI/0_GameFunction");
@@ -857,6 +861,10 @@ app.use(slotJokerRouter);
 app.use(slotLiveMicroGamingRouter);
 app.use(slotFunkyRouter);
 
+app.use(sportSBOBETRouter);
+
+app.use(esportTFGamingRouter);
+
 app.use(importGameListRouter);
 app.use(gameStatusRouter);
 app.use(allGameFunctionRouter);
@@ -873,26 +881,32 @@ if (process.env.NODE_ENV !== "development") {
   cron.schedule("*/15 * * * *", async () => {
     try {
       const now = new Date();
+
+      // Clean up both BNG and YGR tokens in one update
       const result = await User.updateMany(
-        { "bngGameTokens.expiresAt": { $lt: now } },
+        {
+          $or: [
+            { "bngGameTokens.expiresAt": { $lt: now } },
+            { "ygrGameTokens.expiresAt": { $lt: now } },
+          ],
+        },
         {
           $pull: {
-            bngGameTokens: {
-              expiresAt: { $lt: now },
-            },
+            bngGameTokens: { expiresAt: { $lt: now } },
+            ygrGameTokens: { expiresAt: { $lt: now } },
           },
         }
       );
 
       if (result.modifiedCount > 0) {
         console.log(
-          `[BNG Token Cleanup] Removed expired tokens from ${
+          `[Token Cleanup] Removed expired BNG and YGR tokens from ${
             result.modifiedCount
           } users at ${now.toISOString()}`
         );
       }
     } catch (error) {
-      console.error("[BNG Token Cleanup] Error:", error);
+      console.error("[Token Cleanup] Error:", error);
     }
   });
 }
