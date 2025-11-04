@@ -28,6 +28,7 @@ const GameJILIGameModal = require("../../models/slot_jiliDatabase.model");
 const GameFastSpinGameModal = require("../../models/slot_fastspinDatabase.model");
 const GameYGRGameModal = require("../../models/slot_yesgetrichDatabase.model");
 const GameJokerGameModal = require("../../models/slot_jokerDatabase.model");
+const GameMicroGamingGameModal = require("../../models/slot_livemicrogamingDatabase.model");
 
 const { S3Client, ListObjectsV2Command } = require("@aws-sdk/client-s3");
 const multer = require("multer");
@@ -74,7 +75,10 @@ function parseRTP(rtpRaw) {
 
 router.post("/api/playtech/import-games", async (req, res) => {
   try {
-    const importFilePath = path.join(__dirname, "../../public/joker.json");
+    const importFilePath = path.join(
+      __dirname,
+      "../../public/microgaming.json"
+    );
     console.log(importFilePath);
 
     // Check if file exists
@@ -100,9 +104,9 @@ router.post("/api/playtech/import-games", async (req, res) => {
 
     console.log("pass");
     console.log(`Found ${gameList.length} games to import`);
-    await GameJokerGameModal.deleteMany();
+    await GameMicroGamingGameModal.deleteMany();
     // Insert into MongoDB
-    await GameJokerGameModal.insertMany(gameList);
+    await GameMicroGamingGameModal.insertMany(gameList);
 
     return res.status(200).json({
       success: true,

@@ -43,6 +43,7 @@ const SlotLivePlayAceModal = require("../models/slot_liveplayace.model");
 const SlotJiliModal = require("../models/slot_jili.model");
 const SlotYGRModal = require("../models/slot_yesgetrich.model");
 const SlotJokerModal = require("../models/slot_joker.model");
+const SlotLiveMicroGamingModal = require("../models/slot_livemicrogaming.model");
 
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
@@ -5093,6 +5094,11 @@ router.get(
 
           // Joker
           getAllUsersTurnover(SlotJokerModal, {
+            cancel: { $ne: true },
+            settle: true,
+          }),
+
+          getAllUsersTurnover(SlotLiveMicroGamingModal, {
             cancel: { $ne: true },
             settle: true,
           }),

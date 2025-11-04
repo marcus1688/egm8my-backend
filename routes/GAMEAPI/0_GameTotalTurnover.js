@@ -17,6 +17,7 @@ const SlotLivePlayAceModal = require("../../models/slot_liveplayace.model");
 const SlotJiliModal = require("../../models/slot_jili.model");
 const SlotYGRModal = require("../../models/slot_yesgetrich.model");
 const SlotJokerModal = require("../../models/slot_joker.model");
+const SlotLiveMicroGamingModal = require("../../models/slot_livemicrogaming.model");
 
 const { v4: uuidv4 } = require("uuid");
 const querystring = require("querystring");
@@ -213,6 +214,24 @@ router.get("/api/all/dailygamedata", authenticateToken, async (req, res) => {
           },
         },
       },
+      microgaming: {
+        $match: {
+          cancel: { $ne: true },
+          settle: true,
+        },
+        $group: {
+          _id: null,
+          turnover: { $sum: { $ifNull: ["$betamount", 0] } },
+          winLoss: {
+            $sum: {
+              $subtract: [
+                { $ifNull: ["$settleamount", 0] },
+                { $ifNull: ["$betamount", 0] },
+              ],
+            },
+          },
+        },
+      },
     };
 
     // Create an array of promises for all aggregations to match player-report
@@ -261,6 +280,13 @@ router.get("/api/all/dailygamedata", authenticateToken, async (req, res) => {
         end,
         aggregations.joker
       ),
+      getGameDataSummary(
+        SlotLiveMicroGamingModal,
+        user.gameId,
+        start,
+        end,
+        aggregations.microgaming
+      ),
     ]);
 
     // Create a result map from the resolved promises
@@ -290,6 +316,10 @@ router.get("/api/all/dailygamedata", authenticateToken, async (req, res) => {
       joker:
         promiseResults[5].status === "fulfilled"
           ? promiseResults[5].value
+          : { turnover: 0, winLoss: 0 },
+      microgaming:
+        promiseResults[6].status === "fulfilled"
+          ? promiseResults[6].value
           : { turnover: 0, winLoss: 0 },
     };
     // Calculate total turnover and win loss
@@ -425,15 +455,24 @@ router.post("/api/games/active-games", authenticateToken, async (req, res) => {
         },
         "YGR"
       ),
+      // queryModel(
+      //   SlotJokerModal,
+      //   {
+      //     $or: [{ settle: false }, { settle: { $exists: false } }],
+      //     withdraw: { $ne: true },
+      //     deposit: { $ne: true },
+      //     cancel: { $ne: true },
+      //   },
+      //   "Joker"
+      // ),
       queryModel(
-        SlotJokerModal,
+        SlotLiveMicroGamingModal,
         {
-          $or: [{ settle: false }, { settle: { $exists: false } }],
-          withdraw: { $ne: true },
-          deposit: { $ne: true },
+          $or: [{ completed: false }, { completed: { $exists: false } }],
           cancel: { $ne: true },
+          gameType: "SLOT",
         },
-        "Joker"
+        "Micro Gaming"
       ),
     ]);
 
@@ -563,15 +602,24 @@ router.post(
           },
           "YGR"
         ),
+        // queryModel(
+        //   SlotJokerModal,
+        //   {
+        //     $or: [{ settle: false }, { settle: { $exists: false } }],
+        //     withdraw: { $ne: true },
+        //     deposit: { $ne: true },
+        //     cancel: { $ne: true },
+        //   },
+        //   "Joker"
+        // ),
         queryModel(
-          SlotJokerModal,
+          SlotLiveMicroGamingModal,
           {
-            $or: [{ settle: false }, { settle: { $exists: false } }],
-            withdraw: { $ne: true },
-            deposit: { $ne: true },
+            $or: [{ completed: false }, { completed: { $exists: false } }],
             cancel: { $ne: true },
+            gameType: "SLOT",
           },
-          "Joker"
+          "Micro Gaming"
         ),
       ]);
 
@@ -666,6 +714,8 @@ router.post(
         Jili: SlotJiliModal,
         YGR: SlotYGRModal,
         Joker: SlotJokerModal,
+        "Micro Gaming Slot": SlotLiveMicroGamingModal,
+        "Micro Gaming Live": SlotLiveMicroGamingModal,
       };
 
       const Model = providerModels[gameName];
