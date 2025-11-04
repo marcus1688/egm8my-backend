@@ -13,6 +13,9 @@ const liveWeCasinoschema = new mongoose.Schema(
     betamount: {
       type: Number,
     },
+    validbetamount: {
+      type: Number,
+    },
     settleamount: {
       type: Number,
     },
