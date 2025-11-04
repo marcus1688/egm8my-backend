@@ -509,8 +509,8 @@ router.post("/api/fachai/launchGame", authenticateToken, async (req, res) => {
     clientIp = clientIp.split(",")[0].trim();
 
     // gameLang ===1  or 2
-    const { gameLang, gameCode } = req.body;
-
+    const { gameLang, gameCode, gameType } = req.body;
+    console.log("current gameType", gameType);
     let lang = 1;
 
     if (gameLang === "en") {
@@ -700,14 +700,14 @@ router.post("/api/fachai/betninfo", async (req, res) => {
       NetWin,
       RequireAmt,
     } = originalPayload;
-    console.log(GameType, "fachai");
     const [currentUser, existingTransaction] = await Promise.all([
       User.findOne(
         { gameId: MemberAccount },
         {
           username: 1,
           wallet: 1,
-          "gameLock.fachai.lock": 1,
+          "gameLock.fachaifish.lock": 1,
+          "gameLock.fachaislot.lock": 1,
           _id: 1,
         }
       ).lean(),
@@ -722,7 +722,12 @@ router.post("/api/fachai/betninfo", async (req, res) => {
       });
     }
 
-    if (currentUser.gameLock?.fachai?.lock) {
+    const isLocked =
+      GameType === 1
+        ? currentUser.gameLock?.fachaifish?.lock
+        : currentUser.gameLock?.fachaislot?.lock;
+
+    if (isLocked) {
       return res.status(200).json({
         Result: 407,
         ErrorText: "Account locked",
@@ -925,7 +930,12 @@ router.post("/api/fachai/bet", async (req, res) => {
     const [currentUser, existingTransaction] = await Promise.all([
       User.findOne(
         { gameId: MemberAccount },
-        { username: 1, wallet: 1, "gameLock.fachai.lock": 1 }
+        {
+          username: 1,
+          wallet: 1,
+          "gameLock.fachaifish.lock": 1,
+          "gameLock.fachaislot.lock": 1,
+        }
       ).lean(),
       SlotFachaiModal.findOne({ betId: BetID }, { _id: 1 }).lean(),
     ]);
@@ -938,7 +948,12 @@ router.post("/api/fachai/bet", async (req, res) => {
       });
     }
 
-    if (currentUser.gameLock?.fachai?.lock) {
+    const isLocked =
+      GameType === 1
+        ? currentUser.gameLock?.fachaifish?.lock
+        : currentUser.gameLock?.fachaislot?.lock;
+
+    if (isLocked) {
       return res.status(200).json({
         Result: 407,
         ErrorText: "Account locked",

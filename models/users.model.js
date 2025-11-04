@@ -290,6 +290,8 @@ const userSchema = new mongoose.Schema(
     gameLock: {
       epicwin: { type: gameLockSchema, default: () => ({}) },
       fachai: { type: gameLockSchema, default: () => ({}) },
+      fachaislot: { type: gameLockSchema, default: () => ({}) },
+      fachaifish: { type: gameLockSchema, default: () => ({}) },
       playace: { type: gameLockSchema, default: () => ({}) },
       bng: { type: gameLockSchema, default: () => ({}) },
       dctgame: { type: gameLockSchema, default: () => ({}) },
