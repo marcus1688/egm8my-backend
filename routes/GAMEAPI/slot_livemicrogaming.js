@@ -347,7 +347,7 @@ router.post(
         });
       }
 
-      if (user.gameLock.microgaming.lock) {
+      if (user.gameLock.microgamingslot.lock) {
         return res.status(200).json({
           success: false,
           message: {
@@ -487,7 +487,7 @@ router.post(
         });
       }
 
-      if (user.gameLock.microgaming.lock) {
+      if (user.gameLock.microgaminglive.lock) {
         return res.status(200).json({
           success: false,
           message: {
@@ -738,7 +738,13 @@ router.post("/api/microgaming/updatebalance", async (req, res) => {
         const [currentUserDebit, existingTransactionDebit] = await Promise.all([
           User.findOne(
             { gameId: playerId },
-            { username: 1, wallet: 1, "gameLock.microgaming.lock": 1, _id: 1 }
+            {
+              username: 1,
+              wallet: 1,
+              "gameLock.microgamingslot.lock": 1,
+              "gameLock.microgaminglive.lock": 1,
+              _id: 1,
+            }
           ).lean(),
           SlotLiveMicroGamingModal.findOne(
             { tranId: txnId },
@@ -755,7 +761,12 @@ router.post("/api/microgaming/updatebalance", async (req, res) => {
           });
         }
 
-        if (currentUserDebit.gameLock?.microgaming?.lock) {
+        const isLocked =
+          gameType === "SLOT"
+            ? currentUser.gameLock?.microgamingslot?.lock
+            : currentUser.gameLock?.microgaminglive?.lock;
+
+        if (isLocked) {
           res.set("X-MGP-RESPONSE-TIME", Date.now() - startTime);
           return res.status(403).json({
             extTxnId: extransId,
