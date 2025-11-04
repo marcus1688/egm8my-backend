@@ -607,7 +607,7 @@ router.post("/api/jili/getgamelist", async (req, res) => {
 
 router.post("/api/jili/launchGame", authenticateToken, async (req, res) => {
   try {
-    const { gameLang, gameCode } = req.body;
+    const { gameLang, gameCode, gameType } = req.body;
     const userId = req.user.userId;
     const user = await User.findById(userId);
     if (!user) {
@@ -623,7 +623,12 @@ router.post("/api/jili/launchGame", authenticateToken, async (req, res) => {
       });
     }
 
-    if (user.gameLock.jili.lock) {
+    const isLocked =
+      gameType === "Fishing"
+        ? user.gameLock?.jilifish?.lock
+        : user.gameLock?.jilislot?.lock;
+
+    if (isLocked) {
       return res.status(200).json({
         success: false,
         message: {
@@ -811,7 +816,8 @@ router.post("/api/jili/bet", async (req, res) => {
         { gameId: username },
         {
           jiliGameToken: 1,
-          "gameLock.jili.lock": 1,
+          "gameLock.jilifish.lock": 1,
+          "gameLock.jilislot.lock": 1,
           wallet: 1,
           _id: 1,
         }
@@ -825,7 +831,13 @@ router.post("/api/jili/bet", async (req, res) => {
         message: "Token expired",
       });
     }
-    if (currentUser.gameLock?.jili?.lock) {
+
+    const isLocked =
+      gameCategory === 5
+        ? currentUser.gameLock?.jilifish?.lock
+        : currentUser.gameLock?.jilislot?.lock;
+
+    if (isLocked) {
       return res.status(200).json({
         errorCode: 5,
         message: "Play locked",
@@ -1043,7 +1055,12 @@ router.post("/api/jili/sessionBet", async (req, res) => {
     const [currentUser, existingTransaction] = await Promise.all([
       User.findOne(
         { gameId: username, jiliGameToken: token },
-        { wallet: 1, gameLock: 1, _id: 1 }
+        {
+          wallet: 1,
+          "gameLock.jilifish.lock": 1,
+          "gameLock.jilislot.lock": 1,
+          _id: 1,
+        }
       ).lean(),
       type === 1 || type === 2
         ? SlotJiliModal.findOne({
@@ -1078,7 +1095,12 @@ router.post("/api/jili/sessionBet", async (req, res) => {
 
     if (preserve === 0 || !preserve) {
       if (type === 1) {
-        if (currentUser.gameLock?.jili?.lock) {
+        const isLocked =
+          gameCategory === 5
+            ? currentUser.gameLock?.jilifish?.lock
+            : currentUser.gameLock?.jilislot?.lock;
+
+        if (isLocked) {
           return res.status(200).json({
             errorCode: 5,
             message: "Play locked",
@@ -1140,7 +1162,12 @@ router.post("/api/jili/sessionBet", async (req, res) => {
       }
     } else {
       if (type === 1) {
-        if (currentUser.gameLock?.jili?.lock) {
+        const isLocked =
+          gameCategory === 5
+            ? currentUser.gameLock?.jilifish?.lock
+            : currentUser.gameLock?.jilislot?.lock;
+
+        if (isLocked) {
           return res.status(200).json({
             errorCode: 5,
             message: "Play locked",
