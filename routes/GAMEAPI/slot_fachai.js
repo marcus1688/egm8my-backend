@@ -700,7 +700,7 @@ router.post("/api/fachai/betninfo", async (req, res) => {
       NetWin,
       RequireAmt,
     } = originalPayload;
-
+    console.log(GameType, "fachai");
     const [currentUser, existingTransaction] = await Promise.all([
       User.findOne(
         { gameId: MemberAccount },
