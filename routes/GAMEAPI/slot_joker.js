@@ -912,7 +912,7 @@ router.post("/api/joker/settle-bet", async (req, res) => {
       description,
       type,
     } = req.body;
-
+    console.log(req.body, "hihi");
     if (
       !appid ||
       !hash ||
