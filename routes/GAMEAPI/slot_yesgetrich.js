@@ -1228,7 +1228,7 @@ router.post("/api/yesgetrich/transaction/rollOut", async (req, res) => {
       bet: true,
       settle: false,
       username: gameId,
-      depositamount: roundToTwoDecimals(amount),
+      depositamount: deductedAmount,
       gametype: "FISH",
       currentConnectToken: connectToken,
     });
