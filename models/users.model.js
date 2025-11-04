@@ -306,6 +306,7 @@ const userSchema = new mongoose.Schema(
       funky: { type: gameLockSchema, default: () => ({}) },
       tfgaming: { type: gameLockSchema, default: () => ({}) },
       sagaming: { type: gameLockSchema, default: () => ({}) },
+      yeebet: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },
