@@ -263,4 +263,52 @@ router.post(
     }
   }
 );
+
+router.post(
+  "/admin/api/yesgetrich/seamlessstatus/:userId",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      if (!user.gameLock.hasOwnProperty("yesgetrich")) {
+        console.log("Error updating seamless game status:", "YGR");
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Internal Server Error. Please contact IT support for further assistance.",
+            zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
+            ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
+          },
+        });
+      }
+
+      user.gameLock["yesgetrich"].lock = !user.gameLock["yesgetrich"].lock;
+
+      await user.save();
+
+      return res.status(200).json({
+        success: true,
+        message: {
+          en: `Game lock status for YGR updated successfully.`,
+          zh: `YGR 的游戏锁定状态更新成功。`,
+          ms: `Status kunci permainan untuk YGR berjaya dikemas kini.`,
+        },
+        gameLock: user.gameLock["yesgetrich"],
+      });
+    } catch (error) {
+      console.error("Error updating YGR seamless game status:", error.message);
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "Internal Server Error. Please contact IT support for further assistance.",
+          zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
+          ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
+        },
+      });
+    }
+  }
+);
 module.exports = router;
