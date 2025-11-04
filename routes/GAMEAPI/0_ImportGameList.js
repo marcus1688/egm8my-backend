@@ -659,7 +659,8 @@ router.post("/admin/api/replace-s3-with-cloudfront", async (req, res) => {
       // GameRich88GameModal,
       // GameDragoonSoftGameModal,
       // GameDragonGamingGameModal,
-      GameYLGamingGameModal,
+      // GameYLGamingGameModal,
+      GameYGRGameModal,
       // GamePegasusGameModal,
     ];
 

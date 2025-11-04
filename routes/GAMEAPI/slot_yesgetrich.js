@@ -701,6 +701,7 @@ router.post(
       const { connectToken } = req.body;
 
       if (!connectToken) {
+        console.log("faield 1");
         return res.status(200).json({
           data: null,
           status: {
@@ -720,6 +721,7 @@ router.post(
       ).lean();
 
       if (!currentUser) {
+        console.log("faield 2");
         return res.status(200).json({
           data: null,
           status: {
@@ -736,6 +738,7 @@ router.post(
       );
 
       if (!validToken) {
+        console.log("faield 3");
         return res.status(200).json({
           data: null,
           status: {
@@ -764,6 +767,8 @@ router.post(
           },
         });
       }
+
+      console.log("succes");
       return res.status(200).json({
         data: {
           gameId: gameCode,
