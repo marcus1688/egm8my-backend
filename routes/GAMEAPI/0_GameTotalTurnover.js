@@ -320,7 +320,11 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
         },
         $group: {
           _id: null,
-          turnover: { $sum: { $ifNull: ["$betamount", 0] } },
+          turnover: {
+            $sum: {
+              $ifNull: [{ $ifNull: ["$validbetamount", "$betamount"] }, 0],
+            },
+          },
           winLoss: {
             $sum: {
               $subtract: [

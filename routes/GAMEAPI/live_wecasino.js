@@ -514,7 +514,7 @@ router.post("/api/wecasino/credit", async (req, res) => {
             $set: {
               settle: true,
               settleamount: amountInDollars,
-              betamount: validBetAmountInDollars,
+              validbetamount: validBetAmountInDollars,
             },
           },
         },
@@ -723,7 +723,7 @@ router.post("/api/wecasino/resettlement", async (req, res) => {
             $set: {
               resettlement: true, // ✅ Mark as resettled
               settleamount: adjustmentAmount, // ✅ Store adjustment amount
-              betamount: parseFloat(validBetAmount || 0) / 100,
+              validbetamount: parseFloat(validBetAmount || 0) / 100,
             },
           },
         },
@@ -838,7 +838,8 @@ router.post("/api/wecasino/getturnoverforrebate", async (req, res) => {
         playerSummary[actualUsername] = { turnover: 0, winloss: 0 };
       }
 
-      playerSummary[actualUsername].turnover += record.betamount || 0;
+      playerSummary[actualUsername].turnover +=
+        record.validbetamount || record.betamount;
 
       playerSummary[actualUsername].winloss +=
         (record.settleamount || 0) - (record.betamount || 0);
@@ -894,7 +895,7 @@ router.get(
       let totalWinLoss = 0;
 
       records.forEach((record) => {
-        totalTurnover += record.betamount || 0;
+        totalTurnover += record.validbetamount || record.betamount;
 
         totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
       });
@@ -1017,8 +1018,7 @@ router.get(
       let totalWinLoss = 0;
 
       records.forEach((record) => {
-        totalTurnover += record.betamount || 0;
-
+        totalTurnover += record.validbetamount || record.betamount;
         totalWinLoss += (record.betamount || 0) - (record.settleamount || 0);
       });
 
