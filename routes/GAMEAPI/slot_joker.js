@@ -549,7 +549,7 @@ router.post("/api/joker/getgamelist", async (req, res) => {
 router.post("/api/joker/launchGame", authenticateToken, async (req, res) => {
   try {
     // zh or en
-    const { gameLang, gameCode } = req.body;
+    const { gameLang, gameCode, gameType } = req.body;
     const userId = req.user.userId;
     const user = await User.findById(userId);
     if (!user) {
@@ -565,7 +565,12 @@ router.post("/api/joker/launchGame", authenticateToken, async (req, res) => {
       });
     }
 
-    if (user.gameLock.joker.lock) {
+    const isLocked =
+      gameType === "Fishing"
+        ? user.gameLock?.jokerfish?.lock
+        : user.gameLock?.jokerslot?.lock;
+
+    if (isLocked) {
       return res.status(200).json({
         success: false,
         message: {
@@ -815,7 +820,7 @@ router.post("/api/joker/bet", async (req, res) => {
     const [user, existingBet] = await Promise.all([
       User.findOne(
         { gameId: username },
-        { wallet: 1, "gameLock.joker.lock": 1 }
+        { wallet: 1, "gameLock.jokerslot.lock": 1 }
       ).lean(),
       SlotJokerModal.findOne(
         {
@@ -835,7 +840,7 @@ router.post("/api/joker/bet", async (req, res) => {
       });
     }
 
-    if (user.gameLock?.joker?.lock) {
+    if (user.gameLock?.jokerslot?.lock) {
       return res.status(200).json({
         Balance: 0.0,
         Message: "Player locked",
@@ -1536,7 +1541,7 @@ router.post("/api/joker/withdraw", async (req, res) => {
     const [user, existingWithdraw] = await Promise.all([
       User.findOne(
         { gameId: username },
-        { wallet: 1, "gameLock.joker.lock": 1 }
+        { wallet: 1, "gameLock.jokerfish.lock": 1 }
       ).lean(),
       SlotJokerModal.findOne({ betId: id, deposit: true }, { _id: 1 }).lean(),
     ]);
@@ -1548,7 +1553,7 @@ router.post("/api/joker/withdraw", async (req, res) => {
       });
     }
 
-    if (user.gameLock?.joker?.lock) {
+    if (user.gameLock?.jokerfish?.lock) {
       return res.status(200).json({
         Balance: 0.0,
         Message: "Player locked",

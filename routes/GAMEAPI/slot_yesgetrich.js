@@ -556,6 +556,8 @@ router.post(
   authenticateToken,
   async (req, res) => {
     try {
+      const { gameLang, gameCode, gameType } = req.body;
+
       const userId = req.user.userId;
       const user = await User.findById(userId);
 
@@ -572,7 +574,12 @@ router.post(
         });
       }
 
-      if (user.gameLock.yesgetrich.lock) {
+      const isLocked =
+        gameType === "Fishing"
+          ? user.gameLock?.yesgetrichfish?.lock
+          : user.gameLock?.yesgetrichslot?.lock;
+
+      if (isLocked) {
         return res.status(200).json({
           success: false,
           message: {
@@ -584,8 +591,6 @@ router.post(
           },
         });
       }
-
-      const { gameLang, gameCode } = req.body;
 
       let lang = "en-US";
 
@@ -990,7 +995,12 @@ router.post("/api/yesgetrich/transaction/addGameResult", async (req, res) => {
     const [currentUser, existingTransaction] = await Promise.all([
       User.findOne(
         { gameId: gameId },
-        { wallet: 1, "gameLock.yesgetrich.lock": 1, ygrGameTokens: 1, _id: 1 }
+        {
+          wallet: 1,
+          "gameLock.yesgetrichslot.lock": 1,
+          ygrGameTokens: 1,
+          _id: 1,
+        }
       ).lean(),
       SlotYGRModal.findOne({ tranId: transID }, { _id: 1 }).lean(),
     ]);
@@ -1011,7 +1021,7 @@ router.post("/api/yesgetrich/transaction/addGameResult", async (req, res) => {
       (t) => t.token === connectToken
     );
 
-    if (currentUser.gameLock?.yesgetrich?.lock || !validToken) {
+    if (currentUser.gameLock?.yesgetrichslot?.lock || !validToken) {
       return res.status(200).json({
         data: null,
         status: {
@@ -1125,7 +1135,7 @@ router.post("/api/yesgetrich/transaction/rollOut", async (req, res) => {
         { gameId: gameId },
         {
           wallet: 1,
-          "gameLock.yesgetrich.lock": 1,
+          "gameLock.yesgetrichfish.lock": 1,
           ygrGameTokens: 1,
           _id: 1,
         }
@@ -1149,7 +1159,7 @@ router.post("/api/yesgetrich/transaction/rollOut", async (req, res) => {
       (t) => t.token === connectToken
     );
 
-    if (currentUser.gameLock?.yesgetrich?.lock || !validToken) {
+    if (currentUser.gameLock?.yesgetrichfish?.lock || !validToken) {
       return res.status(200).json({
         data: null,
         status: {
