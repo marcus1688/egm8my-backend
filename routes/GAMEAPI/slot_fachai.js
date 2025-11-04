@@ -496,8 +496,8 @@ router.post("/api/fachai/launchGame", authenticateToken, async (req, res) => {
 
     const isLocked =
       gameType === "Fishing"
-        ? currentUser.gameLock?.fachaifish?.lock
-        : currentUser.gameLock?.fachaislot?.lock;
+        ? user.gameLock?.fachaifish?.lock
+        : user.gameLock?.fachaislot?.lock;
 
     if (isLocked) {
       return res.status(200).json({
