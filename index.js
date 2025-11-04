@@ -80,6 +80,8 @@ const slotJokerRouter = require("./routes/GAMEAPI/slot_joker");
 const slotLiveMicroGamingRouter = require("./routes/GAMEAPI/slot_livemicrogaming");
 const slotFunkyRouter = require("./routes/GAMEAPI/slot_funky");
 
+const sportSBOBETRouter = require("./routes/GAMEAPI/sport_sbobet");
+
 const importGameListRouter = require("./routes/GAMEAPI/0_ImportGameList");
 const gameStatusRouter = require("./routes/GAMEAPI/0_GameStatus");
 const allGameFunctionRouter = require("./routes/GAMEAPI/0_GameFunction");
@@ -856,6 +858,8 @@ app.use(slotYesGetRichRouter);
 app.use(slotJokerRouter);
 app.use(slotLiveMicroGamingRouter);
 app.use(slotFunkyRouter);
+
+app.use(sportSBOBETRouter);
 
 app.use(importGameListRouter);
 app.use(gameStatusRouter);

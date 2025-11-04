@@ -299,6 +299,7 @@ const userSchema = new mongoose.Schema(
       joker: { type: gameLockSchema, default: () => ({}) },
       microgaming: { type: gameLockSchema, default: () => ({}) },
       funky: { type: gameLockSchema, default: () => ({}) },
+      tfgaming: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },
@@ -382,6 +383,9 @@ const userSchema = new mongoose.Schema(
       type: String,
     },
     microGamingGameToken: {
+      type: String,
+    },
+    tfGamingGameToken: {
       type: String,
     },
   },

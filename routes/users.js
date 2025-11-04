@@ -46,6 +46,7 @@ const SlotYGRModal = require("../models/slot_yesgetrich.model");
 const SlotJokerModal = require("../models/slot_joker.model");
 const SlotLiveMicroGamingModal = require("../models/slot_livemicrogaming.model");
 const SlotFunkyModal = require("../models/slot_funky.model");
+const EsportTfGamingModal = require("../models/esport_tfgaming.model");
 
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
@@ -5109,6 +5110,12 @@ router.get(
           getAllUsersTurnover(SlotFunkyModal, {
             cancel: { $ne: true },
             settle: true,
+          }),
+
+          // TF Gaming
+          getAllUsersTurnover(EsportTfGamingModal, {
+            settle: true,
+            cancel: { $ne: true },
           }),
         ];
 
