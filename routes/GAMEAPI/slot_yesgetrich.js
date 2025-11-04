@@ -1101,7 +1101,6 @@ router.post("/api/yesgetrich/transaction/addGameResult", async (req, res) => {
 router.post("/api/yesgetrich/transaction/rollOut", async (req, res) => {
   try {
     const { connectToken, transID, roundID, amount, takeAll } = req.body;
-    console.log("roll out", req.body);
     if (
       !connectToken ||
       !transID ||
@@ -1274,7 +1273,6 @@ router.post("/api/yesgetrich/transaction/rollIn", async (req, res) => {
       payoutAmount,
       winLoseAmount,
     } = req.body;
-    console.log("roll in", req.body);
     if (
       !connectToken ||
       !transID ||
@@ -1310,7 +1308,7 @@ router.post("/api/yesgetrich/transaction/rollIn", async (req, res) => {
         }
       ).lean(),
       SlotYGRModal.findOne(
-        { tranId: transID },
+        { betId: roundID },
         { _id: 1, settle: 1, cancel: 1 }
       ).lean(),
     ]);
@@ -1363,7 +1361,7 @@ router.post("/api/yesgetrich/transaction/rollIn", async (req, res) => {
       ).lean(),
 
       SlotYGRModal.findOneAndUpdate(
-        { tranId: transID },
+        { betId: roundID },
         {
           $set: {
             settle: true,
