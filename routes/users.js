@@ -1596,6 +1596,7 @@ router.delete("/api/userbank", authenticateToken, async (req, res) => {
         message: {
           en: "User not found",
           zh: "找不到用户",
+          ms: "Pengguna tidak dijumpai",
         },
       });
     }
@@ -1604,6 +1605,7 @@ router.delete("/api/userbank", authenticateToken, async (req, res) => {
       message: {
         en: "Bank account deleted successfully",
         zh: "银行账户已成功删除",
+        ms: "Akaun bank berjaya dipadam",
       },
     });
   } catch (error) {
@@ -1613,6 +1615,7 @@ router.delete("/api/userbank", authenticateToken, async (req, res) => {
       message: {
         en: "Failed to delete bank account",
         zh: "删除银行账户失败",
+        ms: "Gagal memadam akaun bank",
       },
     });
   }
@@ -4403,6 +4406,7 @@ router.post("/api/updateSocialMedia", authenticateToken, async (req, res) => {
         message: {
           en: "User not found",
           zh: "找不到用户",
+          ms: "Pengguna tidak dijumpai",
         },
       });
     }
@@ -4422,6 +4426,7 @@ router.post("/api/updateSocialMedia", authenticateToken, async (req, res) => {
       message: {
         en: "Social media updated successfully",
         zh: "社交媒体更新成功",
+        ms: "Media sosial berjaya dikemas kini",
       },
     });
   } catch (error) {
@@ -4431,6 +4436,7 @@ router.post("/api/updateSocialMedia", authenticateToken, async (req, res) => {
       message: {
         en: "Internal server error",
         zh: "服务器内部错误",
+        ms: "Ralat pelayan dalaman",
       },
     });
   }

@@ -605,6 +605,7 @@ router.post(
           message: {
             en: "Admin User not found",
             zh: "未找到管理员用户",
+            ms: "Pengguna pentadbir tidak dijumpai",
           },
         });
       }
@@ -618,6 +619,7 @@ router.post(
           message: {
             en: "Commission record not found",
             zh: "佣金记录未找到",
+            ms: "Rekod komisen tidak dijumpai",
           },
         });
       }
@@ -628,6 +630,7 @@ router.post(
           message: {
             en: "Commission already claimed",
             zh: "佣金已被领取",
+            ms: "Komisen telah dituntut",
           },
         });
       }
@@ -639,6 +642,7 @@ router.post(
           message: {
             en: "Agent not found",
             zh: "代理未找到",
+            ms: "Ejen tidak dijumpai",
           },
         });
       }
@@ -661,6 +665,7 @@ router.post(
             message: {
               en: "Failed to update kiosk balance",
               zh: "更新Kiosk余额失败",
+              ms: "Gagal mengemas kini baki kiosk",
             },
           });
         }
@@ -717,6 +722,7 @@ router.post(
         message: {
           en: `Commission claimed successfully for ${agentUsername}`,
           zh: `${agentUsername} 的佣金已成功领取`,
+          ms: `Komisen berjaya dituntut untuk ${agentUsername}`,
         },
       });
     } catch (error) {
@@ -726,6 +732,7 @@ router.post(
         message: {
           en: "Internal server error",
           zh: "服务器内部错误",
+          ms: "Ralat pelayan dalaman",
         },
       });
     }
@@ -1010,7 +1017,8 @@ const calculateWinLoseCommission = async () => {
           continue;
         }
 
-        const shouldClaim = finalCommissionAmount > 0 && agentUser.wallet > 5;
+        // const shouldClaim = finalCommissionAmount > 0 && agentUser.wallet > 5;
+        const shouldClaim = false;
         const transactionId = uuidv4();
         let bonusTransactionId = null;
         console.log(`  已为代理 ${agent.username} 创建佣金报告`);
