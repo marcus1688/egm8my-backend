@@ -9,6 +9,7 @@ const {
   adminUserWalletLog,
   GameDataLog,
 } = require("../../models/users.model");
+const { adminUser, adminLog } = require("../../models/adminuser.model");
 
 const SlotEpicWinModal = require("../../models/slot_epicwin.model");
 const SlotFachaiModal = require("../../models/slot_fachai.model");
