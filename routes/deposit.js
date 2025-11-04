@@ -11,6 +11,7 @@ const { authenticateAdminToken } = require("../auth/adminAuth");
 const { adminUser } = require("../models/adminuser.model");
 const Deposit = require("../models/deposit.model");
 const { general } = require("../models/general.model");
+const { checkSportPendingMatch } = require("../helpers/turnoverHelper");
 const { v4: uuidv4 } = require("uuid");
 const Bonus = require("../models/bonus.model");
 const BankList = require("../models/banklist.model");
@@ -124,7 +125,8 @@ async function submitLuckySpin(
     }
 
     const totalWalletAmount = Number(user.wallet || 0) + totalGameBalance;
-
+    const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+    const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
     const NewBonusTransaction = new Bonus({
       transactionId: transactionId,
       userId: userId,
@@ -144,7 +146,7 @@ async function submitLuckySpin(
       isLuckySpin: true,
       processtime,
       duplicateIP: user.duplicateIP,
-      isNewCycle: user.wallet <= 5,
+      isNewCycle: isNewCycle,
     });
     await NewBonusTransaction.save();
     const walletLog = new UserWalletLog({
@@ -321,7 +323,8 @@ router.post(
       const totalWalletAmount = Number(user.wallet || 0) + totalGameBalance;
 
       const transactionId = uuidv4();
-
+      const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+      const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
       const [deposit] = await Promise.all([
         new Deposit({
           userId: userId,
@@ -341,7 +344,7 @@ router.post(
           duplicateIP: user.duplicateIP,
           remark: req.body.remark || "-",
           transactionId: transactionId,
-          isNewCycle: user.wallet <= 5,
+          isNewCycle: isNewCycle,
           balanceFetchErrors:
             Object.keys(balanceFetchErrors).length > 0
               ? balanceFetchErrors
@@ -513,7 +516,8 @@ router.post("/admin/api/deposit", authenticateAdminToken, async (req, res) => {
     }
 
     const totalWalletAmount = Number(user.wallet || 0) + totalGameBalance;
-
+    const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+    const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
     const deposit = new Deposit({
       userId: userid,
       username: username,
@@ -533,7 +537,7 @@ router.post("/admin/api/deposit", authenticateAdminToken, async (req, res) => {
       bankid: bankid,
       status: "pending",
       duplicateIP: user.duplicateIP,
-      isNewCycle: user.wallet <= 5,
+      isNewCycle: isNewCycle,
     });
     await deposit.save();
 
@@ -1107,6 +1111,8 @@ router.post(
       }
 
       const transactionId = uuidv4();
+      const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+      const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
       const newBonusTransaction = new Bonus({
         transactionId: transactionId,
         userId: userId,
@@ -1124,7 +1130,7 @@ router.post(
         promotionId: promotionId,
         isCheckinBonus: true,
         processtime: "00:00:00",
-        isNewCycle: user.wallet <= 5,
+        isNewCycle: isNewCycle,
       });
       await newBonusTransaction.save();
       const walletLog = new UserWalletLog({
@@ -1303,6 +1309,8 @@ router.post(
       }
 
       const transactionId = uuidv4();
+      const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+      const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
       const newBonusTransaction = new Bonus({
         transactionId: transactionId,
         userId: userId,
@@ -1320,7 +1328,7 @@ router.post(
         promotionId: promotionId,
         isCheckinBonus: true,
         processtime: "00:00:00",
-        isNewCycle: user.wallet <= 5,
+        isNewCycle: isNewCycle,
       });
       await newBonusTransaction.save();
       const walletLog = new UserWalletLog({

@@ -6,6 +6,7 @@ const { User } = require("../models/users.model");
 const LuckyDrawLog = require("../models/luckydrawlog.model");
 const Deposit = require("../models/deposit.model");
 const moment = require("moment");
+const { checkSportPendingMatch } = require("../helpers/turnoverHelper");
 const Bonus = require("../models/bonus.model");
 const UserWalletLog = require("../models/userwalletlog.model");
 const { v4: uuidv4 } = require("uuid");
@@ -167,6 +168,8 @@ router.post("/api/luckydraw9grid/spin", authenticateToken, async (req, res) => {
     const selectedPrize = selectPrizeByRate();
     const newWalletBalance = user.wallet + selectedPrize.value;
     const transactionId = uuidv4();
+    const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+    const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
     const bonusTransaction = new Bonus({
       transactionId: transactionId,
       userId: userId,
@@ -184,7 +187,7 @@ router.post("/api/luckydraw9grid/spin", authenticateToken, async (req, res) => {
       promotionId: promotionId,
       isCheckinBonus: true,
       processtime: "00:00:00",
-      isNewCycle: user.wallet <= 5,
+      isNewCycle: isNewCycle,
     });
 
     const walletLog = new UserWalletLog({

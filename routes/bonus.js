@@ -10,6 +10,7 @@ const { v4: uuidv4 } = require("uuid");
 const UserWalletLog = require("../models/userwalletlog.model");
 const Promotion = require("../models/promotion.model");
 const vip = require("../models/vip.model");
+const { checkSportPendingMatch } = require("../helpers/turnoverHelper");
 const {
   checkGW99Balance,
   checkAlipayBalance,
@@ -159,7 +160,8 @@ router.post(
       }
 
       const totalWalletAmount = Number(user.wallet || 0) + totalGameBalance;
-
+      const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+      const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
       const NewBonusTransaction = new Bonus({
         transactionId: transactionId,
         userId: userId,
@@ -177,7 +179,7 @@ router.post(
         promotionId: promotionId,
         depositId,
         duplicateIP: user.duplicateIP,
-        isNewCycle: user.wallet <= 5,
+        isNewCycle: isNewCycle,
       });
       await NewBonusTransaction.save();
       const walletLog = new UserWalletLog({
@@ -338,7 +340,8 @@ router.post(
       }
 
       const totalWalletAmount = Number(user.wallet || 0) + totalGameBalance;
-
+      const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+      const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
       const NewBonusTransaction = new Bonus({
         transactionId: transactionId,
         userId: userid,
@@ -356,7 +359,7 @@ router.post(
         promotionId: promotion._id,
         depositId,
         duplicateIP: user.duplicateIP,
-        isNewCycle: user.wallet <= 5,
+        isNewCycle: isNewCycle,
       });
       await NewBonusTransaction.save();
       const walletLog = new UserWalletLog({
@@ -505,6 +508,8 @@ router.post("/admin/api/bonus", authenticateAdminToken, async (req, res) => {
     }
 
     const transactionId = uuidv4();
+    const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+    const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
     const NewBonusTransaction = new Bonus({
       transactionId: transactionId,
       userId: userid,
@@ -522,7 +527,7 @@ router.post("/admin/api/bonus", authenticateAdminToken, async (req, res) => {
       promotionId: promotionData._id,
       duplicateIP: user.duplicateIP,
       duplicateBank: user.duplicateBank,
-      isNewCycle: user.wallet <= 5,
+      isNewCycle: isNewCycle,
     });
     await NewBonusTransaction.save();
 

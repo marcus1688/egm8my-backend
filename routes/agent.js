@@ -11,6 +11,7 @@ const Deposit = require("../models/deposit.model");
 const Withdraw = require("../models/withdraw.model");
 const Bonus = require("../models/bonus.model");
 const { authenticateAdminToken } = require("../auth/adminAuth");
+const { checkSportPendingMatch } = require("../helpers/turnoverHelper");
 const { authenticateToken } = require("../auth/auth");
 // const BetRecord = require("../models/betrecord.model");
 const UserWalletLog = require("../models/userwalletlog.model");
@@ -672,7 +673,8 @@ router.post(
       const promotion = await Promotion.findById(
         global.AGENT_COMMISSION_PROMOTION_ID
       );
-
+      const hasSportPendingMatch = await checkSportPendingMatch(agent._id);
+      const isNewCycle = !hasSportPendingMatch && agent.wallet <= 5;
       const NewBonusTransaction = new Bonus({
         transactionId: transactionId,
         userId: agent._id,
@@ -689,7 +691,7 @@ router.post(
         promotionnameEN: promotion.maintitleEN,
         promotionId: promotion._id,
         processtime: "00:00:00",
-        isNewCycle: agent.wallet <= 5,
+        isNewCycle: isNewCycle,
       });
       await NewBonusTransaction.save();
 
@@ -1028,7 +1030,10 @@ const calculateWinLoseCommission = async () => {
                 .format("DD/MM/YYYY")}`,
               transactionId
             );
-
+            const hasSportPendingMatch = await checkSportPendingMatch(
+              agent._id
+            );
+            const isNewCycle = !hasSportPendingMatch && agent.wallet <= 5;
             const NewBonusTransaction = new Bonus({
               transactionId: transactionId,
               userId: agent._id,
@@ -1049,7 +1054,7 @@ const calculateWinLoseCommission = async () => {
               promotionnameEN: promotion.maintitleEN,
               promotionId: promotion._id,
               processtime: "00:00:00",
-              isNewCycle: agent.wallet <= 5,
+              isNewCycle: isNewCycle,
             });
             await NewBonusTransaction.save();
             bonusTransactionId = NewBonusTransaction._id;

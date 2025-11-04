@@ -5,6 +5,8 @@ const { RebateSchedule } = require("../models/rebateSchedule.model");
 const { RebateLog } = require("../models/rebate.model");
 const Deposit = require("../models/deposit.model");
 const Withdraw = require("../models/withdraw.model");
+const { checkSportPendingMatch } = require("../helpers/turnoverHelper");
+
 const Bonus = require("../models/bonus.model");
 const { authenticateAdminToken } = require("../auth/adminAuth");
 const { User, UserGameData } = require("../models/users.model");
@@ -333,7 +335,8 @@ router.post(
         .tz("Asia/Kuala_Lumpur")
         .subtract(1, "day")
         .format("DD-MM-YYYY");
-
+      const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+      const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
       const NewBonusTransaction = new Bonus({
         transactionId: transactionId,
         userId: user._id,
@@ -350,7 +353,7 @@ router.post(
         promotionnameEN: promotion.maintitleEN,
         promotionId: promotion._id,
         processtime: "00:00:00",
-        isNewCycle: user.wallet <= 5,
+        isNewCycle: isNewCycle,
       });
       await NewBonusTransaction.save();
 
@@ -543,6 +546,8 @@ async function calculateWinLoseRebate(
             user.wallet += stats.totalRebate;
             await user.save();
             const userTransactionId = uuidv4();
+            const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+            const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
             const NewBonusTransaction = new Bonus({
               transactionId: userTransactionId,
               userId: user._id,
@@ -559,7 +564,7 @@ async function calculateWinLoseRebate(
               promotionnameEN: promotion.maintitleEN,
               promotionId: promotion._id,
               processtime: "00:00:00",
-              isNewCycle: user.wallet <= 5,
+              isNewCycle: isNewCycle,
             });
             await NewBonusTransaction.save();
 

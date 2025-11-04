@@ -14,6 +14,7 @@ const { adminUser, adminLog } = require("../models/adminuser.model");
 const router = express.Router();
 const Deposit = require("../models/deposit.model");
 const { createCanvas, loadImage } = require("canvas");
+const { checkSportPendingMatch } = require("../helpers/turnoverHelper");
 const path = require("path");
 const vip = require("../models/vip.model");
 const Withdraw = require("../models/withdraw.model");
@@ -5506,6 +5507,8 @@ router.post(
       )}\nRescue Bonus (5%): $${rescueBonusAmount}`;
 
       const transactionId = uuidv4();
+      const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+      const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
       const NewBonusTransaction = new Bonus({
         transactionId: transactionId,
         userId: userId,
@@ -5522,7 +5525,7 @@ router.post(
         promotionnameEN: promotiondata.maintitleEN,
         promotionId: promotionId,
         processtime: "00:00:00",
-        isNewCycle: user.wallet <= 5,
+        isNewCycle: isNewCycle,
       });
       await NewBonusTransaction.save();
       const walletLog = new UserWalletLog({
