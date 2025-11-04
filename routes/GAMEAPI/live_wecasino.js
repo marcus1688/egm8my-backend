@@ -838,8 +838,7 @@ router.post("/api/wecasino/getturnoverforrebate", async (req, res) => {
         playerSummary[actualUsername] = { turnover: 0, winloss: 0 };
       }
 
-      playerSummary[actualUsername].turnover +=
-        record.validbetamount || record.betamount;
+      playerSummary[actualUsername].turnover += record.validbetamount;
 
       playerSummary[actualUsername].winloss +=
         (record.settleamount || 0) - (record.betamount || 0);
@@ -895,7 +894,7 @@ router.get(
       let totalWinLoss = 0;
 
       records.forEach((record) => {
-        totalTurnover += record.validbetamount || record.betamount;
+        totalTurnover += record.validbetamount;
 
         totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
       });
@@ -1018,7 +1017,7 @@ router.get(
       let totalWinLoss = 0;
 
       records.forEach((record) => {
-        totalTurnover += record.validbetamount || record.betamount;
+        totalTurnover += record.validbetamount;
         totalWinLoss += (record.betamount || 0) - (record.settleamount || 0);
       });
 
