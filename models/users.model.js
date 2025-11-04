@@ -293,6 +293,7 @@ const userSchema = new mongoose.Schema(
       yesgetrich: { type: gameLockSchema, default: () => ({}) },
       joker: { type: gameLockSchema, default: () => ({}) },
       microgaming: { type: gameLockSchema, default: () => ({}) },
+      funky: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },

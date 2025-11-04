@@ -125,6 +125,14 @@ router.post("/admin/api/getAllTurnoverForRebate", async (req, res) => {
         url: `${PUBLIC_APIURL}api/microgaminglive/getturnoverforrebate`,
         name: "MICRO GAMING",
       },
+      {
+        url: `${PUBLIC_APIURL}api/funkyslot/getturnoverforrebate`,
+        name: "FUNKY",
+      },
+      {
+        url: `${PUBLIC_APIURL}api/funkyfish/getturnoverforrebate`,
+        name: "FUNKY",
+      },
     ];
 
     const routePromises = routes.map((route) =>
