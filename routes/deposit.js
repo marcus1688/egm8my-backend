@@ -125,7 +125,7 @@ async function submitLuckySpin(
     }
 
     const totalWalletAmount = Number(user.wallet || 0) + totalGameBalance;
-    const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+    const hasSportPendingMatch = await checkSportPendingMatch(user.gameId);
     const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
     const NewBonusTransaction = new Bonus({
       transactionId: transactionId,
@@ -323,7 +323,7 @@ router.post(
       const totalWalletAmount = Number(user.wallet || 0) + totalGameBalance;
 
       const transactionId = uuidv4();
-      const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+      const hasSportPendingMatch = await checkSportPendingMatch(user.gameId);
       const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
       const [deposit] = await Promise.all([
         new Deposit({
@@ -516,7 +516,7 @@ router.post("/admin/api/deposit", authenticateAdminToken, async (req, res) => {
     }
 
     const totalWalletAmount = Number(user.wallet || 0) + totalGameBalance;
-    const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+    const hasSportPendingMatch = await checkSportPendingMatch(user.gameId);
     const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
     const deposit = new Deposit({
       userId: userid,
@@ -1111,7 +1111,7 @@ router.post(
       }
 
       const transactionId = uuidv4();
-      const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+      const hasSportPendingMatch = await checkSportPendingMatch(user.gameId);
       const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
       const newBonusTransaction = new Bonus({
         transactionId: transactionId,
@@ -1309,7 +1309,7 @@ router.post(
       }
 
       const transactionId = uuidv4();
-      const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+      const hasSportPendingMatch = await checkSportPendingMatch(user.gameId);
       const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
       const newBonusTransaction = new Bonus({
         transactionId: transactionId,

@@ -5514,7 +5514,7 @@ router.post(
       )}\nRescue Bonus (5%): $${rescueBonusAmount}`;
 
       const transactionId = uuidv4();
-      const hasSportPendingMatch = await checkSportPendingMatch(user._id);
+      const hasSportPendingMatch = await checkSportPendingMatch(user.gameId);
       const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
       const NewBonusTransaction = new Bonus({
         transactionId: transactionId,

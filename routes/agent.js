@@ -673,7 +673,7 @@ router.post(
       const promotion = await Promotion.findById(
         global.AGENT_COMMISSION_PROMOTION_ID
       );
-      const hasSportPendingMatch = await checkSportPendingMatch(agent._id);
+      const hasSportPendingMatch = await checkSportPendingMatch(agent.gameId);
       const isNewCycle = !hasSportPendingMatch && agent.wallet <= 5;
       const NewBonusTransaction = new Bonus({
         transactionId: transactionId,
@@ -1031,7 +1031,7 @@ const calculateWinLoseCommission = async () => {
               transactionId
             );
             const hasSportPendingMatch = await checkSportPendingMatch(
-              agent._id
+              agent.gameId
             );
             const isNewCycle = !hasSportPendingMatch && agent.wallet <= 5;
             const NewBonusTransaction = new Bonus({
