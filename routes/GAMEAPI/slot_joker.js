@@ -2497,7 +2497,7 @@ router.post("/api/jokerfish/getturnoverforrebate", async (req, res) => {
       success: true,
       summary: {
         gamename: "JOKER",
-        gamecategory: "Others",
+        gamecategory: "Fishing",
         users: playerSummary,
       },
     });
@@ -2551,7 +2551,7 @@ router.get(
         success: true,
         summary: {
           gamename: "JOKER",
-          gamecategory: "Others",
+          gamecategory: "Fishing",
           user: {
             username: user.username,
             turnover: totalTurnover,
@@ -2610,10 +2610,10 @@ router.get(
 
         if (
           gameCategories &&
-          gameCategories["Others"] &&
-          gameCategories["Others"] instanceof Map
+          gameCategories["Fishing"] &&
+          gameCategories["Fishing"] instanceof Map
         ) {
-          const gameCat = Object.fromEntries(gameCategories["Others"]);
+          const gameCat = Object.fromEntries(gameCategories["Fishing"]);
 
           if (gameCat["JOKER"]) {
             totalTurnover += gameCat["JOKER"].turnover || 0;
@@ -2630,7 +2630,7 @@ router.get(
         success: true,
         summary: {
           gamename: "JOKER",
-          gamecategory: "Others",
+          gamecategory: "Fishing",
           user: {
             username: user.username,
             turnover: totalTurnover,
@@ -2681,7 +2681,7 @@ router.get(
         success: true,
         summary: {
           gamename: "JOKER",
-          gamecategory: "Others",
+          gamecategory: "Fishing",
           totalturnover: Number(totalTurnover.toFixed(2)),
           totalwinloss: Number(totalWinLoss.toFixed(2)),
         },
@@ -2730,10 +2730,10 @@ router.get(
 
         if (
           gameCategories &&
-          gameCategories["Others"] &&
-          gameCategories["Others"] instanceof Map
+          gameCategories["Fishing"] &&
+          gameCategories["Fishing"] instanceof Map
         ) {
-          const gameCat = Object.fromEntries(gameCategories["Others"]);
+          const gameCat = Object.fromEntries(gameCategories["Fishing"]);
 
           if (gameCat["JOKER"]) {
             totalTurnover += Number(gameCat["JOKER"].turnover || 0);
@@ -2746,7 +2746,7 @@ router.get(
         success: true,
         summary: {
           gamename: "JOKER",
-          gamecategory: "Others",
+          gamecategory: "Fishing",
           totalturnover: Number(totalTurnover.toFixed(2)),
           totalwinloss: Number(totalWinLoss.toFixed(2)),
         },
