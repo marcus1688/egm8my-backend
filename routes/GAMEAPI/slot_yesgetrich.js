@@ -806,10 +806,7 @@ router.post(
 
 router.get("/api/yesgetrich/token/getConnectTokenAmount", async (req, res) => {
   try {
-    const { connectToken } = req.params;
-    console.log(req.query, "query");
-    console.log(req.body, "body");
-    console.log(req.params, "params");
+    const { connectToken } = req.query;
     if (!connectToken) {
       return res.status(200).json({
         data: null,
