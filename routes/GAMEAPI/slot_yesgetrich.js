@@ -828,6 +828,7 @@ router.get("/api/yesgetrich/token/getConnectTokenAmount", async (req, res) => {
     ).lean();
 
     if (!currentUser) {
+      console.log("faield get token");
       return res.status(200).json({
         data: null,
         status: {
@@ -838,7 +839,7 @@ router.get("/api/yesgetrich/token/getConnectTokenAmount", async (req, res) => {
         },
       });
     }
-
+    console.log("success get token");
     return res.status(200).json({
       data: {
         currency: "MYR",
