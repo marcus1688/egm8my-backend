@@ -15,6 +15,7 @@ const SlotFachaiModal = require("../../models/slot_fachai.model");
 const SlotLivePlayAceModal = require("../../models/slot_liveplayace.model");
 const SlotJiliModal = require("../../models/slot_jili.model");
 const SlotYGRModal = require("../../models/slot_yesgetrich.model");
+const SlotJokerModal = require("../../models/slot_joker.model");
 
 const { v4: uuidv4 } = require("uuid");
 const querystring = require("querystring");
@@ -180,6 +181,38 @@ router.get("/api/all/dailygamedata", authenticateToken, async (req, res) => {
           },
         },
       },
+      joker: {
+        $match: {
+          cancel: { $ne: true },
+          settle: true,
+        },
+        $group: {
+          _id: null,
+          turnover: {
+            $sum: {
+              $cond: {
+                if: { $eq: ["$gametype", "FISH"] },
+                then: { $ifNull: ["$fishTurnover", 0] },
+                else: { $ifNull: ["$betamount", 0] },
+              },
+            },
+          },
+          winLoss: {
+            $sum: {
+              $cond: {
+                if: { $eq: ["$gametype", "FISH"] },
+                then: { $ifNull: ["$fishWinLoss", 0] },
+                else: {
+                  $subtract: [
+                    { $ifNull: ["$settleamount", 0] },
+                    { $ifNull: ["$betamount", 0] },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
     };
 
     // Create an array of promises for all aggregations to match player-report
@@ -221,6 +254,13 @@ router.get("/api/all/dailygamedata", authenticateToken, async (req, res) => {
         end,
         aggregations.ygr
       ),
+      getGameDataSummary(
+        SlotJokerModal,
+        user.gameId,
+        start,
+        end,
+        aggregations.joker
+      ),
     ]);
 
     // Create a result map from the resolved promises
@@ -246,6 +286,10 @@ router.get("/api/all/dailygamedata", authenticateToken, async (req, res) => {
       ygr:
         promiseResults[4].status === "fulfilled"
           ? promiseResults[4].value
+          : { turnover: 0, winLoss: 0 },
+      joker:
+        promiseResults[5].status === "fulfilled"
+          ? promiseResults[5].value
           : { turnover: 0, winLoss: 0 },
     };
     // Calculate total turnover and win loss
@@ -381,6 +425,16 @@ router.post("/api/games/active-games", authenticateToken, async (req, res) => {
         },
         "YGR"
       ),
+      queryModel(
+        SlotJokerModal,
+        {
+          $or: [{ settle: false }, { settle: { $exists: false } }],
+          withdraw: { $ne: true },
+          deposit: { $ne: true },
+          cancel: { $ne: true },
+        },
+        "Joker"
+      ),
     ]);
 
     // Process results - much faster since we're only getting 1 game per provider
@@ -509,6 +563,16 @@ router.post(
           },
           "YGR"
         ),
+        queryModel(
+          SlotJokerModal,
+          {
+            $or: [{ settle: false }, { settle: { $exists: false } }],
+            withdraw: { $ne: true },
+            deposit: { $ne: true },
+            cancel: { $ne: true },
+          },
+          "Joker"
+        ),
       ]);
 
       // Process results and combine all active games
@@ -601,6 +665,7 @@ router.post(
         Fachai: SlotFachaiModal,
         Jili: SlotJiliModal,
         YGR: SlotYGRModal,
+        Joker: SlotJokerModal,
       };
 
       const Model = providerModels[gameName];
@@ -653,6 +718,7 @@ router.post(
           case "Fachai":
           case "Jili":
           case "YGR":
+          case "Joker":
           default:
             isAlreadySettled = gameRecord.settle === true;
             isAlreadyCanceled = gameRecord.cancel === true;
