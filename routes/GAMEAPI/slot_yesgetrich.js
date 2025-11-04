@@ -963,7 +963,7 @@ router.post("/api/yesgetrich/transaction/addGameResult", async (req, res) => {
       winLoseAmount,
       freeGame,
     } = req.body;
-
+    console.log("bet", req.body);
     if (
       !connectToken ||
       !transID ||
