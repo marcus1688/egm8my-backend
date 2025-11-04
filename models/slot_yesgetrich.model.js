@@ -41,6 +41,9 @@ const slotYGRschema = new mongoose.Schema(
     gametype: {
       type: String,
     },
+    currentConnectToken: {
+      type: String,
+    },
   },
   {
     timestamps: {

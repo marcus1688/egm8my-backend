@@ -603,10 +603,19 @@ router.post(
 
       let token = `${user.gameId}:${gameCode}:${generateRandomCode()}`;
 
-      const updatedUser = await User.findOneAndUpdate(
-        { _id: user._id },
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+
+      await User.findByIdAndUpdate(
+        user._id,
         {
-          ygrGameToken: token,
+          $push: {
+            ygrGameTokens: {
+              token: token,
+              createdAt: now,
+              expiresAt: expiresAt,
+            },
+          },
         },
         { new: true }
       );
@@ -707,7 +716,7 @@ router.post(
 
       const currentUser = await User.findOne(
         { gameId: gameId },
-        { wallet: 1, _id: 1, ygrGameToken: 1, username: 1 }
+        { wallet: 1, _id: 1, ygrGameTokens: 1, username: 1 }
       ).lean();
 
       if (!currentUser) {
@@ -722,7 +731,11 @@ router.post(
         });
       }
 
-      if (currentUser.ygrGameToken !== connectToken) {
+      const validToken = currentUser.ygrGameTokens?.find(
+        (t) => t.token === connectToken
+      );
+
+      if (!validToken) {
         return res.status(200).json({
           data: null,
           status: {
@@ -802,7 +815,7 @@ router.get("/api/yesgetrich/token/getConnectTokenAmount", async (req, res) => {
       });
     }
 
-    const [gameId, gameCode] = connectToken.split(":");
+    const [gameId] = connectToken.split(":");
 
     const currentUser = await User.findOne(
       { gameId: gameId },
@@ -866,11 +879,11 @@ router.post("/api/yesgetrich/token/delConnectToken", async (req, res) => {
       });
     }
 
-    const [gameId, gameCode] = connectToken.split(":");
+    const [gameId] = connectToken.split(":");
 
     const currentUser = await User.findOne(
       { gameId: gameId },
-      { wallet: 1, _id: 1 }
+      { wallet: 1, _id: 1, ygrGameTokens: 1 }
     ).lean();
 
     if (!currentUser) {
@@ -884,9 +897,30 @@ router.post("/api/yesgetrich/token/delConnectToken", async (req, res) => {
         },
       });
     }
+
+    const validToken = currentUser.ygrGameTokens?.find(
+      (t) => t.token === connectToken
+    );
+
+    if (!validToken) {
+      return res.status(200).json({
+        data: {},
+        status: {
+          code: "0",
+          message: "Success",
+          dateTime: generateDateTime(),
+          traceCode: generateTraceCode(),
+        },
+      });
+    }
+
     await User.updateOne(
       { _id: currentUser._id },
-      { $unset: { ygrGameToken: "" } }
+      {
+        $pull: {
+          ygrGameTokens: { token: connectToken },
+        },
+      }
     );
 
     return res.status(200).json({
@@ -949,16 +983,12 @@ router.post("/api/yesgetrich/transaction/addGameResult", async (req, res) => {
       });
     }
 
-    const [gameId, gameCode] = connectToken.split(":");
+    const [gameId] = connectToken.split(":");
 
     const [currentUser, existingTransaction] = await Promise.all([
       User.findOne(
         { gameId: gameId },
-        {
-          wallet: 1,
-          "gameLock.yesgetrich.lock": 1,
-          _id: 1,
-        }
+        { wallet: 1, "gameLock.yesgetrich.lock": 1, ygrGameTokens: 1, _id: 1 }
       ).lean(),
       SlotYGRModal.findOne({ tranId: transID }, { _id: 1 }).lean(),
     ]);
@@ -975,7 +1005,11 @@ router.post("/api/yesgetrich/transaction/addGameResult", async (req, res) => {
       });
     }
 
-    if (currentUser.gameLock?.yesgetrich?.lock) {
+    const validToken = currentUser.ygrGameTokens?.find(
+      (t) => t.token === connectToken
+    );
+
+    if (currentUser.gameLock?.yesgetrich?.lock || !validToken) {
       return res.status(200).json({
         data: null,
         status: {
@@ -999,16 +1033,14 @@ router.post("/api/yesgetrich/transaction/addGameResult", async (req, res) => {
       });
     }
 
-    const updatedUserBalancePromise = User.findOneAndUpdate(
+    const updatedUserBalance = await User.findOneAndUpdate(
       {
-        gameId: gameId,
+        _id: currentUser._id,
         wallet: { $gte: roundToTwoDecimals(betAmount) },
       },
       { $inc: { wallet: roundToTwoDecimals(winLoseAmount) } },
       { new: true, projection: { wallet: 1 } }
     ).lean();
-
-    const updatedUserBalance = await updatedUserBalancePromise;
 
     if (!updatedUserBalance) {
       return res.status(200).json({
@@ -1022,7 +1054,7 @@ router.post("/api/yesgetrich/transaction/addGameResult", async (req, res) => {
       });
     }
 
-    SlotYGRModal.create({
+    await SlotYGRModal.create({
       betId: roundID,
       tranId: transID,
       bet: true,
@@ -1031,8 +1063,7 @@ router.post("/api/yesgetrich/transaction/addGameResult", async (req, res) => {
       betamount: roundToTwoDecimals(betAmount),
       settleamount: roundToTwoDecimals(payoutAmount),
       gametype: "SLOT",
-    }).catch((error) => {
-      console.error("Error creating YGR transaction:", error.message);
+      currentConnectToken: connectToken,
     });
 
     return res.status(200).json({
@@ -1086,7 +1117,7 @@ router.post("/api/yesgetrich/transaction/rollOut", async (req, res) => {
       });
     }
 
-    const [gameId, gameCode] = connectToken.split(":");
+    const [gameId] = connectToken.split(":");
 
     const [currentUser, existingTransaction] = await Promise.all([
       User.findOne(
@@ -1094,7 +1125,7 @@ router.post("/api/yesgetrich/transaction/rollOut", async (req, res) => {
         {
           wallet: 1,
           "gameLock.yesgetrich.lock": 1,
-          ygrGameToken: 1,
+          ygrGameTokens: 1,
           _id: 1,
         }
       ).lean(),
@@ -1113,10 +1144,11 @@ router.post("/api/yesgetrich/transaction/rollOut", async (req, res) => {
       });
     }
 
-    if (
-      currentUser.gameLock?.yesgetrich?.lock ||
-      currentUser.ygrGameToken !== connectToken
-    ) {
+    const validToken = currentUser.ygrGameTokens?.find(
+      (t) => t.token === connectToken
+    );
+
+    if (currentUser.gameLock?.yesgetrich?.lock || !validToken) {
       return res.status(200).json({
         data: null,
         status: {
@@ -1160,7 +1192,7 @@ router.post("/api/yesgetrich/transaction/rollOut", async (req, res) => {
         { new: true, projection: { wallet: 1, deductedAmount: 1 } }
       ).lean();
 
-      deductedAmount = updatedUserBalance.deductedAmount;
+      deductedAmount = roundToTwoDecimals(updatedUserBalance.deductedAmount);
     } else {
       updatedUserBalance = await User.findOneAndUpdate(
         {
@@ -1186,7 +1218,7 @@ router.post("/api/yesgetrich/transaction/rollOut", async (req, res) => {
       });
     }
 
-    SlotYGRModal.create({
+    await SlotEpicWinModal.create({
       betId: roundID,
       tranId: transID,
       fish: true,
@@ -1195,8 +1227,7 @@ router.post("/api/yesgetrich/transaction/rollOut", async (req, res) => {
       username: gameId,
       depositamount: roundToTwoDecimals(amount),
       gametype: "FISH",
-    }).catch((error) => {
-      console.error("Error creating YGR transaction:", error.message);
+      currentConnectToken: connectToken,
     });
 
     return res.status(200).json({
@@ -1265,7 +1296,7 @@ router.post("/api/yesgetrich/transaction/rollIn", async (req, res) => {
       });
     }
 
-    const [gameId, gameCode] = connectToken.split(":");
+    const [gameId] = connectToken.split(":");
 
     const [currentUser, existingTransaction] = await Promise.all([
       User.findOne(
@@ -1293,7 +1324,8 @@ router.post("/api/yesgetrich/transaction/rollIn", async (req, res) => {
       });
     }
 
-    if (!existingBet) {
+    if (!existingTransaction) {
+      // ✅ FIXED
       return res.status(200).json({
         data: null,
         status: {
@@ -1386,16 +1418,10 @@ router.post("/api/yesgetrich/transaction/refund", async (req, res) => {
       });
     }
 
-    const [gameId, gameCode] = connectToken.split(":");
+    const [gameId] = connectToken.split(":");
 
     const [currentUser, existingTransaction] = await Promise.all([
-      User.findOne(
-        { gameId: gameId },
-        {
-          wallet: 1,
-          _id: 1,
-        }
-      ).lean(),
+      User.findOne({ gameId: gameId }, { wallet: 1, _id: 1 }).lean(),
       SlotYGRModal.findOne(
         { tranId: transID },
         { _id: 1, settle: 1, cancel: 1, depositamount: 1 }
@@ -1452,15 +1478,7 @@ router.post("/api/yesgetrich/transaction/refund", async (req, res) => {
         { new: true, projection: { wallet: 1 } }
       ).lean(),
 
-      SlotYGRModal.findOneAndUpdate(
-        { tranId: transID },
-        {
-          $set: {
-            cancel: true,
-          },
-        },
-        { upsert: true }
-      ),
+      SlotYGRModal.updateOne({ tranId: transID }, { $set: { cancel: true } }),
     ]);
 
     return res.status(200).json({
@@ -1494,11 +1512,10 @@ router.post("/api/yesgetrich/transaction/refund", async (req, res) => {
 
 router.post("/api/yesgetrich/betSlip/roundCheck", async (req, res) => {
   try {
-    console.log(req.body, "this is betslip roundcheck ygr");
-    return;
-    const { connectToken, transID } = req.body;
+    const { fromDate, toDate } = req.body;
 
-    if (!connectToken || !transID) {
+    // Validate parameters
+    if (!fromDate || !toDate) {
       return res.status(200).json({
         data: null,
         status: {
@@ -1510,88 +1527,53 @@ router.post("/api/yesgetrich/betSlip/roundCheck", async (req, res) => {
       });
     }
 
-    const [gameId, gameCode] = connectToken.split(":");
+    let startDate, endDate;
+    try {
+      startDate = new Date(fromDate);
+      endDate = new Date(toDate);
 
-    const [currentUser, existingTransaction] = await Promise.all([
-      User.findOne(
-        { gameId: gameId },
-        {
-          wallet: 1,
-          _id: 1,
-        }
-      ).lean(),
-      SlotYGRModal.findOne(
-        { tranId: transID },
-        { _id: 1, settle: 1, cancel: 1, depositamount: 1 }
-      ).lean(),
-    ]);
-
-    if (!currentUser) {
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        throw new Error("Invalid date format");
+      }
+    } catch (dateError) {
       return res.status(200).json({
         data: null,
         status: {
-          code: "205",
-          message: "Account not exist",
+          code: "201",
+          message: "Invalid date format. Please use RFC3339 format",
           dateTime: generateDateTime(),
           traceCode: generateTraceCode(),
         },
       });
     }
 
-    if (!existingTransaction) {
-      return res.status(200).json({
-        data: null,
-        status: {
-          code: "404",
-          message: "Not Found",
-          dateTime: generateDateTime(),
-          traceCode: generateTraceCode(),
-        },
-      });
-    }
+    const incompleteBets = await SlotYGRModal.find({
+      gametype: "FISH",
+      bet: true,
+      $or: [{ settle: false }, { cancel: false }],
+      createdAt: {
+        $gte: startDate,
+        $lte: endDate,
+      },
+    })
+      .select("tranId betId depositamount currentConnectToken createdAt")
+      .sort({ createdAt: -1 })
+      .lean();
 
-    if (existingTransaction.settle || existingTransaction.cancel) {
-      return res.status(200).json({
-        data: {
-          currency: "MYR",
-          balance: roundToTwoDecimals(currentUser.wallet),
-        },
-        status: {
-          code: "0",
-          message: "Success",
-          dateTime: generateDateTime(),
-          traceCode: generateTraceCode(),
-        },
-      });
-    }
+    console.log(
+      `YGR roundCheck: Found ${incompleteBets.length} incomplete fishing bets between ${fromDate} and ${toDate}`
+    );
 
-    const [updatedUserBalance] = await Promise.all([
-      User.findByIdAndUpdate(
-        currentUser._id,
-        {
-          $inc: {
-            wallet: roundToTwoDecimals(existingTransaction.depositamount || 0),
-          },
-        },
-        { new: true, projection: { wallet: 1 } }
-      ).lean(),
-
-      SlotYGRModal.findOneAndUpdate(
-        { tranId: transID },
-        {
-          $set: {
-            cancel: true,
-          },
-        },
-        { upsert: true }
-      ),
-    ]);
+    const formattedData = incompleteBets.map((bet) => ({
+      transID: bet.tranId,
+      roundID: bet.betId,
+      amount: roundToTwoDecimals(bet.depositamount || 0),
+      connectToken: bet.currentConnectToken || "",
+      rollTime: bet.createdAt.toISOString(),
+    }));
 
     return res.status(200).json({
-      data: {
-        currency: "MYR",
-        balance: roundToTwoDecimals(updatedUserBalance.wallet),
-      },
+      data: formattedData,
       status: {
         code: "0",
         message: "Success",
