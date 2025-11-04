@@ -765,7 +765,7 @@ router.post("/api/microgaming/updatebalance", async (req, res) => {
           gameType === "SLOT"
             ? currentUser.gameLock?.microgamingslot?.lock
             : currentUser.gameLock?.microgaminglive?.lock;
-
+        console.log(gameType, isLocked, "hi");
         if (isLocked) {
           res.set("X-MGP-RESPONSE-TIME", Date.now() - startTime);
           return res.status(403).json({
