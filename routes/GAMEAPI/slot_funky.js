@@ -431,7 +431,7 @@ router.post("/api/funky/launchGame", authenticateToken, async (req, res) => {
   }
 });
 
-router.post("/api/funky/Funky/User/GetBalance", async (req, res) => {
+router.post("/api/funkygames/Funky/User/GetBalance", async (req, res) => {
   try {
     const { playerId, sessionId } = req.body;
     if (!playerId || !sessionId) {
@@ -483,7 +483,7 @@ router.post("/api/funky/Funky/User/GetBalance", async (req, res) => {
   }
 });
 
-router.post("/api/funky/Funky/Bet/CheckBet", async (req, res) => {
+router.post("/api/funkygames/Funky/Bet/CheckBet", async (req, res) => {
   try {
     const { id, playerId } = req.body;
 
@@ -567,7 +567,7 @@ router.post("/api/funky/Funky/Bet/CheckBet", async (req, res) => {
   }
 });
 
-router.post("/api/funky/Funky/Bet/PlaceBet", async (req, res) => {
+router.post("/api/funkygames/Funky/Bet/PlaceBet", async (req, res) => {
   try {
     const { bet, playerIp, playerId, sessionId } = req.body;
 
@@ -680,7 +680,7 @@ router.post("/api/funky/Funky/Bet/PlaceBet", async (req, res) => {
   }
 });
 
-router.post("/api/funky/Funky/Bet/SettleBet", async (req, res) => {
+router.post("/api/funkygames/Funky/Bet/SettleBet", async (req, res) => {
   try {
     const { betResultReq, refNo } = req.body;
 
@@ -830,7 +830,7 @@ router.post("/api/funky/Funky/Bet/SettleBet", async (req, res) => {
   }
 });
 
-router.post("/api/funky/Funky/Bet/CancelBet", async (req, res) => {
+router.post("/api/funkygames/Funky/Bet/CancelBet", async (req, res) => {
   try {
     const { playerId, refNo } = req.body;
 
