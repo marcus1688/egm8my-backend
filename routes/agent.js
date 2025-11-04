@@ -1010,7 +1010,8 @@ const calculateWinLoseCommission = async () => {
           continue;
         }
 
-        const shouldClaim = finalCommissionAmount > 0 && agentUser.wallet > 5;
+        // const shouldClaim = finalCommissionAmount > 0 && agentUser.wallet > 5;
+        const shouldClaim = false;
         const transactionId = uuidv4();
         let bonusTransactionId = null;
         console.log(`  已为代理 ${agent.username} 创建佣金报告`);
