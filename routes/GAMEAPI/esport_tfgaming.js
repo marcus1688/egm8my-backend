@@ -142,13 +142,11 @@ router.post("/api/tfgaming/launchGame", authenticateToken, async (req, res) => {
 router.post("/api/tfgaming/token/validate", async (req, res) => {
   try {
     const { token } = req.body;
-    console.log(req.body, "token");
     if (!token) {
       return res.status(400).json({});
     }
 
     const username = token.split(":")[0];
-    console.log("username looking", username);
     const currentUser = await User.findOne(
       { gameId: username, tfGamingGameToken: token },
       { username: 1 }
@@ -157,7 +155,6 @@ router.post("/api/tfgaming/token/validate", async (req, res) => {
     if (!currentUser) {
       return res.status(400).json({});
     }
-    console.log("foudn user ", username);
     return res.status(200).json({
       loginName: username,
     });

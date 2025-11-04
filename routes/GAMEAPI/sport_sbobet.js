@@ -80,9 +80,12 @@ async function registerSBOBETUser(user) {
       Agent: sbobetAgent,
       UserGroup: "b",
     };
-
+    console.log(requestData);
+    console.log(
+      `${sbobetAPIURL}/web-root/restricted/player/register-player.aspx`
+    );
     const response = await axios.post(
-      `${sbobetAPIURL}/web-root/restricted/player/register-player.aspx`,
+      `${sbobetAPIURL}/restricted/player/register-player.aspx`,
       requestData,
       {
         headers: {
