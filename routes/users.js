@@ -5751,5 +5751,48 @@ router.get("/api/transactions/list", async (req, res) => {
   }
 });
 
+// Get User Game Lock Status
+router.get("/api/user/game-locks", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const user = await User.findById(userId).select("gameLock");
+    if (!user) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "User not found",
+          zh: "找不到用户",
+          ms: "Pengguna tidak dijumpai",
+        },
+      });
+    }
+    const lockedGames = [];
+    if (user.gameLock) {
+      Object.keys(user.gameLock).forEach((gameName) => {
+        if (user.gameLock[gameName]?.lock === true) {
+          lockedGames.push(gameName);
+        }
+      });
+    }
+    res.status(200).json({
+      success: true,
+      data: {
+        gameLock: user.gameLock || {},
+        lockedGames: lockedGames,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching user game locks:", error);
+    res.status(500).json({
+      success: false,
+      message: {
+        en: "Internal server error",
+        zh: "服务器内部错误",
+        ms: "Ralat pelayan dalaman",
+      },
+    });
+  }
+});
+
 module.exports = router;
 module.exports.checkAndUpdateVIPLevel = checkAndUpdateVIPLevel;

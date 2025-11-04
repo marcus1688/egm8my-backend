@@ -1370,4 +1370,134 @@ router.post(
   }
 );
 
+// Check Game Restrictions Based on Bonus
+router.get(
+  "/api/user/game-restrictions",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const userId = req.user.userId;
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "User not found, please contact customer service",
+            zh: "找不到用户，请联系客服",
+            ms: "Pengguna tidak dijumpai, sila hubungi khidmat pelanggan",
+          },
+        });
+      }
+      const latestWithdraw = await Withdraw.findOne({
+        userId,
+        status: "approved",
+      }).sort({ createdAt: -1 });
+      let effectiveResetDate = null;
+      if (latestWithdraw && user.turnoverResetAt) {
+        effectiveResetDate =
+          latestWithdraw.createdAt > user.turnoverResetAt
+            ? latestWithdraw.createdAt
+            : user.turnoverResetAt;
+      } else if (latestWithdraw) {
+        effectiveResetDate = latestWithdraw.createdAt;
+      } else if (user.turnoverResetAt) {
+        effectiveResetDate = user.turnoverResetAt;
+      }
+      const depositsAfterWithdraw = await Deposit.find({
+        userId,
+        status: "approved",
+        ...(effectiveResetDate && { createdAt: { $gt: effectiveResetDate } }),
+      }).sort({ createdAt: 1 });
+      const bonusesAfterWithdraw = await Bonus.find({
+        userId,
+        status: "approved",
+        ...(effectiveResetDate && { createdAt: { $gt: effectiveResetDate } }),
+      }).sort({ createdAt: 1 });
+      const allTransactions = [
+        ...depositsAfterWithdraw.map((d) => ({
+          type: "deposit",
+          data: d,
+          date: d.createdAt,
+          isNewCycle: d.isNewCycle || false,
+        })),
+        ...bonusesAfterWithdraw.map((b) => ({
+          type: "bonus",
+          data: b,
+          date: b.createdAt,
+          isNewCycle: b.isNewCycle || false,
+        })),
+      ].sort((a, b) => a.date - b.date);
+      if (allTransactions.length === 0) {
+        return res.status(200).json({
+          success: true,
+          hasRestrictions: false,
+          allowedGames: [],
+          message: {
+            en: "No game restrictions",
+            zh: "没有游戏限制",
+            ms: "Tiada sekatan permainan",
+          },
+        });
+      }
+      let startIndex = 0;
+      for (let i = allTransactions.length - 1; i >= 0; i--) {
+        if (allTransactions[i].isNewCycle === true) {
+          startIndex = i;
+          break;
+        }
+      }
+      const validTransactions = allTransactions.slice(startIndex);
+      let restrictedGames = [];
+      let hasRestrictions = false;
+      for (const tx of validTransactions) {
+        if (tx.type === "bonus") {
+          const bonus = tx.data;
+          const promotionData = await promotion.findById(bonus.promotionId);
+          if (
+            promotionData &&
+            promotionData.allowedGameDatabaseNames &&
+            promotionData.allowedGameDatabaseNames.length > 0
+          ) {
+            hasRestrictions = true;
+            if (restrictedGames.length === 0) {
+              restrictedGames = [...promotionData.allowedGameDatabaseNames];
+            } else {
+              restrictedGames = restrictedGames.filter((game) =>
+                promotionData.allowedGameDatabaseNames.includes(game)
+              );
+            }
+          }
+        }
+      }
+      return res.status(200).json({
+        success: true,
+        hasRestrictions: hasRestrictions,
+        allowedGames: restrictedGames,
+        message: hasRestrictions
+          ? {
+              en: "You have game restrictions active. Only selected games are available",
+              zh: "您有游戏限制。只能玩选定的游戏",
+              ms: "Anda mempunyai sekatan permainan aktif. Hanya permainan terpilih tersedia",
+            }
+          : {
+              en: "No game restrictions",
+              zh: "没有游戏限制",
+              ms: "Tiada sekatan permainan",
+            },
+      });
+    } catch (error) {
+      console.error("Error checking game restrictions:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "Failed to check game restrictions. Please try again later",
+          zh: "检查游戏限制失败，请稍后再试",
+          ms: "Gagal menyemak sekatan permainan. Sila cuba lagi kemudian",
+        },
+        error: error.message,
+      });
+    }
+  }
+);
+
 module.exports = router;
