@@ -148,6 +148,7 @@ router.post("/api/yeebet/launchGame", authenticateToken, async (req, res) => {
     const sign = generateSignature(params, yeebetSecret);
 
     const fullParams = { ...params, sign };
+
     const query = new URLSearchParams(fullParams).toString();
 
     const response = await axios.post(`${yeebetAPIURL}/api/login?${query}`, {
