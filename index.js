@@ -224,7 +224,9 @@ app.use((req, res, next) => {
 //   })
 // );
 
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(
+  express.urlencoded({ extended: true, limit: "10mb", parameterLimit: 100000 })
+);
 app.use(cookieParser());
 app.use(mongoSanitize());
 app.use((req, res, next) => {
