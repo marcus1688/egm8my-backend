@@ -758,7 +758,7 @@ router.post("/api/bng/launchGame", authenticateToken, async (req, res) => {
   }
 });
 
-router.post("/api/boongo", async (req, res) => {
+router.post("/api/bngprod", async (req, res) => {
   try {
     const {
       name,
