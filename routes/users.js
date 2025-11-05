@@ -52,6 +52,7 @@ const LiveYeebetModal = require("../models/live_yeebet.model");
 const LiveWeCasinoModal = require("../models/live_wecasino.model");
 const SlotCQ9Modal = require("../models/slot_cq9.model");
 const SlotHabaneroModal = require("../models/slot_habanero.model");
+const SlotBNGModal = require("../models/slot_bng.model");
 
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
@@ -5159,6 +5160,12 @@ router.get(
           // Habanero
           getAllUsersTurnover(SlotHabaneroModal, {
             refund: { $ne: true },
+            settle: true,
+          }),
+
+          // BNG
+          getAllUsersTurnover(SlotBNGModal, {
+            cancel: { $ne: true },
             settle: true,
           }),
         ];
