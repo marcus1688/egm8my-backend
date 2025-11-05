@@ -308,6 +308,8 @@ const userSchema = new mongoose.Schema(
       sagaming: { type: gameLockSchema, default: () => ({}) },
       yeebet: { type: gameLockSchema, default: () => ({}) },
       wecasino: { type: gameLockSchema, default: () => ({}) },
+      cq9slot: { type: gameLockSchema, default: () => ({}) },
+      cq9fish: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },

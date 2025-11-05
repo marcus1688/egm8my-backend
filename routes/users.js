@@ -50,6 +50,7 @@ const EsportTfGamingModal = require("../models/esport_tfgaming.model");
 const LiveSaGamingModal = require("../models/live_sagaming.model");
 const LiveYeebetModal = require("../models/live_yeebet.model");
 const LiveWeCasinoModal = require("../models/live_wecasino.model");
+const SlotCQ9Modal = require("../models/slot_cq9.model");
 
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
@@ -5145,6 +5146,13 @@ router.get(
           getAllUsersTurnover(LiveWeCasinoModal, {
             settle: true,
             cancel: { $ne: true },
+          }),
+
+          // CQ9 - Already included
+          getAllUsersTurnover(SlotCQ9Modal, {
+            cancel: { $ne: true },
+            refund: { $ne: true },
+            settle: true,
           }),
         ];
 

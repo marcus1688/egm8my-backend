@@ -30,6 +30,8 @@ const GameYGRGameModal = require("../../models/slot_yesgetrichDatabase.model");
 const GameJokerGameModal = require("../../models/slot_jokerDatabase.model");
 const GameMicroGamingGameModal = require("../../models/slot_livemicrogamingDatabase.model");
 const GameFunkyGameModal = require("../../models/slot_funkyDatabase.model");
+const GameHabaneroGameModal = require("../../models/slot_habaneroDatabase.model");
+const GameCq9GameModal = require("../../models/slot_cq9Database.model");
 
 const { S3Client, ListObjectsV2Command } = require("@aws-sdk/client-s3");
 const multer = require("multer");
@@ -76,7 +78,7 @@ function parseRTP(rtpRaw) {
 
 router.post("/api/playtech/import-games", async (req, res) => {
   try {
-    const importFilePath = path.join(__dirname, "../../public/funky.json");
+    const importFilePath = path.join(__dirname, "../../public/cq9.json");
     console.log(importFilePath);
 
     // Check if file exists
@@ -102,9 +104,9 @@ router.post("/api/playtech/import-games", async (req, res) => {
 
     console.log("pass");
     console.log(`Found ${gameList.length} games to import`);
-    await GameFunkyGameModal.deleteMany();
+    await GameCq9GameModal.deleteMany();
     // Insert into MongoDB
-    await GameFunkyGameModal.insertMany(gameList);
+    await GameCq9GameModal.insertMany(gameList);
 
     return res.status(200).json({
       success: true,
