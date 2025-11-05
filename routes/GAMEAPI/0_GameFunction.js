@@ -157,6 +157,10 @@ router.post("/admin/api/getAllTurnoverForRebate", async (req, res) => {
         url: `${PUBLIC_APIURL}api/cq9fish/getturnoverforrebate`,
         name: "CQ9",
       },
+      {
+        url: `${PUBLIC_APIURL}api/habanero/getturnoverforrebate`,
+        name: "HABANERO",
+      },
     ];
 
     const routePromises = routes.map((route) =>

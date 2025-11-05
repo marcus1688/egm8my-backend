@@ -310,6 +310,7 @@ const userSchema = new mongoose.Schema(
       wecasino: { type: gameLockSchema, default: () => ({}) },
       cq9slot: { type: gameLockSchema, default: () => ({}) },
       cq9fish: { type: gameLockSchema, default: () => ({}) },
+      habanero: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },
@@ -399,6 +400,9 @@ const userSchema = new mongoose.Schema(
       type: String,
     },
     weCasinoGameToken: {
+      type: String,
+    },
+    habaneroGameToken: {
       type: String,
     },
   },
