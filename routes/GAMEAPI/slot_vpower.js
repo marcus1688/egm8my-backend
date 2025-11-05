@@ -556,8 +556,9 @@ router.post("/api/vpower/launchGame", authenticateToken, async (req, res) => {
 router.post("/api/vpower/getbalance", async (req, res) => {
   try {
     const { userId, username, timestamp } = req.body;
-
+    console.log(req.body, "getbalance");
     if (!userId || !username || !timestamp) {
+      console.log("failed 1");
       return res.status(200).json({
         code: 6,
         balance: "0",
