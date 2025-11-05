@@ -169,6 +169,10 @@ router.post("/admin/api/getAllTurnoverForRebate", async (req, res) => {
         url: `${PUBLIC_APIURL}api/playstar/getturnoverforrebate`,
         name: "PLAYSTAR",
       },
+      {
+        url: `${PUBLIC_APIURL}api/vpower/getturnoverforrebate`,
+        name: "VPOWER",
+      },
     ];
 
     const routePromises = routes.map((route) =>

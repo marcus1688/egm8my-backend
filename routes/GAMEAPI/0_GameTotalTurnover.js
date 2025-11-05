@@ -27,6 +27,7 @@ const SlotCQ9Modal = require("../../models/slot_cq9.model");
 const SlotHabaneroModal = require("../../models/slot_habanero.model");
 const SlotBNGModal = require("../../models/slot_bng.model");
 const SlotPlayStarModal = require("../../models/slot_playstar.model");
+const SlotVPowerModal = require("../../models/slot_vpower.model");
 
 const { v4: uuidv4 } = require("uuid");
 const querystring = require("querystring");
@@ -412,6 +413,23 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
           },
         },
       },
+      vpower: {
+        $match: {
+          settle: true,
+        },
+        $group: {
+          _id: null,
+          turnover: { $sum: { $ifNull: ["$betamount", 0] } },
+          winLoss: {
+            $sum: {
+              $subtract: [
+                { $ifNull: ["$settleamount", 0] },
+                { $ifNull: ["$betamount", 0] },
+              ],
+            },
+          },
+        },
+      },
     };
 
     // Create an array of promises for all aggregations to match player-report
@@ -530,6 +548,13 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
         end,
         aggregations.playstar
       ),
+      getGameDataSummary(
+        SlotVPowerModal,
+        user.gameId,
+        start,
+        end,
+        aggregations.vpower
+      ),
     ]);
 
     // Create a result map from the resolved promises
@@ -599,6 +624,10 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
       playstar:
         promiseResults[15].status === "fulfilled"
           ? promiseResults[15].value
+          : { turnover: 0, winLoss: 0 },
+      vpower:
+        promiseResults[16].status === "fulfilled"
+          ? promiseResults[16].value
           : { turnover: 0, winLoss: 0 },
     };
     // Calculate total turnover and win loss
@@ -808,6 +837,13 @@ router.post("/api/games/active-games", authenticateToken, async (req, res) => {
         },
         "PlayStar"
       ),
+      queryModel(
+        SlotVPowerModal,
+        {
+          $or: [{ settle: false }, { settle: { $exists: false } }],
+        },
+        "VPower"
+      ),
     ]);
 
     // Process results - much faster since we're only getting 1 game per provider
@@ -1010,6 +1046,13 @@ router.post(
           },
           "PlayStar"
         ),
+        queryModel(
+          SlotVPowerModal,
+          {
+            $or: [{ settle: false }, { settle: { $exists: false } }],
+          },
+          "VPower"
+        ),
       ]);
 
       // Process results and combine all active games
@@ -1110,6 +1153,7 @@ router.post(
         Habanero: SlotHabaneroModal,
         BNG: SlotBNGModal,
         PlayStar: SlotPlayStarModal,
+        VPower: SlotVPowerModal,
       };
 
       const Model = providerModels[gameName];
@@ -1175,6 +1219,7 @@ router.post(
           case "Funky":
           case "BNG":
           case "PlayStar":
+          case "VPower":
           default:
             isAlreadySettled = gameRecord.settle === true;
             isAlreadyCanceled = gameRecord.cancel === true;
@@ -1234,6 +1279,9 @@ router.post(
             break;
           case "CQ9":
             updateData = { refund: true };
+            break;
+          case "VPower":
+            updateData = { settle: true };
             break;
           default:
             updateData = { cancel: true };

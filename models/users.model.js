@@ -313,6 +313,7 @@ const userSchema = new mongoose.Schema(
       habanero: { type: gameLockSchema, default: () => ({}) },
       btgaming: { type: gameLockSchema, default: () => ({}) },
       playstar: { type: gameLockSchema, default: () => ({}) },
+      vpower: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },
@@ -408,6 +409,9 @@ const userSchema = new mongoose.Schema(
       type: String,
     },
     playstarGameToken: {
+      type: String,
+    },
+    vpowerGameID: {
       type: String,
     },
   },

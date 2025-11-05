@@ -1,0 +1,1898 @@
+const moment = require("moment");
+const express = require("express");
+const router = express.Router();
+const axios = require("axios");
+const crypto = require("crypto");
+const { authenticateToken } = require("../../auth/auth");
+const { authenticateAdminToken } = require("../../auth/adminAuth");
+const {
+  User,
+  adminUserWalletLog,
+  GameDataLog,
+} = require("../../models/users.model");
+const { v4: uuidv4 } = require("uuid");
+const querystring = require("querystring");
+const GameWalletLog = require("../../models/gamewalletlog.model");
+const SlotPlaytechModal = require("../../models/slot_playtech.model");
+const GamePlaytechGameModal = require("../../models/slot_playtechDatabase.model");
+
+require("dotenv").config();
+
+//Staging
+const playtechKioskKey = process.env.PLAYTECH_SECRET;
+const playtechKioskName = "SJ82_EGM8MYR";
+const playtechPrefix = "SJ82";
+const playtechServerName = "AGCASINO";
+const webURL = "http://egm8my.vip/";
+const playtechApiURL = "https://api.agmidway.com";
+const cashierURL = "https://www.egm8my.vip/myaccount/deposit";
+
+const errorResponses = {
+  playerNotFound: (requestId) => ({
+    requestId,
+    error: {
+      code: "ERR_PLAYER_NOT_FOUND",
+      description: null,
+    },
+  }),
+  authFailed: (requestId) => ({
+    requestId,
+    error: {
+      code: "ERR_AUTHENTICATION_FAILED",
+    },
+  }),
+  insufficientFunds: (requestId) => ({
+    requestId,
+    error: {
+      code: "ERR_INSUFFICIENT_FUNDS",
+    },
+  }),
+  systemError: (requestId) => ({
+    requestId: requestId || "",
+    error: {
+      code: "INTERNAL_ERROR",
+    },
+  }),
+};
+
+function roundToTwoDecimals(num) {
+  return Math.round(num * 100) / 100;
+}
+
+const validateAndExtractUsername = (fullUsername) => {
+  if (!fullUsername.startsWith(playtechPrefix)) return fullUsername;
+  return fullUsername.slice(playtechPrefix.length + 1);
+};
+
+function generateTransactionId(length = 8, prefix = "") {
+  // Ensure length doesn't exceed 10 characters
+  const maxLength = 10;
+  const actualLength = Math.min(length, maxLength);
+
+  // Characters to use in the transaction ID (alphanumeric)
+  const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let result = "";
+
+  // Generate random characters
+  for (let i = 0; i < actualLength; i++) {
+    const randomIndex = Math.floor(Math.random() * characters.length);
+    result += characters.charAt(randomIndex);
+  }
+
+  // If a prefix is provided, make sure the total length doesn't exceed 10
+  let finalId = prefix + result;
+  if (finalId.length > maxLength) {
+    // Truncate the random part to ensure total length is 10
+    finalId = prefix + result.substring(0, maxLength - prefix.length);
+  }
+
+  return finalId;
+}
+
+async function GameWalletLogAttempt(
+  username,
+  transactiontype,
+  remark,
+  amount,
+  gamename
+) {
+  await GameWalletLog.create({
+    username,
+    transactiontype,
+    remark: remark || "",
+    amount,
+    gamename: gamename,
+  });
+}
+
+const generateRandomCode = () => {
+  const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let result = "";
+
+  for (let i = 0; i < 6; i++) {
+    const randomIndex = Math.floor(Math.random() * characters.length);
+    result += characters[randomIndex];
+  }
+
+  return result;
+};
+
+function getFormattedGMTTime(date) {
+  const momentDate = date ? moment(date) : moment();
+
+  return momentDate.utc().format("YYYY-MM-DD HH:mm:ss.SSS");
+}
+
+router.post("/api/playtech/getgamelist", async (req, res) => {
+  try {
+    const games = await GamePlaytechGameModal.find({
+      $and: [
+        {
+          $or: [{ maintenance: false }, { maintenance: { $exists: false } }],
+        },
+        {
+          imageUrlEN: { $exists: true, $ne: null, $ne: "" },
+        },
+      ],
+    }).sort({
+      hot: -1,
+      createdAt: -1,
+    });
+
+    if (!games || games.length === 0) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "No games found. Please try again later.",
+          zh: "未找到游戏。请稍后再试。",
+          ms: "Tiada permainan ditemui. Sila cuba lagi kemudian.",
+          zh_hk: "未找到遊戲。請稍後再試。",
+          id: "Tidak ada permainan ditemukan. Silakan coba lagi nanti.",
+        },
+      });
+    }
+
+    const reformattedGamelist = games.map((game) => ({
+      GameCode: game.gameID,
+      GameNameEN: game.gameNameEN,
+      GameNameZH: game.gameNameCN,
+      GameType: game.gameType,
+      GameImage: game.imageUrlEN || "",
+      GameImageZH: game.imageUrlCN,
+      Hot: game.hot,
+      RTP: game.rtpRate,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      gamelist: reformattedGamelist,
+    });
+  } catch (error) {
+    console.error("PLAYTECH Error fetching game list:", error);
+    return res.status(200).json({
+      success: false,
+      message: {
+        en: "PLAYTECH: Unable to retrieve game lists. Please contact customer service for assistance.",
+        zh: "PLAYTECH: 无法获取游戏列表，请联系客服以获取帮助。",
+        ms: "PLAYTECH: Tidak dapat mendapatkan senarai permainan. Sila hubungi khidmat pelanggan untuk bantuan.",
+        zh_hk: "PLAYTECH: 無法獲取遊戲列表，請聯絡客服以獲取幫助。",
+        id: "PLAYTECH: Tidak dapat mengambil daftar permainan. Silakan hubungi layanan pelanggan untuk bantuan.",
+      },
+    });
+  }
+});
+
+router.post("/api/playtech/launchGame", authenticateToken, async (req, res) => {
+  try {
+    const { gameCode, clientPlatform, gameLang } = req.body;
+    const user = await User.findById(req.user.userId);
+
+    if (!user) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "User not found. Please try again or contact customer service for assistance.",
+          zh: "用户未找到，请重试或联系客服以获取帮助。",
+          ms: "Pengguna tidak ditemui, sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          zh_hk: "用戶未找到，請重試或聯絡客服以獲取幫助。",
+          id: "Pengguna tidak ditemukan. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+        },
+      });
+    }
+
+    if (user.gameLock.playtech.lock) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "Your game access has been locked. Please contact customer support for further assistance.",
+          zh: "您的游戏访问已被锁定，请联系客服以获取进一步帮助。",
+          ms: "Akses permainan anda telah dikunci. Sila hubungi khidmat pelanggan untuk bantuan lanjut.",
+          zh_hk: "您的遊戲訪問已被鎖定，請聯絡客服以獲取進一步幫助。",
+          id: "Akses permainan Anda telah dikunci. Silakan hubungi dukungan pelanggan untuk bantuan lebih lanjut.",
+        },
+      });
+    }
+
+    let lang = "en";
+
+    if (gameLang === "en") {
+      lang = "en";
+    } else if (gameLang === "zh") {
+      lang = "zh";
+    } else if (gameLang === "ms") {
+      lang = "ms";
+    } else if (gameLang === "id") {
+      lang = "en";
+    } else if (gameLang === "zh_hk") {
+      lang = "zh";
+    }
+
+    let platform = "web";
+    if (clientPlatform === "web") {
+      platform = "web";
+    } else if (clientPlatform === "mobile") {
+      platform = "mobile";
+    }
+
+    const requestId = uuidv4();
+
+    const externalToken = `${playtechPrefix}_${generateRandomCode()}`;
+    const requestBody = {
+      requestId,
+      serverName: playtechServerName,
+      username: `${playtechPrefix}_${user.gameId}`,
+      gameCodeName: gameCode,
+      clientPlatform: platform,
+      externalToken,
+      language: lang,
+      lobbyUrl: webURL,
+    };
+
+    const headers = {
+      "Content-Type": "application/json",
+      "x-auth-kiosk-key": playtechKioskKey,
+    };
+
+    const response = await axios.post(
+      `${playtechApiURL}/from-operator/getGameLaunchUrl`,
+      requestBody,
+      { headers }
+    );
+
+    if (response.data.code !== 200) {
+      console.log("PLAYTECH error to launch game", response.data);
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "PLAYTECH: Game launch failed. Please try again or customer service for assistance.",
+          zh: "PLAYTECH: 游戏启动失败，请重试或联系客服以获得帮助。",
+          ms: "PLAYTECH: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          zh_hk: "PLAYTECH: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+          id: "PLAYTECH: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+        },
+      });
+    }
+
+    await GameWalletLogAttempt(
+      user.username,
+      "Transfer In",
+      "Seamless",
+      roundToTwoDecimals(user.wallet),
+      "PLAYTECH SLOT"
+    );
+
+    const updatedUser = await User.findOneAndUpdate(
+      { _id: req.user.userId },
+      {
+        playtechGameToken: externalToken,
+      },
+      { new: true }
+    );
+
+    return res.status(200).json({
+      success: true,
+      gameLobby: response.data.data.url,
+      message: {
+        en: "Game launched successfully.",
+        zh: "游戏启动成功。",
+        ms: "Permainan berjaya dimulakan.",
+        zh_hk: "遊戲啟動成功。",
+        id: "Permainan berhasil diluncurkan.",
+      },
+    });
+  } catch (error) {
+    console.log("PLAYTECH error to launch game", error.message);
+    return res.status(200).json({
+      success: false,
+      message: {
+        en: "PLAYTECH: Game launch failed. Please try again or customer service for assistance.",
+        zh: "PLAYTECH: 游戏启动失败，请重试或联系客服以获得帮助。",
+        ms: "PLAYTECH: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+        zh_hk: "PLAYTECH: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+        id: "PLAYTECH: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+      },
+    });
+  }
+});
+
+router.post(
+  "/api/playtechlive/launchGame",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { clientPlatform, gameLang } = req.body;
+      const user = await User.findById(req.user.userId);
+
+      if (!user) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "User not found. Please try again or contact customer service for assistance.",
+            zh: "用户未找到，请重试或联系客服以获取帮助。",
+            ms: "Pengguna tidak ditemui, sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+            zh_hk: "用戶未找到，請重試或聯絡客服以獲取幫助。",
+            id: "Pengguna tidak ditemukan. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+          },
+        });
+      }
+
+      if (user.gameLock.playtech.lock) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Your game access has been locked. Please contact customer support for further assistance.",
+            zh: "您的游戏访问已被锁定，请联系客服以获取进一步帮助。",
+            ms: "Akses permainan anda telah dikunci. Sila hubungi khidmat pelanggan untuk bantuan lanjut.",
+            zh_hk: "您的遊戲訪問已被鎖定，請聯絡客服以獲取進一步幫助。",
+            id: "Akses permainan Anda telah dikunci. Silakan hubungi dukungan pelanggan untuk bantuan lebih lanjut.",
+          },
+        });
+      }
+
+      let lang = "en";
+
+      if (gameLang === "en") {
+        lang = "en";
+      } else if (gameLang === "zh") {
+        lang = "zh";
+      } else if (gameLang === "ms") {
+        lang = "ms";
+      } else if (gameLang === "id") {
+        lang = "en";
+      } else if (gameLang === "zh_hk") {
+        lang = "zh";
+      }
+
+      let platform = "web";
+      if (clientPlatform === "web") {
+        platform = "web";
+      } else if (clientPlatform === "mobile") {
+        platform = "mobile";
+      }
+
+      const requestId = uuidv4();
+
+      const externalToken = `${playtechPrefix}_${generateRandomCode()}`;
+
+      const requestBody = {
+        requestId,
+        serverName: playtechServerName,
+        username: `${playtechPrefix}_${user.gameId}`,
+        gameCodeName: "bjl",
+        clientPlatform: platform,
+        externalToken,
+        language: lang,
+        lobbyUrl: webURL,
+        depositUrl: cashierURL,
+      };
+
+      const headers = {
+        "Content-Type": "application/json",
+        "x-auth-kiosk-key": playtechKioskKey,
+      };
+
+      const response = await axios.post(
+        `${playtechApiURL}/from-operator/getGameLaunchUrl`,
+        requestBody,
+        { headers }
+      );
+
+      if (response.data.code !== 200) {
+        console.log("PLAYTECH error to launch game", response.data);
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "PLAYTECH: Game launch failed. Please try again or customer service for assistance.",
+            zh: "PLAYTECH: 游戏启动失败，请重试或联系客服以获得帮助。",
+            ms: "PLAYTECH: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+            zh_hk: "PLAYTECH: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+            id: "PLAYTECH: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+          },
+        });
+      }
+
+      await GameWalletLogAttempt(
+        user.username,
+        "Transfer In",
+        "Seamless",
+        roundToTwoDecimals(user.wallet),
+        "PLAYTECH LIVE"
+      );
+
+      const updatedUser = await User.findOneAndUpdate(
+        { _id: req.user.userId },
+        {
+          playtechGameToken: externalToken,
+        },
+        { new: true }
+      );
+
+      return res.status(200).json({
+        success: true,
+        gameLobby: response.data.data.url,
+        message: {
+          en: "Game launched successfully.",
+          zh: "游戏启动成功。",
+          ms: "Permainan berjaya dimulakan.",
+          zh_hk: "遊戲啟動成功。",
+          id: "Permainan berhasil diluncurkan.",
+        },
+      });
+    } catch (error) {
+      console.log("PLAYTECH error to launch game", error.message);
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "PLAYTECH: Game launch failed. Please try again or customer service for assistance.",
+          zh: "PLAYTECH: 游戏启动失败，请重试或联系客服以获得帮助。",
+          ms: "PLAYTECH: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          zh_hk: "PLAYTECH: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+          id: "PLAYTECH: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+        },
+      });
+    }
+  }
+);
+
+router.post("/api/playtech/healthcheck", async (req, res) => {
+  return res.status(200).json({});
+});
+
+router.post("/api/playtech/auth", async (req, res) => {
+  const { requestId, username, externalToken } = req.body;
+
+  try {
+    const actualUsername = validateAndExtractUsername(username);
+
+    const user = await User.findOne(
+      { gameId: actualUsername },
+      { _id: 1, playtechGameToken: 1 }
+    ).lean();
+
+    if (!user || user.playtechGameToken !== externalToken) {
+      return res
+        .status(200)
+        .json(
+          !user
+            ? errorResponses.playerNotFound(requestId)
+            : errorResponses.authFailed(requestId)
+        );
+    }
+
+    return res.status(200).json({
+      requestId: requestId,
+      username: `${playtechPrefix}_${actualUsername}`,
+      permanentExternalToken: externalToken,
+      currencyCode: "CNY",
+      countryCode: "CN",
+    });
+  } catch (error) {
+    console.error(
+      "PLAYTECH: Error in game provider calling pw66 auth api:",
+      error.message
+    );
+    return res.status(200).json(errorResponses.systemError(requestId));
+  }
+});
+
+router.post("/api/playtech/getbalance", async (req, res) => {
+  const { requestId, username, externalToken } = req.body;
+  try {
+    const actualUsername = validateAndExtractUsername(username);
+
+    const user = await User.findOne(
+      { gameId: actualUsername },
+      { playtechGameToken: 1, wallet: 1 }
+    ).lean();
+
+    if (!user || user.playtechGameToken !== externalToken) {
+      return res
+        .status(200)
+        .json(
+          !user
+            ? errorResponses.playerNotFound(requestId)
+            : errorResponses.authFailed(requestId)
+        );
+    }
+
+    return res.status(200).json({
+      requestId: requestId,
+      balance: {
+        real: roundToTwoDecimals(user.wallet),
+        timestamp: getFormattedGMTTime(),
+      },
+    });
+  } catch (error) {
+    console.error(
+      "PLAYTECH: Error in game provider calling pw66 getbalance api:",
+      error.message
+    );
+    return res.status(200).json(errorResponses.systemError(requestId));
+  }
+});
+
+router.post("/api/playtech/logout", async (req, res) => {
+  const { requestId, username, externalToken } = req.body;
+
+  try {
+    const actualUsername = validateAndExtractUsername(username);
+
+    const user = await User.findOne(
+      { gameId: actualUsername },
+      { playtechGameToken: 1, _id: 1 }
+    ).lean();
+
+    if (!user || user.playtechGameToken !== externalToken) {
+      return res
+        .status(200)
+        .json(
+          !user
+            ? errorResponses.playerNotFound(requestId)
+            : errorResponses.authFailed(requestId)
+        );
+    }
+
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { playtechGameToken: null } }
+    );
+
+    return res.status(200).json({
+      requestId: requestId,
+    });
+  } catch (error) {
+    console.error(
+      "PLAYTECH: Error in game provider calling pw66 getbalance api:",
+      error.message
+    );
+    return res.status(200).json(errorResponses.systemError(requestId));
+  }
+});
+
+router.post("/api/playtech/keepalive", async (req, res) => {
+  const { requestId, username, externalToken } = req.body;
+
+  try {
+    const actualUsername = validateAndExtractUsername(username);
+
+    const user = await User.findOne(
+      { gameId: actualUsername },
+      { _id: 1, playtechGameToken: 1 }
+    ).lean();
+
+    if (!user || user.playtechGameToken !== externalToken) {
+      return res
+        .status(200)
+        .json(
+          !user
+            ? errorResponses.playerNotFound(requestId)
+            : errorResponses.authFailed(requestId)
+        );
+    }
+
+    return res.status(200).json({
+      requestId: requestId,
+    });
+  } catch (error) {
+    console.error(
+      "PLAYTECH: Error in game provider calling pw66 keepalive api:",
+      error.message
+    );
+    return res.status(200).json(errorResponses.systemError(requestId));
+  }
+});
+
+router.post("/api/playtech/bet", async (req, res) => {
+  const {
+    requestId,
+    username,
+    externalToken,
+    gameRoundCode,
+    transactionCode,
+    gameCodeName,
+    amount,
+  } = req.body;
+  try {
+    const actualUsername = validateAndExtractUsername(username);
+
+    const [user, existingTransaction, existingGameRound, gameInfo] =
+      await Promise.all([
+        // User query
+        User.findOne(
+          { gameId: actualUsername },
+          {
+            playtechGameToken: 1,
+            wallet: 1,
+            "gameLock.playtech.lock": 1,
+          }
+        ).lean(),
+
+        // Existing transaction check
+        SlotPlaytechModal.findOne(
+          { transactionCode, bet: true },
+          { externalTransactionCode: 1 }
+        ).lean(),
+
+        SlotPlaytechModal.findOne({ gameRoundCode }, { _id: 1 }).lean(),
+
+        GamePlaytechGameModal.findOne(
+          { gameID: gameCodeName },
+          { gameType: 1 }
+        ).lean(),
+      ]);
+
+    if (
+      !user ||
+      user.playtechGameToken !== externalToken ||
+      user.gameLock?.playtech?.lock
+    ) {
+      return res
+        .status(200)
+        .json(
+          !user
+            ? errorResponses.playerNotFound(requestId)
+            : errorResponses.authFailed(requestId)
+        );
+    }
+
+    const formattedTime = getFormattedGMTTime();
+
+    if (existingTransaction) {
+      return res.status(200).json({
+        requestId: requestId,
+        externalTransactionCode: existingTransaction.externalTransactionCode,
+        externalTransactionDate: formattedTime,
+        balance: {
+          real: roundToTwoDecimals(user.wallet),
+          timestamp: formattedTime,
+        },
+      });
+    }
+
+    const updatedUserBalance = await User.findOneAndUpdate(
+      {
+        gameId: actualUsername,
+        wallet: { $gte: roundToTwoDecimals(amount || 0) },
+      },
+      { $inc: { wallet: -roundToTwoDecimals(amount || 0) } },
+      { new: true, lean: true, projection: { wallet: 1 } }
+    );
+
+    if (!updatedUserBalance) {
+      return res.status(200).json(errorResponses.insufficientFunds(requestId));
+    }
+
+    const ourTransactionID = generateTransactionId();
+    const gameType = gameInfo ? "SLOT" : "LIVE";
+
+    await SlotPlaytechModal.create({
+      username: actualUsername,
+      transactionCode,
+      externalTransactionCode: ourTransactionID,
+      bet: true,
+      ...(existingGameRound && { settle: true, settleAmount: 0 }),
+      betAmount: roundToTwoDecimals(amount || 0),
+      gameRoundCode,
+      gametype: gameType,
+    });
+
+    return res.status(200).json({
+      requestId: requestId,
+      externalTransactionCode: ourTransactionID,
+      externalTransactionDate: formattedTime,
+      balance: {
+        real: roundToTwoDecimals(updatedUserBalance.wallet),
+        timestamp: formattedTime,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Error processing bet playtech calling from game provider:",
+      error
+    );
+    return res.status(200).json(errorResponses.systemError(requestId));
+  }
+});
+
+// GAMEROUNDRESULT endpoint
+router.post("/api/playtech/gameround", async (req, res) => {
+  const { requestId, username, externalToken, gameRoundCode, pay } = req.body;
+
+  try {
+    const actualUsername = validateAndExtractUsername(username);
+
+    const ourTransactionID = generateTransactionId();
+    const formattedTime = getFormattedGMTTime();
+
+    const user = await User.findOne(
+      { gameId: actualUsername },
+      { _id: 1, playtechGameToken: 1, wallet: 1 }
+    ).lean();
+
+    if (!user || user.playtechGameToken !== externalToken) {
+      return res
+        .status(200)
+        .json(
+          !user
+            ? errorResponses.playerNotFound(requestId)
+            : errorResponses.authFailed(requestId)
+        );
+    }
+
+    // Process GAMEROUNDRESULT without pay (just a result with no win)
+    if (!pay) {
+      await SlotPlaytechModal.updateMany(
+        {
+          gameRoundCode,
+          username: actualUsername,
+        },
+        {
+          $set: {
+            settle: true,
+            settleamount: 0,
+            externalSettleTransactionCode: ourTransactionID,
+          },
+        }
+      );
+
+      return res.status(200).json({
+        requestId: requestId,
+        externalTransactionCode: ourTransactionID,
+        externalTransactionDate: formattedTime,
+        balance: {
+          real: roundToTwoDecimals(user.wallet),
+          timestamp: formattedTime,
+        },
+      });
+    }
+
+    const { transactionCode, amount, type } = pay;
+
+    const existingTransaction = await SlotPlaytechModal.findOne({
+      settleTransactionCode: transactionCode,
+      settle: true,
+    }).lean();
+
+    if (existingTransaction) {
+      return res.status(200).json({
+        requestId: requestId,
+        externalTransactionCode: ourTransactionID,
+        externalTransactionDate: formattedTime,
+        balance: {
+          real: roundToTwoDecimals(user.wallet),
+          timestamp: formattedTime,
+        },
+      });
+    }
+
+    const [updatedUserBalance] = await Promise.all([
+      User.findOneAndUpdate(
+        { gameId: actualUsername },
+        { $inc: { wallet: roundToTwoDecimals(amount || 0) } },
+        { new: true, lean: true, projection: { wallet: 1 } }
+      ),
+
+      SlotPlaytechModal.findOneAndUpdate(
+        { gameRoundCode, username: actualUsername, settle: { $ne: true } },
+        {
+          $set: {
+            settle: true,
+            settleamount: roundToTwoDecimals(amount || 0),
+            settleTransactionCode: transactionCode,
+            externalSettleTransactionCode: ourTransactionID,
+            ...(type === "REFUND" && { cancel: true }),
+          },
+          $setOnInsert: {
+            gameRoundCode,
+            username: actualUsername,
+            bet: true,
+            betAmount: 0,
+          },
+        },
+        {
+          upsert: true,
+        }
+      ),
+    ]);
+
+    return res.status(200).json({
+      requestId: requestId,
+      externalTransactionCode: ourTransactionID,
+      externalTransactionDate: formattedTime,
+      balance: {
+        real: roundToTwoDecimals(updatedUserBalance.wallet),
+        timestamp: formattedTime,
+      },
+    });
+  } catch (error) {
+    console.error("Error processing game round result:", error);
+    return res.status(200).json(errorResponses.systemError(requestId));
+  }
+});
+
+router.post("/api/playtech/transferfund", async (req, res) => {
+  const { requestId, username, transactionCode, amount } = req.body;
+
+  try {
+    const actualUsername = validateAndExtractUsername(username);
+    const ourTransactionID = generateTransactionId();
+    const formattedTime = getFormattedGMTTime();
+
+    const [user, existingTransaction] = await Promise.all([
+      // Get user data
+      User.findOne({ gameId: actualUsername }, { _id: 1, wallet: 1 }).lean(),
+
+      SlotPlaytechModal.findOne(
+        { bonusTransactionCode: transactionCode, bonus: true },
+        { _id: 1 }
+      ).lean(),
+    ]);
+
+    if (!user) {
+      return res.status(200).json(errorResponses.playerNotFound(requestId));
+    }
+
+    if (existingTransaction) {
+      return res.status(200).json({
+        requestId: requestId,
+        externalTransactionCode: ourTransactionID,
+        externalTransactionDate: formattedTime,
+        balance: {
+          real: roundToTwoDecimals(user.wallet),
+          timestamp: formattedTime,
+        },
+      });
+    }
+
+    const [updatedUserBalance] = await Promise.all([
+      // Update user balance
+      User.findOneAndUpdate(
+        { gameId: actualUsername },
+        { $inc: { wallet: roundToTwoDecimals(amount || 0) } },
+        { new: true, lean: true, projection: { wallet: 1 } }
+      ),
+
+      SlotPlaytechModal.create({
+        username: actualUsername,
+        bonus: true,
+        settleamount: roundToTwoDecimals(amount || 0),
+        bonusTransactionCode: transactionCode,
+        externalBonusTransactionCode: ourTransactionID,
+      }),
+    ]);
+
+    return res.status(200).json({
+      requestId: requestId,
+      externalTransactionCode: ourTransactionID,
+      externalTransactionDate: formattedTime,
+      balance: {
+        real: roundToTwoDecimals(updatedUserBalance.wallet),
+        timestamp: formattedTime,
+      },
+    });
+  } catch (error) {
+    console.error("Error processing game round result:", error);
+    return res.status(200).json({
+      requestId: req.body.requestId || "",
+      error: {
+        code: "SYSTEM_ERROR",
+        message: "Internal server error",
+      },
+    });
+  }
+});
+
+router.post("/api/playtech/notifybonusevent", async (req, res) => {
+  const {
+    requestId,
+    username,
+    remoteBonusCode,
+    bonusInstanceCode,
+    resultingStatus,
+    date,
+    bonusBalanceChange,
+    freeSpinsChange,
+    goldenChipsChange,
+    bonusTemplateId,
+    freeSpinValue,
+  } = req.body;
+
+  try {
+    const actualUsername = validateAndExtractUsername(username);
+
+    const [user, existingBonusEvent] = await Promise.all([
+      // Get user data
+      User.findOne({ gameId: actualUsername }, { _id: 1 }).lean(),
+
+      // Check if this bonus event was already processed
+      SlotPlaytechModal.findOne(
+        {
+          bonusEvent: true,
+          bonusInstanceCode,
+          remoteBonusCode,
+          resultingStatus,
+        },
+        { _id: 1 }
+      ).lean(), // Only fetch ID for efficiency
+    ]);
+
+    if (!user) {
+      return res.status(200).json(errorResponses.playerNotFound(requestId));
+    }
+
+    if (existingBonusEvent) {
+      return res.status(200).json({
+        requestId: requestId,
+      });
+    }
+
+    const promises = [
+      SlotPlaytechModal.create({
+        username: actualUsername,
+        bonusEvent: true,
+        remoteBonusCode,
+        bonusInstanceCode,
+        resultingStatus,
+        eventDate: new Date(date),
+        bonusBalanceChange: roundToTwoDecimals(bonusBalanceChange || 0),
+        freeSpinsChange,
+        goldenChipsChange,
+        bonusTemplateId,
+        freeSpinValue: roundToTwoDecimals(freeSpinValue || 0),
+        gametype: "SLOT",
+      }),
+    ];
+
+    await Promise.all(promises);
+
+    // Return success response
+    return res.status(200).json({
+      requestId: requestId,
+    });
+  } catch (error) {
+    return res.status(200).json(errorResponses.systemError(requestId));
+  }
+});
+
+// ----------------
+router.post("/api/playtechslot/getturnoverforrebate", async (req, res) => {
+  try {
+    const { date } = req.body;
+
+    let startDate, endDate;
+    if (date === "today") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    } else if (date === "yesterday") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    }
+
+    const records = await SlotPlaytechModal.find({
+      createdAt: {
+        $gte: startDate,
+        $lt: endDate,
+      },
+      $or: [{ gametype: "SLOT" }, { gametype: { $exists: false } }],
+      settle: true,
+      cancel: { $ne: true },
+    });
+
+    // Aggregate turnover and win/loss for each player
+    let playerSummary = {};
+
+    records.forEach((record) => {
+      const username = record.username.toLowerCase();
+
+      if (!playerSummary[username]) {
+        playerSummary[username] = { turnover: 0, winloss: 0 };
+      }
+
+      playerSummary[username].turnover += record.betAmount || 0;
+
+      playerSummary[username].winloss +=
+        (record.settleamount || 0) - (record.betAmount || 0);
+    });
+    // Format the turnover and win/loss for each player to two decimal places
+    Object.keys(playerSummary).forEach((playerId) => {
+      playerSummary[playerId].turnover = Number(
+        playerSummary[playerId].turnover.toFixed(2)
+      );
+      playerSummary[playerId].winloss = Number(
+        playerSummary[playerId].winloss.toFixed(2)
+      );
+    });
+    // Return the aggregated results
+    return res.status(200).json({
+      success: true,
+      summary: {
+        gamename: "PLAYTECH",
+        gamecategory: "Slot Games",
+        users: playerSummary,
+      },
+    });
+  } catch (error) {
+    console.log("PLAYTECH: Failed to fetch win/loss report:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: {
+        en: "PLAYTECH: Failed to fetch win/loss report",
+        zh: "PLAYTECH: 获取盈亏报告失败",
+      },
+    });
+  }
+});
+
+router.get(
+  "/admin/api/playtechslot/:userId/dailygamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      const records = await SlotPlaytechModal.find({
+        username: user.username.toLowerCase(),
+        createdAt: {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        },
+        $or: [{ gametype: "SLOT" }, { gametype: { $exists: false } }],
+        settle: true,
+        cancel: { $ne: true },
+      });
+
+      // Aggregate turnover and win/loss for each player
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        totalTurnover += record.betAmount || 0;
+        totalWinLoss += (record.settleamount || 0) - (record.betAmount || 0);
+      });
+
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+      // Return the aggregated results
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "PLAYTECH",
+          gamecategory: "Slot Games",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("PLAYTECH: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "PLAYTECH: Failed to fetch win/loss report",
+          zh: "PLAYTECH: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/playtechslot/:userId/gamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      const records = await GameDataLog.find({
+        username: user.username.toLowerCase(),
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      // Sum up the values for EVOLUTION under Live Casino
+      records.forEach((record) => {
+        // Convert Mongoose Map to Plain Object
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
+
+        if (
+          gameCategories &&
+          gameCategories["Slot Games"] &&
+          gameCategories["Slot Games"] instanceof Map
+        ) {
+          const gameCat = Object.fromEntries(gameCategories["Slot Games"]);
+
+          if (gameCat["PLAYTECH"]) {
+            totalTurnover += gameCat["PLAYTECH"].turnover || 0;
+            totalWinLoss += gameCat["PLAYTECH"].winloss || 0;
+          }
+        }
+      });
+
+      // Format the total values to two decimal places
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "PLAYTECH",
+          gamecategory: "Slot Games",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("PLAYTECH: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "PLAYTECH: Failed to fetch win/loss report",
+          zh: "PLAYTECH: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/playtechslot/dailykioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const records = await SlotPlaytechModal.find({
+        createdAt: {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        },
+        $or: [{ gametype: "SLOT" }, { gametype: { $exists: false } }],
+        settle: true,
+        cancel: { $ne: true },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        totalTurnover += record.betAmount || 0;
+
+        totalWinLoss += (record.betAmount || 0) - (record.settleamount || 0);
+      });
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "PLAYTECH",
+          gamecategory: "Slot Games",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("PLAYTECH: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "PLAYTECH: Failed to fetch win/loss report",
+          zh: "PLAYTECH: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/playtechslot/kioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const records = await GameDataLog.find({
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
+
+        if (
+          gameCategories &&
+          gameCategories["Slot Games"] &&
+          gameCategories["Slot Games"] instanceof Map
+        ) {
+          const gameCat = Object.fromEntries(gameCategories["Slot Games"]);
+
+          if (gameCat["PLAYTECH"]) {
+            totalTurnover += Number(gameCat["PLAYTECH"].turnover || 0);
+            totalWinLoss += Number(gameCat["PLAYTECH"].winloss || 0) * -1;
+          }
+        }
+      });
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "PLAYTECH",
+          gamecategory: "Slot Games",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("PLAYTECH: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "PLAYTECH: Failed to fetch win/loss report",
+          zh: "PLAYTECH: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+// ----------------
+router.post("/api/playtechlive/getturnoverforrebate", async (req, res) => {
+  try {
+    const { date } = req.body;
+
+    let startDate, endDate;
+    if (date === "today") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    } else if (date === "yesterday") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    }
+
+    const records = await SlotPlaytechModal.find({
+      createdAt: {
+        $gte: startDate,
+        $lt: endDate,
+      },
+      gametype: "LIVE",
+      settle: true,
+      cancel: { $ne: true },
+    });
+
+    // Aggregate turnover and win/loss for each player
+    let playerSummary = {};
+
+    records.forEach((record) => {
+      const username = record.username.toLowerCase();
+
+      if (!playerSummary[username]) {
+        playerSummary[username] = { turnover: 0, winloss: 0 };
+      }
+
+      playerSummary[username].turnover += record.betAmount || 0;
+
+      playerSummary[username].winloss +=
+        (record.settleamount || 0) - (record.betAmount || 0);
+    });
+    // Format the turnover and win/loss for each player to two decimal places
+    Object.keys(playerSummary).forEach((playerId) => {
+      playerSummary[playerId].turnover = Number(
+        playerSummary[playerId].turnover.toFixed(2)
+      );
+      playerSummary[playerId].winloss = Number(
+        playerSummary[playerId].winloss.toFixed(2)
+      );
+    });
+    // Return the aggregated results
+    return res.status(200).json({
+      success: true,
+      summary: {
+        gamename: "PLAYTECH",
+        gamecategory: "Live Casino",
+        users: playerSummary,
+      },
+    });
+  } catch (error) {
+    console.log("PLAYTECH: Failed to fetch win/loss report:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: {
+        en: "PLAYTECH: Failed to fetch win/loss report",
+        zh: "PLAYTECH: 获取盈亏报告失败",
+      },
+    });
+  }
+});
+
+router.get(
+  "/admin/api/playtechlive/:userId/dailygamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      const records = await SlotPlaytechModal.find({
+        username: user.username.toLowerCase(),
+        createdAt: {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        },
+        gametype: "LIVE",
+        settle: true,
+        cancel: { $ne: true },
+      });
+
+      // Aggregate turnover and win/loss for each player
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        totalTurnover += record.betAmount || 0;
+        totalWinLoss += (record.settleamount || 0) - (record.betAmount || 0);
+      });
+
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+      // Return the aggregated results
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "PLAYTECH",
+          gamecategory: "Live Casino",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("PLAYTECH: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "PLAYTECH: Failed to fetch win/loss report",
+          zh: "PLAYTECH: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/playtechlive/:userId/gamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      const records = await GameDataLog.find({
+        username: user.username.toLowerCase(),
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      // Sum up the values for EVOLUTION under Live Casino
+      records.forEach((record) => {
+        // Convert Mongoose Map to Plain Object
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
+
+        if (
+          gameCategories &&
+          gameCategories["Live Casino"] &&
+          gameCategories["Live Casino"] instanceof Map
+        ) {
+          const gameCat = Object.fromEntries(gameCategories["Live Casino"]);
+
+          if (gameCat["PLAYTECH"]) {
+            totalTurnover += gameCat["PLAYTECH"].turnover || 0;
+            totalWinLoss += gameCat["PLAYTECH"].winloss || 0;
+          }
+        }
+      });
+
+      // Format the total values to two decimal places
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "PLAYTECH",
+          gamecategory: "Live Casino",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("PLAYTECH: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "PLAYTECH: Failed to fetch win/loss report",
+          zh: "PLAYTECH: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/playtechlive/dailykioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const records = await SlotPlaytechModal.find({
+        createdAt: {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        },
+        gametype: "LIVE",
+        settle: true,
+        cancel: { $ne: true },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        totalTurnover += record.betAmount || 0;
+
+        totalWinLoss += (record.betAmount || 0) - (record.settleamount || 0);
+      });
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "PLAYTECH",
+          gamecategory: "Live Casino",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("PLAYTECH: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "PLAYTECH: Failed to fetch win/loss report",
+          zh: "PLAYTECH: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/playtechlive/kioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const records = await GameDataLog.find({
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
+
+        if (
+          gameCategories &&
+          gameCategories["Live Casino"] &&
+          gameCategories["Live Casino"] instanceof Map
+        ) {
+          const gameCat = Object.fromEntries(gameCategories["Live Casino"]);
+
+          if (gameCat["PLAYTECH"]) {
+            totalTurnover += Number(gameCat["PLAYTECH"].turnover || 0);
+            totalWinLoss += Number(gameCat["PLAYTECH"].winloss || 0) * -1;
+          }
+        }
+      });
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "PLAYTECH",
+          gamecategory: "Live Casino",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("PLAYTECH: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "PLAYTECH: Failed to fetch win/loss report",
+          zh: "PLAYTECH: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+const exportPlaytechLogsToExcel = async (filters = {}, options = {}) => {
+  try {
+    // Build query based on filters
+    const query = {};
+
+    if (filters.endpoint) query.endpoint = filters.endpoint;
+    if (filters.username) query.actualUsername = filters.username;
+    if (filters.gameRoundCode) query.gameRoundCode = filters.gameRoundCode;
+    if (filters.hasError !== undefined) query.hasError = filters.hasError;
+    if (filters.startDate || filters.endDate) {
+      query.requestTime = {};
+      if (filters.startDate)
+        query.requestTime.$gte = new Date(filters.startDate);
+      if (filters.endDate) query.requestTime.$lte = new Date(filters.endDate);
+    }
+
+    // Fetch logs from database
+    const logs = await PlaytechLogModal.find(query)
+      .sort({ requestTime: -1 })
+      .limit(options.limit || 10000)
+      .lean();
+
+    console.log(`Found ${logs.length} logs to export`);
+
+    // Create a new workbook and worksheet
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Playtech Logs");
+
+    // Define columns
+    worksheet.columns = [
+      { header: "Request ID", key: "requestId", width: 40 },
+      { header: "Endpoint", key: "endpoint", width: 20 },
+      { header: "Username", key: "username", width: 25 },
+      { header: "Actual Username", key: "actualUsername", width: 25 },
+      { header: "Transaction Code", key: "transactionCode", width: 30 },
+      {
+        header: "External Transaction Code",
+        key: "externalTransactionCode",
+        width: 30,
+      },
+      { header: "Game Round Code", key: "gameRoundCode", width: 40 },
+      { header: "Game Code Name", key: "gameCodeName", width: 20 },
+      { header: "Amount", key: "amount", width: 15 },
+      { header: "Balance Before", key: "balanceBefore", width: 15 },
+      { header: "Balance After", key: "balanceAfter", width: 15 },
+      { header: "Request Time", key: "requestTime", width: 25 },
+      { header: "Response Time", key: "responseTime", width: 25 },
+      { header: "Processing Time (ms)", key: "processingTimeMs", width: 20 },
+      { header: "Status Code", key: "responseStatusCode", width: 15 },
+      { header: "Has Error", key: "hasError", width: 12 },
+      { header: "Error Code", key: "errorCode", width: 20 },
+      { header: "Error Message", key: "errorMessage", width: 40 },
+      { header: "IP Address", key: "ipAddress", width: 20 },
+      { header: "User Agent", key: "userAgent", width: 50 },
+      { header: "Request Body", key: "requestBody", width: 50 },
+      { header: "Response Body", key: "responseBody", width: 50 },
+    ];
+
+    // Style header row
+    worksheet.getRow(1).font = { bold: true };
+    worksheet.getRow(1).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF4472C4" },
+    };
+    worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+
+    // Add data rows
+    logs.forEach((log) => {
+      worksheet.addRow({
+        requestId: log.requestId,
+        endpoint: log.endpoint,
+        username: log.username,
+        actualUsername: log.actualUsername,
+        transactionCode: log.transactionCode,
+        externalTransactionCode: log.externalTransactionCode,
+        gameRoundCode: log.gameRoundCode,
+        gameCodeName: log.gameCodeName,
+        amount: log.amount,
+        balanceBefore: log.balanceBefore,
+        balanceAfter: log.balanceAfter,
+        requestTime: log.requestTime ? log.requestTime.toISOString() : "",
+        responseTime: log.responseTime ? log.responseTime.toISOString() : "",
+        processingTimeMs: log.processingTimeMs,
+        responseStatusCode: log.responseStatusCode,
+        hasError: log.hasError ? "Yes" : "No",
+        errorCode: log.errorCode,
+        errorMessage: log.errorMessage,
+        ipAddress: log.ipAddress,
+        userAgent: log.userAgent,
+        requestBody: JSON.stringify(log.requestBody, null, 2),
+        responseBody: JSON.stringify(log.responseBody, null, 2),
+      });
+    });
+
+    // Apply alternating row colors
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber > 1) {
+        row.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: rowNumber % 2 === 0 ? "FFF2F2F2" : "FFFFFFFF" },
+        };
+      }
+    });
+
+    // Auto-filter
+    worksheet.autoFilter = {
+      from: "A1",
+      to: "V1",
+    };
+
+    // Freeze header row
+    worksheet.views = [{ state: "frozen", xSplit: 0, ySplit: 1 }];
+
+    // Generate filename
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .slice(0, -5);
+    const filename = options.filename || `playtech-logs-${timestamp}.xlsx`;
+
+    // Determine save location
+    if (options.saveToPublic) {
+      // FIXED: Calculate correct path to project root
+      // Go up from utils folder to project root, then to public/exports
+      const projectRoot = path.resolve(__dirname, "..");
+      const publicDir = path.join(projectRoot, "public", "exports");
+
+      console.log("Project root:", projectRoot);
+      console.log("Public exports dir:", publicDir);
+
+      // Create exports directory if it doesn't exist
+      try {
+        await fs.mkdir(publicDir, { recursive: true });
+        console.log("✅ Directory ensured:", publicDir);
+      } catch (err) {
+        console.error("Error creating directory:", err);
+      }
+
+      const filePath = path.join(publicDir, filename);
+      console.log("Saving to:", filePath);
+
+      await workbook.xlsx.writeFile(filePath);
+
+      console.log(`✅ File saved successfully to: ${filePath}`);
+
+      return {
+        success: true,
+        filePath: filePath,
+        publicUrl: `/exports/${filename}`,
+        filename: filename,
+        recordCount: logs.length,
+      };
+    } else if (options.filePath) {
+      // Save to custom path
+      await workbook.xlsx.writeFile(options.filePath);
+      return {
+        success: true,
+        filePath: options.filePath,
+        filename: path.basename(options.filePath),
+        recordCount: logs.length,
+      };
+    } else {
+      // Return buffer for download
+      const buffer = await workbook.xlsx.writeBuffer();
+      return {
+        success: true,
+        buffer: buffer,
+        filename: filename,
+        recordCount: logs.length,
+      };
+    }
+  } catch (error) {
+    console.error("Error exporting logs to Excel:", error);
+    throw error;
+  }
+};
+
+router.post(
+  "/api/admin/playtech/logs/export-local",
+
+  async (req, res) => {
+    try {
+      const {
+        endpoint,
+        username,
+        gameRoundCode,
+        hasError,
+        startDate,
+        endDate,
+        filename,
+        limit,
+      } = req.body;
+
+      // Build filters
+      const filters = {};
+      if (endpoint) filters.endpoint = endpoint;
+      if (username) filters.username = username;
+      if (gameRoundCode) filters.gameRoundCode = gameRoundCode;
+      if (hasError !== undefined) filters.hasError = hasError;
+      if (startDate) filters.startDate = startDate;
+      if (endDate) filters.endDate = endDate;
+
+      // Export options
+      const options = {
+        saveToPublic: true,
+        filename: filename,
+        limit: limit || 10000,
+      };
+
+      // Generate Excel file in /public folder
+      const result = await exportPlaytechLogsToExcel(filters, options);
+
+      res.json({
+        success: true,
+        message: "Logs exported successfully",
+        file: {
+          filename: result.filename,
+          url: result.publicUrl,
+          path: result.filePath,
+          recordCount: result.recordCount,
+        },
+      });
+    } catch (error) {
+      console.error("Error exporting logs:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to export logs",
+        message: error.message,
+      });
+    }
+  }
+);
+
+module.exports = router;
