@@ -96,7 +96,6 @@ function generateSignatureJSON(
 
     first = false;
   }
-
   json += "}";
   return crypto
     .createHash("md5")

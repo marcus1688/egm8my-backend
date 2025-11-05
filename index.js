@@ -184,17 +184,7 @@ app.use(
   })
 );
 
-// Apply express.json() only to non-CT855 routes
-app.use((req, res, next) => {
-  // Skip body parsing for CT855 routes - they handle it manually
-  if (req.originalUrl && req.originalUrl.includes("/api/ct855/")) {
-    console.log(
-      `🎯 CT855 Request: ${req.method} ${req.originalUrl} - Skipping body parser`
-    );
-    return next();
-  }
-
-  // Apply express.json() to all other routes
+app.use(
   express.json({
     limit: "10mb",
     verify: (req, res, buf) => {
@@ -205,24 +195,10 @@ app.use((req, res, next) => {
         error.status = 400;
         throw error;
       }
+      req.rawBody = buf;
     },
-  })(req, res, next);
-});
-
-// app.use(
-//   express.json({
-//     limit: "10mb",
-//     verify: (req, res, buf) => {
-//       try {
-//         JSON.parse(buf);
-//       } catch (e) {
-//         const error = new Error("Invalid JSON");
-//         error.status = 400;
-//         throw error;
-//       }
-//     },
-//   })
-// );
+  })
+);
 
 app.use(
   express.urlencoded({ extended: true, limit: "10mb", parameterLimit: 100000 })
