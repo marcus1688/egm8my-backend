@@ -127,6 +127,7 @@ const moment = require("moment");
 const ipRangeCheck = require("ip-range-check");
 const server = http.createServer(app);
 const axios = require("axios");
+const JSONbig = require("json-bigint")({ storeAsString: true });
 const wss = new WebSocket.Server({ noServer: true });
 const sgMail = require("@sendgrid/mail");
 

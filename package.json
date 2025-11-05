@@ -41,6 +41,7 @@
     "http-proxy-middleware": "^3.0.0",
     "https-proxy-agent": "^7.0.4",
     "ip-range-check": "^0.2.0",
+    "json-bigint": "^1.0.0",
     "jsonwebtoken": "^9.0.2",
     "messagebird": "^4.0.1",
     "moment": "^2.30.1",
