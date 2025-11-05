@@ -792,7 +792,7 @@ router.post("/api/cq9/launchGame", authenticateToken, async (req, res) => {
   }
 });
 
-router.get("/api/cq9/player/check/:playerId", async (req, res) => {
+router.get("/api/cq9my/player/check/:playerId", async (req, res) => {
   try {
     const playerId = req.params.playerId;
 
@@ -834,7 +834,7 @@ router.get("/api/cq9/player/check/:playerId", async (req, res) => {
   }
 });
 
-router.get("/api/cq9/transaction/balance/:playerId", async (req, res) => {
+router.get("/api/cq9my/transaction/balance/:playerId", async (req, res) => {
   try {
     const playerId = req.params.playerId;
 
@@ -888,7 +888,7 @@ router.get("/api/cq9/transaction/balance/:playerId", async (req, res) => {
   }
 });
 
-router.post("/api/cq9/transaction/game/bet", async (req, res) => {
+router.post("/api/cq9my/transaction/game/bet", async (req, res) => {
   try {
     const { account, eventTime, gamehall, gamecode, roundid, amount, mtcode } =
       req.body;
@@ -1033,7 +1033,7 @@ router.post("/api/cq9/transaction/game/bet", async (req, res) => {
   }
 });
 
-router.post("/api/cq9/transaction/game/endround", async (req, res) => {
+router.post("/api/cq9my/transaction/game/endround", async (req, res) => {
   try {
     const {
       account,
@@ -1225,7 +1225,7 @@ router.post("/api/cq9/transaction/game/endround", async (req, res) => {
   }
 });
 
-router.post("/api/cq9/transaction/game/rollout", async (req, res) => {
+router.post("/api/cq9my/transaction/game/rollout", async (req, res) => {
   try {
     const { account, roundid, amount, mtcode, eventTime, gamehall, gamecode } =
       req.body;
@@ -1369,7 +1369,7 @@ router.post("/api/cq9/transaction/game/rollout", async (req, res) => {
   }
 });
 
-router.post("/api/cq9/transaction/game/takeall", async (req, res) => {
+router.post("/api/cq9my/transaction/game/takeall", async (req, res) => {
   try {
     const { account, roundid, mtcode, eventTime, gamehall, gamecode } =
       req.body;
@@ -1505,7 +1505,7 @@ router.post("/api/cq9/transaction/game/takeall", async (req, res) => {
   }
 });
 
-router.post("/api/cq9/transaction/game/rollin", async (req, res) => {
+router.post("/api/cq9my/transaction/game/rollin", async (req, res) => {
   try {
     // Extract parameters
     const {
@@ -1713,7 +1713,7 @@ router.post("/api/cq9/transaction/game/rollin", async (req, res) => {
   }
 });
 
-router.post("/api/cq9/transaction/game/debit", async (req, res) => {
+router.post("/api/cq9my/transaction/game/debit", async (req, res) => {
   try {
     const { account, roundid, amount, mtcode, eventTime, gamehall, gamecode } =
       req.body;
@@ -1860,7 +1860,7 @@ router.post("/api/cq9/transaction/game/debit", async (req, res) => {
   }
 });
 
-router.post("/api/cq9/transaction/game/credit", async (req, res) => {
+router.post("/api/cq9my/transaction/game/credit", async (req, res) => {
   try {
     const { account, roundid, amount, mtcode, eventTime, gamehall, gamecode } =
       req.body;
@@ -2017,7 +2017,7 @@ router.post("/api/cq9/transaction/game/credit", async (req, res) => {
   }
 });
 
-router.post("/api/cq9/transaction/user/payoff", async (req, res) => {
+router.post("/api/cq9my/transaction/user/payoff", async (req, res) => {
   try {
     const { account, mtcode, amount, eventTime } = req.body;
     const currentTime = generateFormattedDateTime();
@@ -2133,7 +2133,7 @@ router.post("/api/cq9/transaction/user/payoff", async (req, res) => {
   }
 });
 
-router.post("/api/cq9/transaction/game/refund", async (req, res) => {
+router.post("/api/cq9my/transaction/game/refund", async (req, res) => {
   try {
     const { account, mtcode } = req.body;
     const currentTime = generateFormattedDateTime();
@@ -2301,7 +2301,7 @@ router.post("/api/cq9/transaction/game/refund", async (req, res) => {
   }
 });
 
-router.post("/api/cq9/transaction/game/bets", async (req, res) => {
+router.post("/api/cq9my/transaction/game/bets", async (req, res) => {
   try {
     // Extract parameters from request body
     const { account, gamehall, gamecode, data, createTime } = req.body;
@@ -2434,7 +2434,7 @@ router.post("/api/cq9/transaction/game/bets", async (req, res) => {
   }
 });
 
-router.post("/api/cq9/transaction/game/refunds", async (req, res) => {
+router.post("/api/cq9my/transaction/game/refunds", async (req, res) => {
   try {
     const { mtcode } = req.body;
     const currentTime = generateFormattedDateTime();
@@ -2557,7 +2557,7 @@ router.post("/api/cq9/transaction/game/refunds", async (req, res) => {
 });
 
 // Cancel Endpoint (for Sports and Lotto)
-router.post("/api/cq9/transaction/game/cancel", async (req, res) => {
+router.post("/api/cq9my/transaction/game/cancel", async (req, res) => {
   try {
     // Extract parameters from request body
     const { mtcode } = req.body;
@@ -2694,7 +2694,7 @@ router.post("/api/cq9/transaction/game/cancel", async (req, res) => {
   }
 });
 
-router.post("/api/cq9/transaction/game/wins", async (req, res) => {
+router.post("/api/cq9my/transaction/game/wins", async (req, res) => {
   try {
     const { list } = req.body;
     const currentTime = generateFormattedDateTime();
@@ -2827,7 +2827,7 @@ router.post("/api/cq9/transaction/game/wins", async (req, res) => {
 });
 
 // Route to handle batch amends (for multiple players)
-router.post("/api/cq9/transaction/game/amends", async (req, res) => {
+router.post("/api/cq9my/transaction/game/amends", async (req, res) => {
   try {
     const { list } = req.body;
     const currentTime = generateFormattedDateTime();
@@ -3036,7 +3036,7 @@ router.post("/api/cq9/transaction/game/amends", async (req, res) => {
   }
 });
 
-router.post("/api/cq9/transaction/game/amend", async (req, res) => {
+router.post("/api/cq9my/transaction/game/amend", async (req, res) => {
   try {
     const { account, action, amount, data } = req.body;
     const verifyToken = req.headers.wtoken;
@@ -3195,7 +3195,7 @@ router.post("/api/cq9/transaction/game/amend", async (req, res) => {
   }
 });
 
-router.all("/api/cq9/transaction/*", async (req, res) => {
+router.all("/api/cq9my/transaction/*", async (req, res) => {
   // Check if this is a valid route that should exist but has issues
   const path = req.path;
   console.log("Unmatched CQ9 route:", path, req.method);
