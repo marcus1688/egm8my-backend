@@ -206,7 +206,7 @@ router.post("/api/yeebet/launchGame", authenticateToken, async (req, res) => {
   }
 });
 
-router.get("/api/yeebet/balance", async (req, res) => {
+router.get("/api/yeebetmy/balance", async (req, res) => {
   try {
     const { appid, username, notifyid, sign } = req.query;
     if (!appid || !username || !sign) {
@@ -263,7 +263,7 @@ router.get("/api/yeebet/balance", async (req, res) => {
   }
 });
 
-router.post("/api/yeebet/withdraw", async (req, res) => {
+router.post("/api/yeebetmy/withdraw", async (req, res) => {
   try {
     const {
       appid,
@@ -394,7 +394,7 @@ router.post("/api/yeebet/withdraw", async (req, res) => {
   }
 });
 
-router.post("/api/yeebet/deposit", async (req, res) => {
+router.post("/api/yeebetmy/deposit", async (req, res) => {
   try {
     // Extract parameters from request body
     const {
@@ -524,7 +524,7 @@ router.post("/api/yeebet/deposit", async (req, res) => {
   }
 });
 
-router.post("/api/yeebet/rollback", async (req, res) => {
+router.post("/api/yeebetmy/rollback", async (req, res) => {
   try {
     const {
       appid,

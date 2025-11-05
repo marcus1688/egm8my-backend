@@ -162,18 +162,25 @@ function verifyAuthorization(requestBody, md5Key) {
 //     // List of gameIDs in order (AB1541 = latest, AB1501 = oldest)
 //     const gameIds = [
 //       "AB1541",
-//       "AB1533",
 //       "AB1531",
-//       "AB1534",
-//       "AB1524",
+//       "AB1529",
+//       "AB1522",
+//       "VGPHOENIX",
 //       "AB1523",
-//       "AB1515",
 //       "AB1537",
+//       "AB1530",
+//       "AB1527",
+//       "VG0007",
+//       "AB1521",
+//       "AB1533",
 //       "AB1528",
-//       "AB1539",
+//       "AB1548",
+//       "AB1054",
+//       "AB1520",
+//       "AB1546",
 //       "VG0003",
+//       "AB1539",
 //       "AB1516",
-//       "AB1501",
 //     ];
 
 //     // Start from current time + 1 month for the latest game (AB1541)
