@@ -312,6 +312,7 @@ const userSchema = new mongoose.Schema(
       cq9fish: { type: gameLockSchema, default: () => ({}) },
       habanero: { type: gameLockSchema, default: () => ({}) },
       btgaming: { type: gameLockSchema, default: () => ({}) },
+      playstar: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },
@@ -404,6 +405,9 @@ const userSchema = new mongoose.Schema(
       type: String,
     },
     habaneroGameToken: {
+      type: String,
+    },
+    playstarGameToken: {
       type: String,
     },
   },

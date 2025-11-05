@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const moment = require("moment");
 
-const GameYesGetRichDataSchema = new mongoose.Schema(
+const GameNextSpinDataSchema = new mongoose.Schema(
   {
     gameNameEN: {
       type: String,
@@ -9,22 +9,10 @@ const GameYesGetRichDataSchema = new mongoose.Schema(
     gameNameCN: {
       type: String,
     },
-    gameNameHK: {
-      type: String,
-    },
-    gameNameID: {
-      type: String,
-    },
     imageUrlEN: {
       type: String,
     },
     imageUrlCN: {
-      type: String,
-    },
-    imageUrlHK: {
-      type: String,
-    },
-    imageUrlID: {
       type: String,
     },
     gameID: {
@@ -52,11 +40,11 @@ const GameYesGetRichDataSchema = new mongoose.Schema(
   }
 );
 
-GameYesGetRichDataSchema.index({ createdAt: -1 });
+GameNextSpinDataSchema.index({ createdAt: -1 });
 
-const GameYGRGameModal = mongoose.model(
-  "GameYGRGameModal",
-  GameYesGetRichDataSchema
+const GameNextSpinGameModal = mongoose.model(
+  "GameNextSpinGameModal",
+  GameNextSpinDataSchema
 );
 
-module.exports = GameYGRGameModal;
+module.exports = GameNextSpinGameModal;

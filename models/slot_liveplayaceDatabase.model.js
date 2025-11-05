@@ -28,6 +28,10 @@ const GamePlayAceDataSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    maintenance: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: {
