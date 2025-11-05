@@ -311,6 +311,7 @@ const userSchema = new mongoose.Schema(
       cq9slot: { type: gameLockSchema, default: () => ({}) },
       cq9fish: { type: gameLockSchema, default: () => ({}) },
       habanero: { type: gameLockSchema, default: () => ({}) },
+      btgaming: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },

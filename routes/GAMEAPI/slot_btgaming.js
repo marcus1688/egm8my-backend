@@ -244,162 +244,162 @@ function verifyAuthorization(requestBody, md5Key) {
 // // Call the function
 // updateBTGamingManualOrderTimestampsPlus();
 
-// router.post("/api/btgaming/comparegame", async (req, res) => {
-//   try {
-//     const check_code = generateCheckCode({ account_id: btGamingAccount });
+router.post("/api/btgaming/comparegame", async (req, res) => {
+  try {
+    const check_code = generateCheckCode({ account_id: btGamingAccount });
 
-//     const payload = {
-//       account_id: btGamingAccount,
-//       check_code: check_code,
-//     };
+    const payload = {
+      account_id: btGamingAccount,
+      check_code: check_code,
+    };
 
-//     console.log("BT GAMING GetGameList Request:", payload);
+    console.log("BT GAMING GetGameList Request:", payload);
 
-//     // Make the API request to
-//     const response = await axios.post(
-//       `${btGamingApiURL}/agent/get_gamelist`,
-//       payload,
-//       {
-//         headers: {
-//           "Content-Type": "application/json",
-//         },
-//       }
-//     );
+    // Make the API request to
+    const response = await axios.post(
+      `${btGamingApiURL}/agent/get_gamelist`,
+      payload,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
-//     console.log("BT GAMING GetGameList Response:", response.data);
+    console.log("BT GAMING GetGameList Response:", response.data);
 
-//     // Check if API response is successful
-//     if (response.data.status.code !== 1000) {
-//       console.log("BTGAMING error fetching game list:", response.data);
-//       return res.status(200).json({
-//         success: false,
-//         message: {
-//           en: "BTGAMING: Unable to retrieve game lists. Please contact customer service for assistance.",
-//           zh: "BTGAMING: 无法获取游戏列表，请联系客服以获取帮助。",
-//           ms: "BTGAMING: Tidak dapat mendapatkan senarai permainan. Sila hubungi khidmat pelanggan untuk bantuan.",
-//         },
-//       });
-//     }
+    // Check if API response is successful
+    if (response.data.status.code !== 1000) {
+      console.log("BTGAMING error fetching game list:", response.data);
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "BTGAMING: Unable to retrieve game lists. Please contact customer service for assistance.",
+          zh: "BTGAMING: 无法获取游戏列表，请联系客服以获取帮助。",
+          ms: "BTGAMING: Tidak dapat mendapatkan senarai permainan. Sila hubungi khidmat pelanggan untuk bantuan.",
+        },
+      });
+    }
 
-//     // Get all games from database
-//     const dbGames = await GameBTGamingGameModal.find({}, "gameID");
+    // Get all games from database
+    const dbGames = await GameBTGamingGameModal.find({}, "gameID");
 
-//     // Extract game IDs from database
-//     const dbGameIds = new Set(dbGames.map((game) => game.gameID));
+    // Extract game IDs from database
+    const dbGameIds = new Set(dbGames.map((game) => game.gameID));
 
-//     // Extract all games from API response across all game types
-//     const gameData = response.data.data;
-//     const allApiGames = [];
+    // Extract all games from API response across all game types
+    const gameData = response.data.data;
+    const allApiGames = [];
 
-//     // Process each game type (fish, table, slot, arcade, p2p)
-//     Object.keys(gameData).forEach((gameType) => {
-//       gameData[gameType].forEach((game) => {
-//         allApiGames.push({
-//           game_code: game.game_code,
-//           gameType: gameType,
-//           game_vendor_name: game.game_vendor_name,
-//           en: game.en,
-//           tw: game.tw,
-//           cn: game.cn,
-//           vi: game.vi,
-//           th: game.th,
-//           ja: game.ja,
-//           my: game.my,
-//           maintain: game.maintain,
-//         });
-//       });
-//     });
+    // Process each game type (fish, table, slot, arcade, p2p)
+    Object.keys(gameData).forEach((gameType) => {
+      gameData[gameType].forEach((game) => {
+        allApiGames.push({
+          game_code: game.game_code,
+          gameType: gameType,
+          game_vendor_name: game.game_vendor_name,
+          en: game.en,
+          tw: game.tw,
+          cn: game.cn,
+          vi: game.vi,
+          th: game.th,
+          ja: game.ja,
+          my: game.my,
+          maintain: game.maintain,
+        });
+      });
+    });
 
-//     // Extract game IDs from API response
-//     const apiGameIds = new Set(allApiGames.map((game) => game.game_code));
+    // Extract game IDs from API response
+    const apiGameIds = new Set(allApiGames.map((game) => game.game_code));
 
-//     // Count totals
-//     const totalApiGames = allApiGames.length;
-//     const totalDbGames = dbGames.length;
+    // Count totals
+    const totalApiGames = allApiGames.length;
+    const totalDbGames = dbGames.length;
 
-//     // Find missing games (in API but not in database)
-//     const missingGames = allApiGames.filter(
-//       (game) => !dbGameIds.has(game.game_code)
-//     );
+    // Find missing games (in API but not in database)
+    const missingGames = allApiGames.filter(
+      (game) => !dbGameIds.has(game.game_code)
+    );
 
-//     // Find extra games (in database but not in API) and set maintenance to true
-//     const extraGameIds = [...dbGameIds].filter(
-//       (gameId) => !apiGameIds.has(gameId)
-//     );
+    // Find extra games (in database but not in API) and set maintenance to true
+    const extraGameIds = [...dbGameIds].filter(
+      (gameId) => !apiGameIds.has(gameId)
+    );
 
-//     // Update extra games to maintenance: true
-//     if (extraGameIds.length > 0) {
-//       await GameBTGamingGameModal.updateMany(
-//         { gameID: { $in: extraGameIds } },
-//         { maintenance: true }
-//       );
-//       console.log(
-//         `Set maintenance: true for ${extraGameIds.length} games not in API`
-//       );
-//     }
+    // Update extra games to maintenance: true
+    if (extraGameIds.length > 0) {
+      await GameBTGamingGameModal.updateMany(
+        { gameID: { $in: extraGameIds } },
+        { maintenance: true }
+      );
+      console.log(
+        `Set maintenance: true for ${extraGameIds.length} games not in API`
+      );
+    }
 
-//     // Set maintenance to false for games that are in API (not extra)
-//     const activeGameIds = [...apiGameIds];
-//     if (activeGameIds.length > 0) {
-//       await GameBTGamingGameModal.updateMany(
-//         { gameID: { $in: activeGameIds } },
-//         { maintenance: false }
-//       );
-//       console.log(
-//         `Set maintenance: false for ${activeGameIds.length} games in API`
-//       );
-//     }
+    // Set maintenance to false for games that are in API (not extra)
+    const activeGameIds = [...apiGameIds];
+    if (activeGameIds.length > 0) {
+      await GameBTGamingGameModal.updateMany(
+        { gameID: { $in: activeGameIds } },
+        { maintenance: false }
+      );
+      console.log(
+        `Set maintenance: false for ${activeGameIds.length} games in API`
+      );
+    }
 
-//     // Return missing games with game_code and gameType
-//     const missingGamesInfo = missingGames.map((game) => ({
-//       game_code: game.game_code,
-//       gameType: game.gameType,
-//       game_vendor_name: game.game_vendor_name,
-//       en: game.en,
-//       tw: game.tw,
-//       cn: game.cn,
-//       vi: game.vi,
-//       th: game.th,
-//       ja: game.ja,
-//       my: game.my,
-//       maintain: game.maintain,
-//     }));
+    // Return missing games with game_code and gameType
+    const missingGamesInfo = missingGames.map((game) => ({
+      game_code: game.game_code,
+      gameType: game.gameType,
+      game_vendor_name: game.game_vendor_name,
+      en: game.en,
+      tw: game.tw,
+      cn: game.cn,
+      vi: game.vi,
+      th: game.th,
+      ja: game.ja,
+      my: game.my,
+      maintain: game.maintain,
+    }));
 
-//     console.log("Missing games:", missingGamesInfo);
-//     console.log("Extra games set to maintenance:", extraGameIds.length);
-//     console.log(
-//       `Total API games: ${totalApiGames}, Total DB games: ${totalDbGames}`
-//     );
+    console.log("Missing games:", missingGamesInfo);
+    console.log("Extra games set to maintenance:", extraGameIds.length);
+    console.log(
+      `Total API games: ${totalApiGames}, Total DB games: ${totalDbGames}`
+    );
 
-//     return res.status(200).json({
-//       success: true,
-//       gameList: response.data,
-//       comparison: {
-//         missingGames: missingGamesInfo,
-//         extraGamesCount: extraGameIds.length,
-//         extraGameIds: extraGameIds,
-//         missingCount: missingGamesInfo.length,
-//         totalApiGames: totalApiGames,
-//         totalDbGames: totalDbGames,
-//       },
-//       message: {
-//         en: "Game list retrieved successfully.",
-//         zh: "游戏列表获取成功。",
-//         ms: "Senarai permainan berjaya diambil.",
-//       },
-//     });
-//   } catch (error) {
-//     console.log("BTGAMING error in launching game", error.message);
-//     return res.status(200).json({
-//       success: false,
-//       message: {
-//         en: "BTGAMING: Game launch failed. Please try again or contact customer service for assistance.",
-//         zh: "BTGAMING: 游戏启动失败，请重试或联系客服以获得帮助。",
-//         ms: "BTGAMING: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
-//       },
-//     });
-//   }
-// });
+    return res.status(200).json({
+      success: true,
+      gameList: response.data,
+      comparison: {
+        missingGames: missingGamesInfo,
+        extraGamesCount: extraGameIds.length,
+        extraGameIds: extraGameIds,
+        missingCount: missingGamesInfo.length,
+        totalApiGames: totalApiGames,
+        totalDbGames: totalDbGames,
+      },
+      message: {
+        en: "Game list retrieved successfully.",
+        zh: "游戏列表获取成功。",
+        ms: "Senarai permainan berjaya diambil.",
+      },
+    });
+  } catch (error) {
+    console.log("BTGAMING error in launching game", error.message);
+    return res.status(200).json({
+      success: false,
+      message: {
+        en: "BTGAMING: Game launch failed. Please try again or contact customer service for assistance.",
+        zh: "BTGAMING: 游戏启动失败，请重试或联系客服以获得帮助。",
+        ms: "BTGAMING: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+      },
+    });
+  }
+});
 
 router.post("/api/btgaming/getprovidergamelist", async (req, res) => {
   try {
@@ -641,10 +641,9 @@ router.post("/api/btgaming/launchGame", authenticateToken, async (req, res) => {
   }
 });
 
-router.post("/api/btgame/get_user_balance", async (req, res) => {
+router.post("/api/btgamingstag/get_user_balance", async (req, res) => {
   try {
     const { tran_id, username, currency } = req.body;
-    console.log(req.body, "hi");
     const isAuthValid = verifyAuthorization(req.body, btGamingSecret);
 
     if (!isAuthValid) {
@@ -727,7 +726,7 @@ router.post("/api/btgame/get_user_balance", async (req, res) => {
   }
 });
 
-router.post("/api/btgame/transfer", async (req, res) => {
+router.post("/api/btgamingstag/transfer", async (req, res) => {
   try {
     const {
       tran_id,
