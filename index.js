@@ -813,6 +813,17 @@ app.get("/health", (req, res) => {
   res.status(200).send("OK");
 });
 
+app.use("/api/vpower", (req, res, next) => {
+  if (req.rawBody && req.is("application/json")) {
+    try {
+      req.body = JSONbig.parse(req.rawBody.toString("utf8"));
+    } catch (e) {
+      return res.status(400).json({ message: "Invalid JSON" });
+    }
+  }
+  next();
+});
+
 app.use(express.static("public"));
 app.use(usersRouter);
 app.use(depositRouter);
