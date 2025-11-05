@@ -679,7 +679,7 @@ router.post("/api/btgamingstag/get_user_balance", async (req, res) => {
       });
     }
 
-    if (currency !== "PGK") {
+    if (currency !== "MYR") {
       return res.status(200).json({
         status: {
           code: 5002,
@@ -714,7 +714,7 @@ router.post("/api/btgamingstag/get_user_balance", async (req, res) => {
       },
       data: {
         balance: newBalance.toNumber(),
-        currency: "PGK",
+        currency: "MYR",
         tran_id,
       },
     });
@@ -761,7 +761,7 @@ router.post("/api/btgamingstag/transfer", async (req, res) => {
       });
     }
 
-    if (currency !== "PGK") {
+    if (currency !== "MYR") {
       return res.status(200).json({
         status: {
           code: 5002,
@@ -900,7 +900,7 @@ router.post("/api/btgamingstag/transfer", async (req, res) => {
         },
         data: {
           balance: newBalance.toNumber(),
-          currency: "PGK",
+          currency: "MYR",
           tran_id,
         },
       });
@@ -968,7 +968,7 @@ router.post("/api/btgamingstag/transfer", async (req, res) => {
         },
         data: {
           balance: newBalance.toNumber(),
-          currency: "PGK",
+          currency: "MYR",
           tran_id,
         },
       });
@@ -1035,7 +1035,7 @@ router.post("/api/btgamingstag/transfer", async (req, res) => {
         },
         data: {
           balance: newBalance.toNumber(),
-          currency: "PGK",
+          currency: "MYR",
           tran_id,
         },
       });

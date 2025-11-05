@@ -253,7 +253,7 @@ router.get("/api/yeebetmy/balance", async (req, res) => {
     });
   } catch (error) {
     console.error(
-      "YEEBET: Error in game provider calling pw66 getbalance api:",
+      "YEEBET: Error in game provider calling  getbalance api:",
       error.message
     );
     return res.status(200).json({
@@ -384,7 +384,7 @@ router.post("/api/yeebetmy/withdraw", async (req, res) => {
     });
   } catch (error) {
     console.error(
-      "YEEBET: Error in game provider calling pw66 getbalance api:",
+      "YEEBET: Error in game provider calling  getbalance api:",
       error.message
     );
     return res.status(200).json({
@@ -514,7 +514,7 @@ router.post("/api/yeebetmy/deposit", async (req, res) => {
     });
   } catch (error) {
     console.error(
-      "YEEBET: Error in game provider calling pw66 getbalance api:",
+      "YEEBET: Error in game provider calling  getbalance api:",
       error.message
     );
     return res.status(200).json({
@@ -649,7 +649,7 @@ router.post("/api/yeebetmy/rollback", async (req, res) => {
     }
   } catch (error) {
     console.error(
-      "YEEBET: Error in game provider calling pw66 getbalance api:",
+      "YEEBET: Error in game provider calling  getbalance api:",
       error.message
     );
     return res.status(200).json({

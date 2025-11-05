@@ -47,6 +47,7 @@ const nextSpinSecret = process.env.NEXTSPIN_SECRET;
 const webURL = "http://egm8my.vip/";
 const nextSpinAPIURL = "https://merchantapi.ns-api-cy2-tokyo01.com/api";
 const nextSpinGameURL = "https://lobby.d1mquqjm.com";
+const nextSpinCustomBrand = "EGM8";
 
 function generateSignature(id, method, sn, playerCode) {
   const rawString = `${id}${method}${sn}${playerCode}${lionKingSecret}`;
@@ -346,7 +347,7 @@ router.post("/api/nextspin/launchGame", authenticateToken, async (req, res) => {
     const acctId = user.username;
     let token = `${user.username}:${generateRandomCode()}`;
 
-    const redirectURL = `${nextSpinGameURL}/${nextSpinMC}/auth/?acctId=${acctId}&language=${lang}&token=${token}&game=${gameCode}&brand=OC7`;
+    const redirectURL = `${nextSpinGameURL}/${nextSpinMC}/auth/?acctId=${acctId}&language=${lang}&token=${token}&game=${gameCode}&brand=${nextSpinCustomBrand}`;
 
     const updatedUser = await User.findOneAndUpdate(
       { _id: user._id },
