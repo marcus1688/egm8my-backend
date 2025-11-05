@@ -505,7 +505,7 @@ router.post("/api/habanero/auth", async (req, res) => {
         },
         accountid: username,
         balance: roundToTwoDecimals(currentUser.wallet),
-        currencycode: "PGK",
+        currencycode: "MYR",
       },
     });
   } catch (error) {
@@ -618,7 +618,7 @@ router.post("/api/habanero/tx", async (req, res) => {
               refundstatus: 1,
             },
             balance: roundToTwoDecimals(refundUser.wallet),
-            currencycode: "PGK",
+            currencycode: "MYR",
           },
         });
       }
@@ -662,7 +662,7 @@ router.post("/api/habanero/tx", async (req, res) => {
               refundstatus: 1,
             },
             balance: roundToTwoDecimals(updatedUser.wallet),
-            currencycode: "PGK",
+            currencycode: "MYR",
           },
         });
       } else {
@@ -673,7 +673,7 @@ router.post("/api/habanero/tx", async (req, res) => {
               refundstatus: 2,
             },
             balance: roundToTwoDecimals(refundUser.wallet),
-            currencycode: "PGK",
+            currencycode: "MYR",
           },
         });
       }
@@ -718,7 +718,7 @@ router.post("/api/habanero/tx", async (req, res) => {
               success: true,
             },
             balance: roundToTwoDecimals(currentUser.wallet),
-            currencycode: "PGK",
+            currencycode: "MYR",
           },
         });
       }
@@ -757,7 +757,7 @@ router.post("/api/habanero/tx", async (req, res) => {
             success: true,
           },
           balance: roundToTwoDecimals(updatedUser.wallet),
-          currencycode: "PGK",
+          currencycode: "MYR",
         },
       });
     }
@@ -782,7 +782,7 @@ router.post("/api/habanero/tx", async (req, res) => {
                 success: true,
               },
               balance: roundToTwoDecimals(currentUser.wallet),
-              currencycode: "PGK",
+              currencycode: "MYR",
             },
           });
         }
@@ -816,7 +816,7 @@ router.post("/api/habanero/tx", async (req, res) => {
               success: true,
             },
             balance: roundToTwoDecimals(currentUser.wallet),
-            currencycode: "PGK",
+            currencycode: "MYR",
           },
         });
       } else {
@@ -845,7 +845,7 @@ router.post("/api/habanero/tx", async (req, res) => {
               success: true,
             },
             balance: roundToTwoDecimals(updatedUser.wallet),
-            currencycode: "PGK",
+            currencycode: "MYR",
           },
         });
       }
@@ -886,7 +886,7 @@ router.post("/api/habanero/tx", async (req, res) => {
                 successcredit: true,
               },
               balance: roundToTwoDecimals(currentUser.wallet),
-              currencycode: "PGK",
+              currencycode: "MYR",
             },
           });
         }
@@ -923,7 +923,7 @@ router.post("/api/habanero/tx", async (req, res) => {
                 successcredit: true,
               },
               balance: roundToTwoDecimals(updatedUserBalance.wallet),
-              currencycode: "PGK",
+              currencycode: "MYR",
             },
           });
         }
@@ -964,7 +964,7 @@ router.post("/api/habanero/tx", async (req, res) => {
                 nofunds: true,
               },
               balance: roundToTwoDecimals(currentUser.wallet),
-              currencycode: "PGK",
+              currencycode: "MYR",
             },
           });
         }
@@ -977,7 +977,7 @@ router.post("/api/habanero/tx", async (req, res) => {
               successcredit: true,
             },
             balance: roundToTwoDecimals(updatedUser.wallet),
-            currencycode: "PGK",
+            currencycode: "MYR",
           },
         });
       } catch (error) {
@@ -989,7 +989,7 @@ router.post("/api/habanero/tx", async (req, res) => {
                 nofunds: true,
               },
               balance: roundToTwoDecimals(currentUser.wallet),
-              currencycode: "PGK",
+              currencycode: "MYR",
             },
           });
         }
@@ -1026,7 +1026,7 @@ router.post("/api/habanero/tx", async (req, res) => {
               success: true,
             },
             balance: roundToTwoDecimals(currentUser.wallet),
-            currencycode: "PGK",
+            currencycode: "MYR",
           },
         });
       }
@@ -1060,7 +1060,7 @@ router.post("/api/habanero/tx", async (req, res) => {
                 nofunds: true,
               },
               balance: roundToTwoDecimals(currentUser.wallet),
-              currencycode: "PGK",
+              currencycode: "MYR",
             },
           });
         }
@@ -1101,7 +1101,7 @@ router.post("/api/habanero/tx", async (req, res) => {
               success: true,
             },
             balance: roundToTwoDecimals(updatedUser.wallet),
-            currencycode: "PGK",
+            currencycode: "MYR",
           },
         });
       } catch (error) {
@@ -1113,7 +1113,7 @@ router.post("/api/habanero/tx", async (req, res) => {
                 nofunds: true,
               },
               balance: roundToTwoDecimals(currentUser.wallet),
-              currencycode: "PGK",
+              currencycode: "MYR",
             },
           });
         }
@@ -1173,7 +1173,7 @@ router.post("/api/habanero/tx", async (req, res) => {
             success: true,
           },
           balance: roundToTwoDecimals(updatedUser.wallet),
-          currencycode: "PGK",
+          currencycode: "MYR",
         },
       });
     }

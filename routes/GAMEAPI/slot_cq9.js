@@ -870,7 +870,7 @@ router.get("/api/cq9my/transaction/balance/:playerId", async (req, res) => {
     return res.status(200).json({
       data: {
         balance: new Decimal(walletValue).toDecimalPlaces(4).toNumber(),
-        currency: "CNY",
+        currency: "MYR",
       },
       status: {
         code: "0",
@@ -970,7 +970,7 @@ router.post("/api/cq9my/transaction/game/bet", async (req, res) => {
       return res.status(200).json({
         data: {
           balance: new Decimal(walletValue).toDecimalPlaces(4).toNumber(),
-          currency: "CNY",
+          currency: "MYR",
         },
         status: {
           code: "0",
@@ -1015,7 +1015,7 @@ router.post("/api/cq9my/transaction/game/bet", async (req, res) => {
     return res.status(200).json({
       data: {
         balance: new Decimal(updatewalletValue).toDecimalPlaces(4).toNumber(),
-        currency: "CNY",
+        currency: "MYR",
       },
       status: {
         code: "0",
@@ -1137,7 +1137,7 @@ router.post("/api/cq9my/transaction/game/endround", async (req, res) => {
           )
             .toDecimalPlaces(4)
             .toNumber(),
-          currency: "CNY",
+          currency: "MYR",
         },
         status: {
           code: "0",
@@ -1208,7 +1208,7 @@ router.post("/api/cq9my/transaction/game/endround", async (req, res) => {
     return res.status(200).json({
       data: {
         balance: new Decimal(updatewalletValue).toDecimalPlaces(4).toNumber(),
-        currency: "CNY",
+        currency: "MYR",
       },
       status: {
         code: "0",
@@ -1310,7 +1310,7 @@ router.post("/api/cq9my/transaction/game/rollout", async (req, res) => {
       return res.status(200).json({
         data: {
           balance: new Decimal(walletValue).toDecimalPlaces(4).toNumber(),
-          currency: "CNY",
+          currency: "MYR",
         },
         status: {
           code: "0",
@@ -1352,7 +1352,7 @@ router.post("/api/cq9my/transaction/game/rollout", async (req, res) => {
     return res.status(200).json({
       data: {
         balance: new Decimal(updatewalletValue).toDecimalPlaces(4).toNumber(),
-        currency: "CNY",
+        currency: "MYR",
       },
       status: {
         code: "0",
@@ -1441,7 +1441,7 @@ router.post("/api/cq9my/transaction/game/takeall", async (req, res) => {
         data: {
           amount: existingBet.betamount,
           balance: new Decimal(walletValue).toDecimalPlaces(4).toNumber(),
-          currency: "CNY",
+          currency: "MYR",
         },
         status: {
           code: "0",
@@ -1488,7 +1488,7 @@ router.post("/api/cq9my/transaction/game/takeall", async (req, res) => {
       data: {
         amount: takeallAmount,
         balance: new Decimal(updatewalletValue).toDecimalPlaces(4).toNumber(),
-        currency: "CNY",
+        currency: "MYR",
       },
       status: {
         code: "0",
@@ -1609,7 +1609,7 @@ router.post("/api/cq9my/transaction/game/rollin", async (req, res) => {
           )
             .toDecimalPlaces(4)
             .toNumber(),
-          currency: "CNY",
+          currency: "MYR",
         },
         status: {
           code: "0",
@@ -1695,7 +1695,7 @@ router.post("/api/cq9my/transaction/game/rollin", async (req, res) => {
     return res.status(200).json({
       data: {
         balance: new Decimal(updatewalletValue).toDecimalPlaces(4).toNumber(),
-        currency: "CNY",
+        currency: "MYR",
       },
       status: {
         code: "0",
@@ -1798,7 +1798,7 @@ router.post("/api/cq9my/transaction/game/debit", async (req, res) => {
           )
             .toDecimalPlaces(4)
             .toNumber(),
-          currency: "CNY",
+          currency: "MYR",
         },
         status: {
           code: "0",
@@ -1843,7 +1843,7 @@ router.post("/api/cq9my/transaction/game/debit", async (req, res) => {
     return res.status(200).json({
       data: {
         balance: new Decimal(updatewalletValue).toDecimalPlaces(4).toNumber(),
-        currency: "CNY",
+        currency: "MYR",
       },
       status: {
         code: "0",
@@ -1943,7 +1943,7 @@ router.post("/api/cq9my/transaction/game/credit", async (req, res) => {
           )
             .toDecimalPlaces(4)
             .toNumber(),
-          currency: "CNY",
+          currency: "MYR",
         },
         status: {
           code: "0",
@@ -2000,7 +2000,7 @@ router.post("/api/cq9my/transaction/game/credit", async (req, res) => {
     return res.status(200).json({
       data: {
         balance: new Decimal(updatewalletValue).toDecimalPlaces(4).toNumber(),
-        currency: "CNY",
+        currency: "MYR",
       },
       status: {
         code: "0",
@@ -2078,7 +2078,7 @@ router.post("/api/cq9my/transaction/user/payoff", async (req, res) => {
       return res.status(200).json({
         data: {
           balance: new Decimal(walletValue).toDecimalPlaces(4).toNumber(),
-          currency: "CNY",
+          currency: "MYR",
         },
         status: {
           code: "0",
@@ -2115,7 +2115,7 @@ router.post("/api/cq9my/transaction/user/payoff", async (req, res) => {
     return res.status(200).json({
       data: {
         balance: new Decimal(updatewalletValue).toDecimalPlaces(4).toNumber(),
-        currency: "CNY",
+        currency: "MYR",
       },
       status: {
         code: "0",
@@ -2210,7 +2210,7 @@ router.post("/api/cq9my/transaction/game/refund", async (req, res) => {
           )
             .toDecimalPlaces(4)
             .toNumber(),
-          currency: "CNY",
+          currency: "MYR",
         },
         status: {
           code: "0",
@@ -2284,7 +2284,7 @@ router.post("/api/cq9my/transaction/game/refund", async (req, res) => {
     return res.status(200).json({
       data: {
         balance: new Decimal(updatewalletValue).toDecimalPlaces(4).toNumber(),
-        currency: "CNY",
+        currency: "MYR",
       },
       status: {
         code: "0",
@@ -2367,7 +2367,7 @@ router.post("/api/cq9my/transaction/game/bets", async (req, res) => {
       return res.status(200).json({
         data: {
           balance: new Decimal(walletValue).toDecimalPlaces(4).toNumber(),
-          currency: "CNY",
+          currency: "MYR",
         },
         status: {
           code: "0",
@@ -2416,7 +2416,7 @@ router.post("/api/cq9my/transaction/game/bets", async (req, res) => {
     return res.status(200).json({
       data: {
         balance: new Decimal(updatewalletValue).toDecimalPlaces(4).toNumber(),
-        currency: "CNY",
+        currency: "MYR",
       },
       status: {
         code: "0",
@@ -2488,7 +2488,7 @@ router.post("/api/cq9my/transaction/game/refunds", async (req, res) => {
       return res.status(200).json({
         data: {
           balance: new Decimal(walletValue).toDecimalPlaces(4).toNumber(),
-          currency: "CNY",
+          currency: "MYR",
         },
         status: {
           code: "0",
@@ -2538,7 +2538,7 @@ router.post("/api/cq9my/transaction/game/refunds", async (req, res) => {
     return res.status(200).json({
       data: {
         balance: new Decimal(updatewalletValue).toDecimalPlaces(4).toNumber(),
-        currency: "CNY",
+        currency: "MYR",
       },
       status: {
         code: "0",
@@ -2611,7 +2611,7 @@ router.post("/api/cq9my/transaction/game/cancel", async (req, res) => {
       return res.status(200).json({
         data: {
           balance: new Decimal(walletValue).toDecimalPlaces(4).toNumber(),
-          currency: "CNY",
+          currency: "MYR",
         },
         status: {
           code: "0",
@@ -2676,7 +2676,7 @@ router.post("/api/cq9my/transaction/game/cancel", async (req, res) => {
     return res.status(200).json({
       data: {
         balance: new Decimal(updatewalletValue).toDecimalPlaces(4).toNumber(),
-        currency: "CNY",
+        currency: "MYR",
       },
       status: {
         code: "0",
@@ -2759,7 +2759,7 @@ router.post("/api/cq9my/transaction/game/wins", async (req, res) => {
         successResults.push({
           account,
           balance: new Decimal(walletValue).toDecimalPlaces(4).toNumber(),
-          currency: "CNY",
+          currency: "MYR",
           ucode,
         });
         continue;
@@ -2800,7 +2800,7 @@ router.post("/api/cq9my/transaction/game/wins", async (req, res) => {
       successResults.push({
         account,
         balance: new Decimal(updatewalletValue).toDecimalPlaces(4).toNumber(),
-        currency: "CNY",
+        currency: "MYR",
         ucode,
       });
     }
@@ -2908,7 +2908,7 @@ router.post("/api/cq9my/transaction/game/amends", async (req, res) => {
       if (existingAmend) {
         successResults.push({
           account,
-          currency: "CNY",
+          currency: "MYR",
           before: new Decimal(walletValue).toDecimalPlaces(4).toNumber(),
           balance: new Decimal(walletValue).toDecimalPlaces(4).toNumber(),
           ucode,
@@ -3008,7 +3008,7 @@ router.post("/api/cq9my/transaction/game/amends", async (req, res) => {
 
       successResults.push({
         account,
-        currency: "CNY",
+        currency: "MYR",
         before: balanceBefore,
         balance: new Decimal(updatewalletValue).toDecimalPlaces(4).toNumber(),
         ucode,
@@ -3096,7 +3096,7 @@ router.post("/api/cq9my/transaction/game/amend", async (req, res) => {
       return res.status(200).json({
         data: {
           balance: new Decimal(walletValue).toDecimalPlaces(4).toNumber(),
-          currency: "CNY",
+          currency: "MYR",
         },
         status: {
           code: "0",
@@ -3177,7 +3177,7 @@ router.post("/api/cq9my/transaction/game/amend", async (req, res) => {
     return res.status(200).json({
       data: {
         balance: new Decimal(updatewalletValue).toDecimalPlaces(4).toNumber(),
-        currency: "CNY",
+        currency: "MYR",
       },
       status: {
         code: "0",
