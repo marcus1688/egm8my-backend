@@ -18,7 +18,7 @@ const SlotDCTGameModal = require("../../models/slot_dctgame.model");
 
 require("dotenv").config();
 
-const dctGameBrandID = "S010218";
+const dctGameBrandID = "S010217";
 const dctGameKey = process.env.DCTGAME_SECRET;
 const webURL = "http://egm8my.vip/";
 const dctGameAPIURL = "https://gaming.stagedc.net";
@@ -52,7 +52,6 @@ function generateSignature(options) {
 
   // Add API key at the end
   message += apiKey;
-
   // Generate MD5 hash and return in uppercase
   return crypto.createHash("md5").update(message).digest("hex").toUpperCase();
 }
