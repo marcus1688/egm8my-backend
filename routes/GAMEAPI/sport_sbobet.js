@@ -20,6 +20,7 @@ const sbobetSecret = process.env.SBOBET_SECRET;
 const webURL = "http://egm8my.vip/";
 const sbobetAPIURL = "https://ex-api-yy.xxttgg.com";
 const sbobetAgent = "EGM8MYR";
+const sbobetCreatedAgent = "EGM8MYRAM";
 
 function roundToTwoDecimals(num) {
   return Math.round(num * 100) / 100;
@@ -69,23 +70,67 @@ function generateTraceCode() {
   return uuidv4();
 }
 
+// async function registerSBOBETAgent() {
+//   try {
+//     const requestData = {
+//       CompanyKey: sbobetSecret,
+//       ServerID: generateTraceCode(),
+//       Username: "EGM8MYRAM",
+//       Password: "Qwer1234",
+//       Currency: "MYR",
+//       Min: 10,
+//       Max: 50000,
+//       MaxPerMatch: 50000,
+//       CasinoTableLimit: 2,
+//       isTwoFAEnabled: false,
+//     };
+
+//     const response = await axios.post(
+//       `${sbobetAPIURL}/web-root/restricted/agent/register-agent.aspx`,
+//       requestData,
+//       {
+//         headers: {
+//           "Content-Type": "application/json",
+//         },
+//       }
+//     );
+
+//     if (response.data.error.id !== 0) {
+//       console.log("sbo response error register agent", response.data);
+
+//       return {
+//         success: false,
+//         error: response.data,
+//       };
+//     }
+
+//     return {
+//       success: true,
+//       data: response.data,
+//     };
+//   } catch (error) {
+//     console.error(
+//       "Register Agent SBOBET error in creating member:",
+//       error.message
+//     );
+//     return {
+//       success: false,
+//       error: error.message,
+//     };
+//   }
+// }
 async function registerSBOBETUser(user) {
   try {
-    console.log("hi");
     const requestData = {
       CompanyKey: sbobetSecret,
       ServerID: generateTraceCode(),
-      //   Username: user.gameId,
-      Username: "test",
-      Agent: sbobetAgent,
-      UserGroup: "b",
+      Username: user.gameId,
+      Agent: sbobetCreatedAgent,
+      UserGroup: "c",
     };
-    console.log(requestData);
-    console.log(
-      `${sbobetAPIURL}/web-root/restricted/player/register-player.aspx`
-    );
+
     const response = await axios.post(
-      `${sbobetAPIURL}/restricted/player/register-player.aspx`,
+      `${sbobetAPIURL}/web-root/restricted/player/register-player.aspx`,
       requestData,
       {
         headers: {
@@ -93,13 +138,22 @@ async function registerSBOBETUser(user) {
         },
       }
     );
-    console.log("sbo response", response.data);
+
+    if (response.data.error.id !== 0) {
+      console.log("sbo response error register agent", response.data);
+
+      return {
+        success: false,
+        error: response.data,
+      };
+    }
+
     return {
-      success: false,
-      data: `Info ${info}, Msg ${msg}`,
+      success: true,
+      data: response.data,
     };
   } catch (error) {
-    console.error("PlayAce error in creating member:", error.message);
+    console.error("Register Player SBOBET:", error.message);
     return {
       success: false,
       error: error.message,
@@ -125,11 +179,7 @@ router.post("/api/sbobet/launchGame", authenticateToken, async (req, res) => {
       });
     }
 
-    const registerPlayer = await registerSBOBETUser(user);
-    console.log("hi", registerPlayer);
-    return;
-
-    if (user.gameLock.yesgetrich.lock) {
+    if (user.gameLock.sbobet.lock) {
       return res.status(200).json({
         success: false,
         message: {
@@ -142,54 +192,80 @@ router.post("/api/sbobet/launchGame", authenticateToken, async (req, res) => {
       });
     }
 
-    const { gameLang, gameCode } = req.body;
+    if (!user.sbobetRegistered) {
+      const registeredData = await registerSBOBETUser(user);
 
-    let lang = "en-US";
+      if (!registeredData.success) {
+        console.log(`SBOBET in registering account ${registeredData}`);
 
-    if (gameLang === "en") {
-      lang = "en-US";
-    } else if (gameLang === "zh") {
-      lang = "zh-CN";
-    } else if (gameLang === "ms") {
-      lang = "en-US";
-    } else if (gameLang === "id") {
-      lang = "id-ID";
-    } else if (gameLang === "zh_hk") {
-      lang = "zh-TW";
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "SBOBET: Game launch failed. Please try again or customer service for assistance.",
+            zh: "SBOBET: 游戏启动失败，请重试或联系客服以获得帮助。",
+            ms: "SBOBET: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+            zh_hk: "SBOBET: 遊戲開唔到，老闆試多次或者搵客服幫手。",
+            id: "SBOBET: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+          },
+        });
+      }
+
+      await User.findOneAndUpdate(
+        { username: user.username },
+        {
+          $set: {
+            sbobetRegistered: true,
+          },
+        }
+      );
     }
 
-    let token = `${user.gameId}:${gameCode}:${generateRandomCode()}`;
+    const { gameLang, clientPlatform } = req.body;
 
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+    let lang = "en";
 
-    await User.findByIdAndUpdate(
-      user._id,
-      {
-        $push: {
-          ygrGameTokens: {
-            token: token,
-            createdAt: now,
-            expiresAt: expiresAt,
-          },
-        },
-      },
-      { new: true }
-    );
+    if (gameLang === "en") {
+      lang = "en";
+    } else if (gameLang === "zh") {
+      lang = "zh-cn";
+    } else if (gameLang === "ms") {
+      lang = "en";
+    } else if (gameLang === "id") {
+      lang = "id-id";
+    } else if (gameLang === "zh_hk") {
+      lang = "zh-tw";
+    }
 
-    const response = await axios.get(
-      `${ygrLaunchAPIURL}/launch?token=${token}&language=${lang}`,
+    let platform = "m";
+    if (clientPlatform === "web") {
+      platform = "d";
+    } else if (clientPlatform === "mobile") {
+      platform = "m";
+    }
+
+    const requestData = {
+      CompanyKey: sbobetSecret,
+      ServerID: generateTraceCode(),
+      Username: user.gameId,
+      Portfolio: "SportsBook",
+      Lang: lang,
+      Device: platform,
+      OddsMode: "double",
+      Theme: "sbomain",
+    };
+
+    const response = await axios.post(
+      `${sbobetAPIURL}/web-root/restricted/player/v2/login.aspx`,
+      requestData,
       {
         headers: {
           "Content-Type": "application/json",
-          Authorization: ygrHeaders,
-          Supplier: ygrHeaders,
         },
       }
     );
 
-    if (response.data.ErrorCode !== 0) {
-      console.log("YGR error in launching game", response.data);
+    if (response.data.error.id !== 0) {
+      console.log("SBOBET error in launching game", response.data);
 
       if (response.data.ErrorCode === 104) {
         return res.status(200).json({
@@ -207,11 +283,11 @@ router.post("/api/sbobet/launchGame", authenticateToken, async (req, res) => {
       return res.status(200).json({
         success: false,
         message: {
-          en: "YGR: Game launch failed. Please try again or customer service for assistance.",
-          zh: "YGR: 游戏启动失败，请重试或联系客服以获得帮助。",
-          ms: "YGR: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
-          zh_hk: "YGR: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
-          id: "YGR: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+          en: "SBOBET: Game launch failed. Please try again or customer service for assistance.",
+          zh: "SBOBET: 游戏启动失败，请重试或联系客服以获得帮助。",
+          ms: "SBOBET: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          zh_hk: "SBOBET: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+          id: "SBOBET: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
         },
       });
     }
@@ -221,12 +297,12 @@ router.post("/api/sbobet/launchGame", authenticateToken, async (req, res) => {
       "Transfer In",
       "Seamless",
       roundToTwoDecimals(user.wallet),
-      "YGR"
+      "SBOBET"
     );
 
     return res.status(200).json({
       success: true,
-      gameLobby: response.data.Data.Url,
+      gameLobby: response.data.url,
       message: {
         en: "Game launched successfully.",
         zh: "游戏启动成功。",
@@ -236,15 +312,15 @@ router.post("/api/sbobet/launchGame", authenticateToken, async (req, res) => {
       },
     });
   } catch (error) {
-    console.log("YGR error in launching game", error);
+    console.log("SBOBET error in launching game", error);
     return res.status(200).json({
       success: false,
       message: {
-        en: "YGR: Game launch failed. Please try again or customer service for assistance.",
-        zh: "YGR: 游戏启动失败，请重试或联系客服以获得帮助。",
-        ms: "YGR: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
-        zh_hk: "YGR: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
-        id: "YGR: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+        en: "SBOBET: Game launch failed. Please try again or customer service for assistance.",
+        zh: "SBOBET: 游戏启动失败，请重试或联系客服以获得帮助。",
+        ms: "SBOBET: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+        zh_hk: "SBOBET: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+        id: "SBOBET: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
       },
     });
   }
