@@ -55,6 +55,100 @@ const errorResponses = {
   }),
 };
 
+// async function updateBTGamingManualOrderTimestampsPlus() {
+//   try {
+//     // List of gameIDs in order (AB1541 = latest, AB1501 = oldest)
+//     const gameIds = [
+//       "pop_001378cc_qsp",
+//       "pop_df0ef2b4_qsp",
+//       "gpas_bufbcc_pop",
+//       "pop_dab02c60_qsp",
+//       "pop_356b244b_qsp",
+//       "pop_c8bbebef_qsp",
+//       "pop_e889d9ed_qsp",
+//       "pop_c31025fb_qsp",
+//       "pop_340fe252_qsp",
+//       "pop_f6d36d30_qsp",
+//       "pop_e77bbaaf_qsp",
+//       "pop_d2c001cd_qsp",
+//       "pop_bfb58dd2_qsp",
+//       "pop_89191489_qsp",
+//       "pop_9d921557_qsp",
+//       "pop_e5856c4b_qsp",
+//       "pop_db8e20f2_qsp",
+//       "pop_92790dc4_qsp",
+//       "pop_68f6f2e6_qsp",
+//     ];
+
+//     // Start from current time + 1 month for the latest game (AB1541)
+//     const currentTime = new Date();
+//     const startTime = new Date(
+//       currentTime.getTime() + 30 * 24 * 60 * 60 * 1000
+//     ); // Add 30 days (1 month)
+
+//     // Process each gameID with 30-minute intervals
+//     for (let i = 0; i < gameIds.length; i++) {
+//       const gameId = gameIds[i];
+
+//       // Calculate timestamp: latest game gets start time (current + 1 month), each subsequent game is 30 minutes older
+//       const timestamp = new Date(startTime.getTime() - i * 30 * 60 * 1000); // 30 minutes = 30 * 60 * 1000 milliseconds
+
+//       // Update the document directly in the collection, bypassing schema timestamps
+//       const result = await GamePlaytechGameModal.collection.updateOne(
+//         { gameID: gameId },
+//         {
+//           $set: {
+//             createdAt: timestamp,
+//             updatedAt: timestamp,
+
+//           },
+//         }
+//       );
+
+//       if (result.matchedCount > 0) {
+//         console.log(
+//           `Updated BTGaming gameID ${gameId} with timestamp: ${timestamp.toISOString()}`
+//         );
+//       } else {
+//         console.log(`BTGaming GameID ${gameId} not found in database`);
+//       }
+//     }
+
+//     console.log("BTGaming manual order timestamp update completed!");
+//     console.log(
+//       `Start time was set to: ${startTime.toISOString()} (current time + 1 month)`
+//     );
+
+//     // Verify the updates by fetching and displaying the results
+//     const updatedGames = await GamePlaytechGameModal.find(
+//       { gameID: { $in: gameIds } },
+//       { gameID: 1, createdAt: 1, gameNameEN: 1, hot: 1 }
+//     ).sort({ createdAt: -1 });
+
+//     console.log(
+//       "\nVerification - BTGaming Games ordered by createdAt (newest first):"
+//     );
+//     updatedGames.forEach((game, index) => {
+//       console.log(
+//         `${index + 1}. GameID: ${
+//           game.gameID
+//         }, CreatedAt: ${game.createdAt.toISOString()}, Hot: ${
+//           game.hot
+//         }, Name: ${game.gameNameEN}`
+//       );
+//     });
+
+//     console.log(
+//       `\nTotal games updated: ${updatedGames.length}/${gameIds.length}`
+//     );
+//   } catch (error) {
+//     console.error("Error updating BTGaming manual order timestamps:", error);
+//   }
+// }
+
+// // Call the function
+// updateBTGamingManualOrderTimestampsPlus();
+
 function roundToTwoDecimals(num) {
   return Math.round(num * 100) / 100;
 }
@@ -483,8 +577,8 @@ router.post("/api/playtech/auth", async (req, res) => {
       requestId: requestId,
       username: `${playtechPrefix}_${actualUsername}`,
       permanentExternalToken: externalToken,
-      currencyCode: "CNY",
-      countryCode: "CN",
+      currencyCode: "MYR",
+      countryCode: "MY",
     });
   } catch (error) {
     console.error(
@@ -612,6 +706,8 @@ router.post("/api/playtech/bet", async (req, res) => {
     gameCodeName,
     amount,
   } = req.body;
+
+  console.log("playtech bet", req.body, " end");
   try {
     const actualUsername = validateAndExtractUsername(username);
 
@@ -902,7 +998,7 @@ router.post("/api/playtech/transferfund", async (req, res) => {
   }
 });
 
-router.post("/api/playtech/notifybonusevent", async (req, res) => {
+router.post("/api/playtech/notifybonus", async (req, res) => {
   const {
     requestId,
     username,
