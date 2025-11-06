@@ -651,6 +651,7 @@ router.post("/api/btgaming/launchGame", authenticateToken, async (req, res) => {
 router.post("/api/btgamingstag/get_user_balance", async (req, res) => {
   try {
     const { tran_id, username, currency } = req.body;
+    console.log("hi", req.body);
     const isAuthValid = verifyAuthorization(req.body, btGamingSecret);
 
     if (!isAuthValid) {
