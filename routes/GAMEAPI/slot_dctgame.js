@@ -115,26 +115,26 @@ const validateHacksawToken = async (brand_uid, token) => {
 //   try {
 //     // List of gameIDs in order (AB1541 = latest, AB1501 = oldest)
 //     const gameIds = [
-//       "The Luxe H.V.",
-//       "Le Bandit",
-//       "Wanted Dead or a Wild",
-//       "Le Pharaoh",
-//       "Ze Zeus",
-//       "Duel at Dawn",
-//       "Le King",
-//       "The Count",
-//       "Hand of Anubis",
-//       "Le Zeus",
-//       "Chaos Crew 3",
-//       "Fist of Destruction",
-//       "FRKN Bananas",
-//       "Le Viking",
-//       "Bullets and Bounty",
-//       "RIP City",
-//       "2 Wild 2 Die",
-//       "The Wildwood Curse",
-//       "Old Gun",
-//       "Miami Mayhem",
+//       "Temple Tumble",
+//       "Temple Tumble 2",
+//       "Dead Riders Trail",
+//       "Beast Mode",
+//       "Net Gains",
+//       "Ancient Tumble",
+//       "Money Train 3",
+//       "Bill & Coin 2",
+//       "Money Train 4",
+//       "Templar Tumble",
+//       "Banana Town",
+//       "Space Miners",
+//       "The Great Pigsby",
+//       "Sloth Tumble",
+//       "Dead Man's Trail",
+//       "Conquer Babylon",
+//       "Money Train 2",
+//       "Wild Yield",
+//       "Bill & Coin",
+//       "Book of 99",
 //     ];
 
 //     // Start from current time + 1 month for the latest game (AB1541)
@@ -151,7 +151,7 @@ const validateHacksawToken = async (brand_uid, token) => {
 //       const timestamp = new Date(startTime.getTime() - i * 30 * 60 * 1000); // 30 minutes = 30 * 60 * 1000 milliseconds
 
 //       // Update the document directly in the collection, bypassing schema timestamps
-//       const result = await GameHacksawGameModal.collection.updateOne(
+//       const result = await GameRelaxGamingGameModal.collection.updateOne(
 //         { gameNameEN: gameId },
 //         {
 //           $set: {
@@ -176,7 +176,7 @@ const validateHacksawToken = async (brand_uid, token) => {
 //     );
 
 //     // Verify the updates by fetching and displaying the results
-//     const updatedGames = await GameHacksawGameModal.find(
+//     const updatedGames = await GameRelaxGamingGameModal.find(
 //       { gameNameEN: { $in: gameIds } },
 //       { gameID: 1, createdAt: 1, gameNameEN: 1, hot: 1 }
 //     ).sort({ createdAt: -1 });
