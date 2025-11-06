@@ -314,6 +314,7 @@ const userSchema = new mongoose.Schema(
       btgaming: { type: gameLockSchema, default: () => ({}) },
       playstar: { type: gameLockSchema, default: () => ({}) },
       vpower: { type: gameLockSchema, default: () => ({}) },
+      nextspin: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },
@@ -412,6 +413,9 @@ const userSchema = new mongoose.Schema(
       type: String,
     },
     vpowerGameID: {
+      type: String,
+    },
+    nextspinGameToken: {
       type: String,
     },
   },

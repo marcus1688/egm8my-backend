@@ -143,6 +143,142 @@ async function getLatestLaunchGameUrl() {
     };
   }
 }
+// async function updateBTGamingManualOrderTimestampsPlus() {
+//   try {
+//     // List of gameIDs in order (AB1541 = latest, AB1501 = oldest)
+//     const gameIds = [
+//       "sHG0002",
+//       "s80434365",
+//       "sTreaAtlan",
+//       "sRoyalGem",
+//       "sWinX2Neko",
+//       "sProsSnake",
+//       "sZeus",
+//       "sHG0001",
+//       "sGuanGong",
+//       "sCleopaFor",
+//       "sAztecGolT",
+//       "sMahPhe",
+//       "sRoma",
+//       "sMahDrg",
+//       "sRomaII",
+//       "sLongX3",
+//       "sLightnDrg",
+//       "sCaiShen",
+//       "sClaFruit7",
+//       "s7Dragons",
+//       "sBuffK",
+//       "sGolWest",
+//       "s5ForStar",
+//       "sProsDrg",
+//       "sSweetLava",
+//       "sCandyBona",
+//       "sPrincessR",
+//       "sHotSmash",
+//       "sForToad",
+//       "sLightnWmn",
+//       "sGoldenFa",
+//       "sGoldenWar",
+//       "sDiamond7",
+//       "sCandyXmas",
+//       "sHighwayB",
+//       "sTaiga88",
+//       "sShkThaiX2",
+//       "sDrgBlitz",
+//       "sTriMnky",
+//       "sMayaQuest",
+//       "sHoney888",
+//       "sCrazyMkDx",
+//       "sHolyGoat",
+//       "sLuckyGems",
+//       "sEternalFi",
+//       "sJokerKing",
+//       "sOceanChes",
+//       "sCrazyMnky",
+//       "sShkBoomX2",
+//       "aDonkiKong",
+//       "sRickyTyco",
+//       "sSuperFor",
+//       "sTwinkleIc",
+//       "sDolphDive",
+//       "sSoccerK",
+//       "sPrinCrime",
+//       "sTriKfMnky",
+//       "sFruitTyc",
+//       "sForestSec",
+//       "sDblMnky",
+//       "sMrHippo",
+//       "aMnkyJump",
+//     ];
+
+//     // Start from current time + 1 month for the latest game (AB1541)
+//     const currentTime = new Date();
+//     const startTime = new Date(
+//       currentTime.getTime() + 30 * 24 * 60 * 60 * 1000
+//     ); // Add 30 days (1 month)
+
+//     // Process each gameID with 30-minute intervals
+//     for (let i = 0; i < gameIds.length; i++) {
+//       const gameId = gameIds[i];
+
+//       // Calculate timestamp: latest game gets start time (current + 1 month), each subsequent game is 30 minutes older
+//       const timestamp = new Date(startTime.getTime() - i * 30 * 60 * 1000); // 30 minutes = 30 * 60 * 1000 milliseconds
+
+//       // Update the document directly in the collection, bypassing schema timestamps
+//       const result = await GameNextSpinGameModal.collection.updateOne(
+//         { gameID: gameId },
+//         {
+//           $set: {
+//             createdAt: timestamp,
+//             updatedAt: timestamp,
+//           },
+//         }
+//       );
+
+//       if (result.matchedCount > 0) {
+//         console.log(
+//           `Updated BTGaming gameID ${gameId} with timestamp: ${timestamp.toISOString()}`
+//         );
+//       } else {
+//         console.log(`BTGaming GameID ${gameId} not found in database`);
+//       }
+//     }
+
+//     console.log("BTGaming manual order timestamp update completed!");
+//     console.log(
+//       `Start time was set to: ${startTime.toISOString()} (current time + 1 month)`
+//     );
+
+//     // Verify the updates by fetching and displaying the results
+//     const updatedGames = await GameNextSpinGameModal.find(
+//       { gameID: { $in: gameIds } },
+//       { gameID: 1, createdAt: 1, gameNameEN: 1, hot: 1 }
+//     ).sort({ createdAt: -1 });
+
+//     console.log(
+//       "\nVerification - BTGaming Games ordered by createdAt (newest first):"
+//     );
+//     updatedGames.forEach((game, index) => {
+//       console.log(
+//         `${index + 1}. GameID: ${
+//           game.gameID
+//         }, CreatedAt: ${game.createdAt.toISOString()}, Hot: ${
+//           game.hot
+//         }, Name: ${game.gameNameEN}`
+//       );
+//     });
+
+//     console.log(
+//       `\nTotal games updated: ${updatedGames.length}/${gameIds.length}`
+//     );
+//   } catch (error) {
+//     console.error("Error updating BTGaming manual order timestamps:", error);
+//   }
+// }
+
+// // Call the function
+// updateBTGamingManualOrderTimestampsPlus();
+
 router.post("/api/nextspin/comparegame", async (req, res) => {
   try {
     const serialNo = generateSerialNo();
@@ -273,9 +409,18 @@ router.post("/api/nextspin/getprovidergamelist", async (req, res) => {
 
 router.post("/api/nextspin/getgamelist", async (req, res) => {
   try {
-    const games = await GameNextSpinGameModal.find({}).sort({
+    const games = await GameNextSpinGameModal.find({
+      $and: [
+        {
+          $or: [{ maintenance: false }, { maintenance: { $exists: false } }],
+        },
+        {
+          imageUrlEN: { $exists: true, $ne: null, $ne: "" },
+        },
+      ],
+    }).sort({
       hot: -1,
-      createdAt: 1,
+      createdAt: -1,
     });
 
     if (!games || games.length === 0) {
@@ -285,6 +430,8 @@ router.post("/api/nextspin/getgamelist", async (req, res) => {
           en: "No games found. Please try again later.",
           zh: "未找到游戏。请稍后再试。",
           ms: "Tiada permainan ditemui. Sila cuba lagi kemudian.",
+          zh_hk: "未找到遊戲。請稍後再試。",
+          id: "Tidak ada permainan ditemukan. Silakan coba lagi nanti.",
         },
       });
     }
@@ -295,8 +442,8 @@ router.post("/api/nextspin/getgamelist", async (req, res) => {
       GameNameZH: game.gameNameCN,
       GameType: game.gameType,
       GameImage: game.imageUrlEN || "",
-      GameImageZH: game.imageUrlCN,
-      Hot: game.hot,
+      GameImageZH: game.imageUrlCN || "",
+      Hot: game.hot || false,
       RTP: game.rtpRate,
     }));
 
@@ -312,6 +459,8 @@ router.post("/api/nextspin/getgamelist", async (req, res) => {
         en: "NEXTSPIN: Unable to retrieve game lists. Please contact customer service for assistance.",
         zh: "NEXTSPIN: 无法获取游戏列表，请联系客服以获取帮助。",
         ms: "NEXTSPIN: Tidak dapat mendapatkan senarai permainan. Sila hubungi khidmat pelanggan untuk bantuan.",
+        zh_hk: "NEXTSPIN: 無法獲取遊戲列表，請聯絡客服以獲取幫助。",
+        id: "NEXTSPIN: Tidak dapat mengambil daftar permainan. Silakan hubungi layanan pelanggan untuk bantuan.",
       },
     });
   }
@@ -323,6 +472,19 @@ router.post("/api/nextspin/launchGame", authenticateToken, async (req, res) => {
     const userId = req.user.userId;
     const user = await User.findById(userId);
 
+    if (!user) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "User not found. Please try again or contact customer service for assistance.",
+          zh: "用户未找到，请重试或联系客服以获取帮助。",
+          ms: "Pengguna tidak ditemui, sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          zh_hk: "用戶未找到，請重試或聯絡客服以獲取幫助。",
+          id: "Pengguna tidak ditemukan. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+        },
+      });
+    }
+
     if (user.gameLock.nextspin.lock) {
       return res.status(200).json({
         success: false,
@@ -330,6 +492,8 @@ router.post("/api/nextspin/launchGame", authenticateToken, async (req, res) => {
           en: "Your game access has been locked. Please contact customer support for further assistance.",
           zh: "您的游戏访问已被锁定，请联系客服以获取进一步帮助。",
           ms: "Akses permainan anda telah dikunci. Sila hubungi khidmat pelanggan untuk bantuan lanjut.",
+          zh_hk: "您的遊戲訪問已被鎖定，請聯絡客服以獲取進一步幫助。",
+          id: "Akses permainan Anda telah dikunci. Silakan hubungi dukungan pelanggan untuk bantuan lebih lanjut.",
         },
       });
     }
@@ -340,14 +504,17 @@ router.post("/api/nextspin/launchGame", authenticateToken, async (req, res) => {
       lang = "en_US";
     } else if (gameLang === "zh") {
       lang = "zh_CN";
+    } else if (gameLang === "zh_hk") {
+      lang = "zh_TW";
     } else if (gameLang === "ms") {
+      lang = "en_US";
+    } else if (gameLang === "id") {
       lang = "id_ID";
     }
 
-    const acctId = user.username;
-    let token = `${user.username}:${generateRandomCode()}`;
+    let token = `${user.gameId}:${generateRandomCode()}`;
 
-    const redirectURL = `${nextSpinGameURL}/${nextSpinMC}/auth/?acctId=${acctId}&language=${lang}&token=${token}&game=${gameCode}&brand=${nextSpinCustomBrand}`;
+    const redirectURL = `${nextSpinGameURL}/${nextSpinMC}/auth/?acctId=${user.gameId}&language=${lang}&token=${token}&game=${gameCode}&brand=${nextSpinCustomBrand}`;
 
     const updatedUser = await User.findOneAndUpdate(
       { _id: user._id },
@@ -372,6 +539,8 @@ router.post("/api/nextspin/launchGame", authenticateToken, async (req, res) => {
         en: "Game launched successfully.",
         zh: "游戏启动成功。",
         ms: "Permainan berjaya dimulakan.",
+        zh_hk: "遊戲啟動成功。",
+        id: "Permainan berhasil diluncurkan.",
       },
     });
   } catch (error) {
@@ -382,6 +551,8 @@ router.post("/api/nextspin/launchGame", authenticateToken, async (req, res) => {
         en: "NEXTSPIN: Game launch failed. Please try again or customer service for assistance.",
         zh: "NEXTSPIN: 游戏启动失败，请重试或联系客服以获得帮助。",
         ms: "NEXTSPIN: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+        zh_hk: "NEXTSPIN: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+        id: "NEXTSPIN: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
       },
     });
   }
@@ -405,18 +576,6 @@ router.post("/api/nextspin", async (req, res) => {
     const APIRequested = req.headers["api"];
     const digestReceived = req.headers["digest"];
 
-    if (APIRequested === "authorize" || APIRequested === "getBalance") {
-      if (digestReceived !== generateDigest(req.body)) {
-        console.log("failed digest", digestReceived);
-        return res.status(200).json({
-          merchantCode: nextSpinMC,
-          msg: "Token Validation Failed",
-          code: 50104,
-          serialNo: serialNo || "",
-        });
-      }
-    }
-
     if (merchantCode !== nextSpinMC) {
       console.log("[NEXTSPIN] Wrong merchantCode:", {
         received: merchantCode,
@@ -430,16 +589,27 @@ router.post("/api/nextspin", async (req, res) => {
       });
     }
 
+    if (APIRequested === "authorize" || APIRequested === "getBalance") {
+      if (digestReceived !== generateDigest(req.body)) {
+        console.log("[NEXTSPIN] Digest validation failed:", digestReceived);
+        return res.status(200).json({
+          merchantCode: nextSpinMC,
+          msg: "Token Validation Failed",
+          code: 50104,
+          serialNo: serialNo || "",
+        });
+      }
+    }
+
     // Handle different APIs
     switch (APIRequested) {
       case "authorize": {
-        const username = token.split(":")[0];
         const currentUser = await User.findOne(
-          { username },
-          { username: 1, nextspinGameToken: 1 }
+          { gameId: acctId, nextspinGameToken: token },
+          { username: 1, _id: 1 }
         ).lean();
 
-        if (!currentUser || currentUser.nextspinGameToken !== token) {
+        if (!currentUser) {
           console.log("[NEXTSPIN] User not found or token mismatch");
           return res.status(200).json({
             merchantCode: nextSpinMC,
@@ -464,14 +634,13 @@ router.post("/api/nextspin", async (req, res) => {
       }
 
       case "getBalance": {
-        const normalisedUsername = acctId.toLowerCase();
         const currentUser = await User.findOne(
-          { username: normalisedUsername },
+          { gameId: acctId },
           { username: 1, wallet: 1 }
         ).lean();
 
         if (!currentUser) {
-          console.log("[NEXTSPIN] User not found:", normalisedUsername);
+          console.log("[NEXTSPIN] User not found:", acctId);
           return res.status(200).json({
             merchantCode: nextSpinMC,
             msg: "Acct Not Found",
@@ -482,9 +651,9 @@ router.post("/api/nextspin", async (req, res) => {
 
         return res.status(200).json({
           acctInfo: {
-            userName: acctId,
+            userName: currentUser.username,
             currency: "MYR",
-            acctId: currentUser.username,
+            acctId: acctId,
             balance: roundToTwoDecimals(currentUser.wallet),
           },
           merchantCode: nextSpinMC,
@@ -495,24 +664,12 @@ router.post("/api/nextspin", async (req, res) => {
       }
 
       case "transfer": {
-        const normalisedUsername = acctId.toLowerCase();
-
-        const createSuccessResponse = (userBalance) => ({
-          transferId,
-          merchantTxId: generateTransactionId(),
-          merchantCode: nextSpinMC,
-          acctId: acctId,
-          balance: roundToTwoDecimals(userBalance),
-          msg: "success",
-          code: 0,
-          serialNo: serialNo || "",
-        });
+        const roundedAmount = roundToTwoDecimals(amount || 0);
 
         const currentUser = await User.findOne(
-          { username: normalisedUsername },
+          { gameId: acctId },
           {
             _id: 1,
-            username: 1,
             wallet: 1,
             "gameLock.nextspin.lock": 1,
           }
@@ -527,7 +684,16 @@ router.post("/api/nextspin", async (req, res) => {
           });
         }
 
-        const roundedAmount = roundToTwoDecimals(amount || 0);
+        const createSuccessResponse = (userBalance) => ({
+          transferId,
+          merchantTxId: generateTransactionId(),
+          merchantCode: nextSpinMC,
+          acctId: acctId,
+          balance: roundToTwoDecimals(userBalance),
+          msg: "success",
+          code: 0,
+          serialNo: serialNo || "",
+        });
 
         switch (type) {
           case 1: {
@@ -577,7 +743,7 @@ router.post("/api/nextspin", async (req, res) => {
 
             await SlotNextSpinModal.create({
               tranId: transferId,
-              username: currentUser.username,
+              username: acctId,
               bet: true,
               betamount: roundedAmount,
             });
@@ -588,17 +754,13 @@ router.post("/api/nextspin", async (req, res) => {
           }
 
           case 2: {
-            const [existingBet, existingTransaction] = await Promise.all([
+            const [existingBet, existingCancel] = await Promise.all([
               SlotNextSpinModal.findOne(
                 { tranId: referenceId, bet: true },
                 { _id: 1 }
               ).lean(),
-
               SlotNextSpinModal.findOne(
-                {
-                  canceltranId: transferId,
-                  $or: [{ settle: true }, { cancel: true }],
-                },
+                { canceltranId: transferId },
                 { _id: 1 }
               ).lean(),
             ]);
@@ -613,7 +775,8 @@ router.post("/api/nextspin", async (req, res) => {
               });
             }
 
-            if (existingTransaction) {
+            if (existingCancel) {
+              console.log("[NEXTSPIN] Already cancelled:", transferId);
               return res.status(200).json({
                 merchantCode: nextSpinMC,
                 msg: "Transaction Cancelled",
@@ -631,8 +794,7 @@ router.post("/api/nextspin", async (req, res) => {
 
               SlotNextSpinModal.findOneAndUpdate(
                 { tranId: referenceId },
-                { $set: { cancel: true, canceltranId: transferId } },
-                { upsert: true }
+                { $set: { cancel: true, canceltranId: transferId } }
               ),
             ]);
 
@@ -688,38 +850,14 @@ router.post("/api/nextspin", async (req, res) => {
               });
             }
 
-            // const [updatedUserBalance] = await Promise.all([
-            //   User.findOneAndUpdate(
-            //     { _id: currentUser._id },
-            //     { $inc: { wallet: roundedAmount } },
-            //     { new: true, projection: { wallet: 1 } }
-            //   ).lean(),
-
-            //   SlotNextSpinModal.findOneAndUpdate(
-            //     { tranId: referenceId },
-            //     {
-            //       $set: {
-            //         [statusField]: true,
-            //         [tranIdField]: transferId,
-            //         [amountField]: roundedAmount,
-            //       },
-            //     },
-            //     { upsert: true }
-            //   ),
-            // ]);
-
             const settlementData = {
               [statusField]: true,
               [tranIdField]: transferId,
               [amountField]: roundedAmount,
             };
 
-            if (
-              specialGame &&
-              specialGame.count &&
-              specialGame.sequence !== undefined
-            ) {
-              const { type, count, sequence } = specialGame;
+            if (specialGame?.count && specialGame.sequence !== undefined) {
+              const { count, sequence } = specialGame;
               const isLastFreeSpin = sequence >= count;
               Object.assign(settlementData, {
                 gameCode: gameCode,
@@ -729,32 +867,37 @@ router.post("/api/nextspin", async (req, res) => {
               });
             }
 
-            const [updatedUserBalance] = await Promise.all([
+            const updatePromises = [
               User.findOneAndUpdate(
                 { _id: currentUser._id },
                 { $inc: { wallet: roundedAmount } },
                 { new: true, projection: { wallet: 1 } }
               ).lean(),
-
               SlotNextSpinModal.findOneAndUpdate(
                 { tranId: referenceId },
                 { $set: settlementData },
                 { upsert: true }
               ),
+            ];
 
-              // If last free spin, mark all previous free spins as completed
-              (specialGame && specialGame.sequence >= specialGame.count) ||
-              !specialGame
-                ? SlotNextSpinModal.updateMany(
-                    {
-                      username: currentUser.username,
-                      gameCode: gameCode,
-                      freeSpinOngoing: true,
-                    },
-                    { $set: { freeSpinOngoing: false } }
-                  )
-                : Promise.resolve(),
-            ]);
+            if (
+              specialGame &&
+              specialGame.sequence >= specialGame.count &&
+              gameCode
+            ) {
+              updatePromises.push(
+                SlotNextSpinModal.updateMany(
+                  {
+                    username: acctId,
+                    gameCode: gameCode,
+                    freeSpinOngoing: true,
+                  },
+                  { $set: { freeSpinOngoing: false } }
+                )
+              );
+            }
+
+            const [updatedUserBalance] = await Promise.all(updatePromises);
 
             return res
               .status(200)
@@ -835,19 +978,39 @@ router.post("/api/nextspin/getturnoverforrebate", async (req, res) => {
       cancel: { $ne: true },
     });
 
+    const uniqueGameIds = [
+      ...new Set(records.map((record) => record.username)),
+    ];
+
+    const users = await User.find(
+      { gameId: { $in: uniqueGameIds } },
+      { gameId: 1, username: 1 }
+    ).lean();
+
+    const gameIdToUsername = {};
+    users.forEach((user) => {
+      gameIdToUsername[user.gameId] = user.username;
+    });
+
     // Aggregate turnover and win/loss for each player
     let playerSummary = {};
 
     records.forEach((record) => {
-      const username = record.username.toLowerCase();
+      const gameId = record.username;
+      const actualUsername = gameIdToUsername[gameId];
 
-      if (!playerSummary[username]) {
-        playerSummary[username] = { turnover: 0, winloss: 0 };
+      if (!actualUsername) {
+        console.warn(`NEXTSPIN User not found for gameId: ${gameId}`);
+        return;
       }
 
-      playerSummary[username].turnover += record.betamount || 0;
+      if (!playerSummary[actualUsername]) {
+        playerSummary[actualUsername] = { turnover: 0, winloss: 0 };
+      }
 
-      playerSummary[username].winloss +=
+      playerSummary[actualUsername].turnover += record.betamount || 0;
+
+      playerSummary[actualUsername].winloss +=
         (record.settleamount || 0) - (record.betamount || 0);
     });
     // Format the turnover and win/loss for each player to two decimal places
@@ -871,7 +1034,11 @@ router.post("/api/nextspin/getturnoverforrebate", async (req, res) => {
   } catch (error) {
     console.log("NEXTSPIN: Failed to fetch win/loss report:", error.message);
     return res.status(500).json({
-      error: "NEXTSPIN: Failed to fetch win/loss report",
+      success: false,
+      message: {
+        en: "NEXTSPIN: Failed to fetch win/loss report",
+        zh: "NEXTSPIN: 获取盈亏报告失败",
+      },
     });
   }
 });
@@ -888,7 +1055,7 @@ router.get(
       const user = await User.findById(userId);
 
       const records = await SlotNextSpinModal.find({
-        username: user.username.toLowerCase(),
+        username: user.gameId,
         createdAt: {
           $gte: startDate,
           $lt: endDate,
@@ -924,7 +1091,11 @@ router.get(
     } catch (error) {
       console.log("NEXTSPIN: Failed to fetch win/loss report:", error.message);
       return res.status(500).json({
-        error: "NEXTSPIN: Failed to fetch win/loss report",
+        success: false,
+        message: {
+          en: "NEXTSPIN: Failed to fetch win/loss report",
+          zh: "NEXTSPIN: 获取盈亏报告失败",
+        },
       });
     }
   }
@@ -942,7 +1113,7 @@ router.get(
       const user = await User.findById(userId);
 
       const records = await GameDataLog.find({
-        username: user.username.toLowerCase(),
+        username: user.username,
         date: {
           $gte: moment(new Date(startDate))
             .utc()
@@ -999,7 +1170,11 @@ router.get(
     } catch (error) {
       console.log("NEXTSPIN: Failed to fetch win/loss report:", error.message);
       return res.status(500).json({
-        error: "NEXTSPIN: Failed to fetch win/loss report",
+        success: false,
+        message: {
+          en: "NEXTSPIN: Failed to fetch win/loss report",
+          zh: "NEXTSPIN: 获取盈亏报告失败",
+        },
       });
     }
   }
@@ -1030,20 +1205,26 @@ router.get(
         totalWinLoss += (record.betamount || 0) - (record.settleamount || 0);
       });
 
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+
       return res.status(200).json({
         success: true,
         summary: {
           gamename: "NEXTSPIN",
           gamecategory: "Slot Games",
-          totalturnover: Number(totalTurnover.toFixed(2)),
-          totalwinloss: Number(totalWinLoss.toFixed(2)),
+          totalturnover: totalTurnover,
+          totalwinloss: totalWinLoss,
         },
       });
     } catch (error) {
       console.error("NEXTSPIN: Failed to fetch win/loss report:", error);
       return res.status(500).json({
         success: false,
-        error: "NEXTSPIN: Failed to fetch win/loss report",
+        message: {
+          en: "NEXTSPIN: Failed to fetch win/loss report",
+          zh: "NEXTSPIN: 获取盈亏报告失败",
+        },
       });
     }
   }
@@ -1105,7 +1286,10 @@ router.get(
       console.error("NEXTSPIN: Failed to fetch win/loss report:", error);
       return res.status(500).json({
         success: false,
-        error: "NEXTSPIN: Failed to fetch win/loss report",
+        message: {
+          en: "NEXTSPIN: Failed to fetch win/loss report",
+          zh: "NEXTSPIN: 获取盈亏报告失败",
+        },
       });
     }
   }

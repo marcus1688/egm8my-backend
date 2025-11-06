@@ -55,6 +55,8 @@ const SlotHabaneroModal = require("../models/slot_habanero.model");
 const SlotBNGModal = require("../models/slot_bng.model");
 const SlotPlayStarModal = require("../models/slot_playstar.model");
 const SlotVPowerModal = require("../models/slot_vpower.model");
+const SlotNextSpinModal = require("../models/slot_nextspin.model");
+
 
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
@@ -5177,6 +5179,11 @@ router.get(
           }),
 
           getAllUsersTurnover(SlotVPowerModal, {
+            settle: true,
+          }),
+
+          getAllUsersTurnover(SlotNextSpinModal, {
+            cancel: { $ne: true },
             settle: true,
           }),
         ];

@@ -173,6 +173,10 @@ router.post("/admin/api/getAllTurnoverForRebate", async (req, res) => {
         url: `${PUBLIC_APIURL}api/vpower/getturnoverforrebate`,
         name: "VPOWER",
       },
+      {
+        url: `${PUBLIC_APIURL}api/nextspin/getturnoverforrebate`,
+        name: "NEXTSPIN",
+      },
     ];
 
     const routePromises = routes.map((route) =>
