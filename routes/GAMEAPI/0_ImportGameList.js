@@ -154,8 +154,8 @@ router.post("/api/importGameList/168168", async (req, res) => {
       games.push({
         gameNameEN: row["Game Name"],
         gameNameCN: row["Simplified Chinese"],
-        gameNameHK: row["Traditional Chinese"],
-        gameNameID: row["Indonesia"],
+        // gameNameHK: row["Traditional Chinese"],
+        // gameNameID: row["Indonesia"],
         gameID: row["Game Code"],
         gameType: normalizedType,
         rtpRate: rtpValue,
@@ -168,7 +168,7 @@ router.post("/api/importGameList/168168", async (req, res) => {
         .json({ success: false, message: "No valid games to import." });
     }
 
-    await GameRelaxGamingGameModal.insertMany(games);
+    await GameHacksawGameModal.insertMany(games);
     res.status(200).json({
       success: true,
       imported: games.length,
@@ -182,16 +182,16 @@ router.post("/api/importGameList/168168", async (req, res) => {
   }
 });
 
-router.post("/api/importImgUrl/relaxgaming", async (req, res) => {
+router.post("/api/importImgUrl/hacksaw", async (req, res) => {
   try {
     const bucket = "allgameslist";
-    const basePathEN = "dctrelaxgaming/en/";
+    const basePathEN = "hacksaw/en/";
 
     // Get all games from the database that need images
-    const allGames = await GameRelaxGamingGameModal.find(
+    const allGames = await GameHacksawGameModal.find(
       {
         $or: [{ imageUrlEN: { $exists: false } }, { imageUrlEN: "" }],
-        gameID: { $exists: true, $ne: "" },
+        gameNameEN: { $exists: true, $ne: "" },
       },
       { gameID: 1, gameNameEN: 1, _id: 1 }
     );
@@ -206,24 +206,42 @@ router.post("/api/importImgUrl/relaxgaming", async (req, res) => {
     console.log(`Found ${allGames.length} games needing image sync`);
 
     /**
-     * Extract game ID from AWS filename
-     * Format: "150010_White+Rabbit.png" or "150010_Game+Name.jpg"
-     * Returns: "150010"
+     * Normalize game name for comparison
+     * Remove special characters, convert to lowercase, remove spaces
+     * Example: "Le Zeus" -> "lezeus"
      */
-    const extractGameIDFromFilename = (filename) => {
+    const normalizeGameName = (name) => {
+      if (!name) return "";
+      return name
+        .replace(/[^a-zA-Z0-9\s]/g, "") // Remove special characters
+        .replace(/\s+/g, "") // Remove all spaces
+        .toLowerCase(); // Convert to lowercase
+    };
+
+    /**
+     * Extract normalized game name from AWS filename
+     * Format: "Le+Zeus.png" or "Game+Name.jpg"
+     * Returns: "lezeus"
+     */
+    const extractGameNameFromFilename = (filename) => {
       console.log(`  Processing filename: ${filename}`);
 
-      // Split by underscore and take the first part
-      const parts = filename.split("_");
+      // Remove file extension
+      const nameWithoutExt = filename.replace(
+        /\.(jpg|jpeg|png|gif|webp)$/i,
+        ""
+      );
 
-      if (parts.length >= 2) {
-        const gameID = parts[0];
-        console.log(`  Extracted game ID: ${gameID}`);
-        return gameID;
-      }
+      // Replace + with spaces (URL encoding)
+      const decodedName = nameWithoutExt.replace(/\+/g, " ");
 
-      console.log(`  ❌ Could not extract game ID from filename`);
-      return null;
+      // Normalize the name
+      const normalizedName = normalizeGameName(decodedName);
+
+      console.log(
+        `  Decoded: "${decodedName}" -> Normalized: "${normalizedName}"`
+      );
+      return normalizedName;
     };
 
     // Get all objects from S3 for EN language path
@@ -234,7 +252,7 @@ router.post("/api/importImgUrl/relaxgaming", async (req, res) => {
       })
     );
 
-    // Create lookup map based on game ID
+    // Create lookup map based on normalized game name
     const enImageMap = {};
 
     console.log("\n=== Processing EN Images ===");
@@ -250,12 +268,12 @@ router.post("/api/importImgUrl/relaxgaming", async (req, res) => {
           return;
         }
 
-        const gameID = extractGameIDFromFilename(filename);
+        const normalizedName = extractGameNameFromFilename(filename);
 
-        if (gameID) {
+        if (normalizedName) {
           const imageUrl = `https://${bucket}.s3.ap-southeast-1.amazonaws.com/${object.Key}`;
-          enImageMap[gameID] = imageUrl;
-          console.log(`  ✅ Mapped gameID ${gameID} -> ${imageUrl}`);
+          enImageMap[normalizedName] = imageUrl;
+          console.log(`  ✅ Mapped "${normalizedName}" -> ${imageUrl}`);
         }
       });
     }
@@ -268,29 +286,32 @@ router.post("/api/importImgUrl/relaxgaming", async (req, res) => {
     const updatePromises = allGames.map(async (game) => {
       const updates = {};
 
+      // Normalize the game name from database
+      const normalizedGameName = normalizeGameName(game.gameNameEN);
+
       // Debug logging for each game
       console.log(
-        `\nProcessing game: gameID="${game.gameID}", name="${game.gameNameEN}"`
+        `\nProcessing game: gameNameEN="${game.gameNameEN}", normalized="${normalizedGameName}"`
       );
 
-      // Match images using game ID (exact match)
-      if (enImageMap[game.gameID]) {
-        updates.imageUrlEN = enImageMap[game.gameID];
-        console.log(`  ✅ EN image found: ${enImageMap[game.gameID]}`);
+      // Match images using normalized game name (exact match)
+      if (enImageMap[normalizedGameName]) {
+        updates.imageUrlEN = enImageMap[normalizedGameName];
+        console.log(`  ✅ EN image found: ${enImageMap[normalizedGameName]}`);
       } else {
-        console.log(`  ❌ EN image NOT found for gameID: ${game.gameID}`);
+        console.log(`  ❌ EN image NOT found for: ${normalizedGameName}`);
       }
 
       // Only update if we found a matching image
       if (Object.keys(updates).length > 0) {
-        console.log(`  ✅ Updating game ${game.gameID} with image`);
-        return GameRelaxGamingGameModal.findByIdAndUpdate(
+        console.log(`  ✅ Updating game "${game.gameNameEN}" with image`);
+        return GameHacksawGameModal.findByIdAndUpdate(
           game._id,
           { $set: updates },
           { new: true }
         );
       } else {
-        console.log(`  ⚠️ No image found for game ${game.gameID}`);
+        console.log(`  ⚠️ No image found for game "${game.gameNameEN}"`);
       }
 
       return null;
@@ -308,7 +329,7 @@ router.post("/api/importImgUrl/relaxgaming", async (req, res) => {
       .slice(0, 10)
       .map((game) => ({
         gameNameEN: game.gameNameEN,
-        gameID: game.gameID,
+        normalizedName: normalizeGameName(game.gameNameEN),
       }));
 
     // Get examples of matched games
@@ -316,7 +337,6 @@ router.post("/api/importImgUrl/relaxgaming", async (req, res) => {
       .filter((result) => result !== null)
       .slice(0, 5)
       .map((game) => ({
-        gameID: game.gameID,
         gameNameEN: game.gameNameEN,
         imageUrlEN: game.imageUrlEN || "Not set",
       }));
@@ -332,7 +352,7 @@ router.post("/api/importImgUrl/relaxgaming", async (req, res) => {
       unmatchedExamples: unmatchedGames,
     });
   } catch (error) {
-    console.error("Error syncing Relax Gaming images:", error);
+    console.error("Error syncing Hacksaw Gaming images:", error);
 
     return res.status(500).json({
       success: false,
@@ -577,7 +597,7 @@ router.post("/api/jili/updateMalayName", async (req, res) => {
 router.post("/api/jili/getgamelistMissing", async (req, res) => {
   try {
     // Fetch all games from the database (or add filters as needed)
-    const missingImageGames = await GameRelaxGamingGameModal.find({
+    const missingImageGames = await GameHacksawGameModal.find({
       $or: [{ imageUrlEN: { $exists: false } }, { imageUrlEN: "" }],
       maintenance: false,
     });
@@ -670,7 +690,8 @@ router.post("/admin/api/replace-s3-with-cloudfront", async (req, res) => {
       // GameDragoonSoftGameModal,
       // GameDragonGamingGameModal,
       // GameYLGamingGameModal,
-      GameYGRGameModal,
+      // GameYGRGameModal,
+      GameHacksawGameModal,
       // GamePegasusGameModal,
     ];
 

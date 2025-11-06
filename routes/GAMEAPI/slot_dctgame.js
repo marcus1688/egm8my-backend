@@ -75,7 +75,7 @@ async function GameWalletLogAttempt(
 const validateHacksawToken = async (brand_uid, token) => {
   const user = await User.findOne(
     { gameId: brand_uid },
-    { wallet: 1, hacksawGameToken: 1, "gameLock.hacksaw.lock": 1, _id: 1 }
+    { wallet: 1, hacksawGameToken: 1, "gameLock.dctgame.lock": 1, _id: 1 }
   ).lean();
 
   if (!user) {
@@ -110,6 +110,484 @@ const validateHacksawToken = async (brand_uid, token) => {
   return { valid: true, user };
 };
 
+// async function updateBTGamingManualOrderTimestampsPlus() {
+//   try {
+//     // List of gameIDs in order (AB1541 = latest, AB1501 = oldest)
+//     const gameIds = [
+//       "The Luxe H.V.",
+//       "Le Bandit",
+//       "Wanted Dead or a Wild",
+//       "Le Pharaoh",
+//       "Ze Zeus",
+//       "Duel at Dawn",
+//       "Le King",
+//       "The Count",
+//       "Hand of Anubis",
+//       "Le Zeus",
+//       "Chaos Crew 3",
+//       "Fist of Destruction",
+//       "FRKN Bananas",
+//       "Le Viking",
+//       "Bullets and Bounty",
+//       "RIP City",
+//       "2 Wild 2 Die",
+//       "The Wildwood Curse",
+//       "Old Gun",
+//       "Miami Mayhem",
+//     ];
+
+//     // Start from current time + 1 month for the latest game (AB1541)
+//     const currentTime = new Date();
+//     const startTime = new Date(
+//       currentTime.getTime() + 30 * 24 * 60 * 60 * 1000
+//     ); // Add 30 days (1 month)
+
+//     // Process each gameID with 30-minute intervals
+//     for (let i = 0; i < gameIds.length; i++) {
+//       const gameId = gameIds[i];
+
+//       // Calculate timestamp: latest game gets start time (current + 1 month), each subsequent game is 30 minutes older
+//       const timestamp = new Date(startTime.getTime() - i * 30 * 60 * 1000); // 30 minutes = 30 * 60 * 1000 milliseconds
+
+//       // Update the document directly in the collection, bypassing schema timestamps
+//       const result = await GameHacksawGameModal.collection.updateOne(
+//         { gameNameEN: gameId },
+//         {
+//           $set: {
+//             createdAt: timestamp,
+//             updatedAt: timestamp,
+//           },
+//         }
+//       );
+
+//       if (result.matchedCount > 0) {
+//         console.log(
+//           `Updated BTGaming gameID ${gameId} with timestamp: ${timestamp.toISOString()}`
+//         );
+//       } else {
+//         console.log(`BTGaming GameID ${gameId} not found in database`);
+//       }
+//     }
+
+//     console.log("BTGaming manual order timestamp update completed!");
+//     console.log(
+//       `Start time was set to: ${startTime.toISOString()} (current time + 1 month)`
+//     );
+
+//     // Verify the updates by fetching and displaying the results
+//     const updatedGames = await GameHacksawGameModal.find(
+//       { gameNameEN: { $in: gameIds } },
+//       { gameID: 1, createdAt: 1, gameNameEN: 1, hot: 1 }
+//     ).sort({ createdAt: -1 });
+
+//     console.log(
+//       "\nVerification - BTGaming Games ordered by createdAt (newest first):"
+//     );
+//     updatedGames.forEach((game, index) => {
+//       console.log(
+//         `${index + 1}. GameID: ${
+//           game.gameID
+//         }, CreatedAt: ${game.createdAt.toISOString()}, Hot: ${
+//           game.hot
+//         }, Name: ${game.gameNameEN}`
+//       );
+//     });
+
+//     console.log(
+//       `\nTotal games updated: ${updatedGames.length}/${gameIds.length}`
+//     );
+//   } catch (error) {
+//     console.error("Error updating BTGaming manual order timestamps:", error);
+//   }
+// }
+
+// // Call the function
+// updateBTGamingManualOrderTimestampsPlus();
+
+router.post("/api/dct/updategameid", async (req, res) => {
+  try {
+    const sign = generateSignature({
+      brandId: dctGameBrandID,
+      apiKey: dctGameKey,
+    });
+
+    const payload = {
+      brand_id: dctGameBrandID,
+      sign,
+      provider: "hs",
+    };
+
+    const response = await axios.post(
+      `${dctGameAPIURL}/dcs/getGameList`,
+      payload,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    // Helper function to normalize strings for comparison
+    const normalizeString = (str) => {
+      return str.toLowerCase().replace(/[^a-z0-9]/g, ""); // Remove spaces and special characters
+    };
+
+    // Get all games from database
+    const dbGames = await GameHacksawGameModal.find({}).lean();
+
+    // Step 1: Compare by game_id
+    const apiGameIds = new Set(
+      response.data.data.map((game) => game.game_id.toString())
+    );
+    const dbGameIds = new Set(dbGames.map((game) => game.gameID));
+
+    // Find games missing by ID (in API but not in DB by ID)
+    const missingByIdGames = response.data.data.filter(
+      (game) => !dbGameIds.has(game.game_id.toString())
+    );
+
+    // Step 2: For games missing by ID, check if game name matches
+    const updatePromises = [];
+    const matchedByName = [];
+    const trulyMissingGames = [];
+
+    // Create a map of normalized game names to db games for quick lookup
+    const dbGameNameMap = new Map();
+    dbGames.forEach((dbGame) => {
+      if (dbGame.gameNameEN) {
+        const normalizedName = normalizeString(dbGame.gameNameEN);
+        dbGameNameMap.set(normalizedName, dbGame);
+      }
+    });
+
+    missingByIdGames.forEach((apiGame) => {
+      const normalizedApiName = normalizeString(apiGame.game_name);
+      const matchingDbGame = dbGameNameMap.get(normalizedApiName);
+
+      if (matchingDbGame) {
+        // Game name matches - update the gameID in database
+        matchedByName.push({
+          old_game_id: matchingDbGame.gameID,
+          new_game_id: apiGame.game_id.toString(),
+          game_name: apiGame.game_name,
+          db_game_name: matchingDbGame.gameNameEN,
+        });
+
+        updatePromises.push(
+          GameHacksawGameModal.updateOne(
+            { _id: matchingDbGame._id },
+            { $set: { gameID: apiGame.game_id.toString() } }
+          )
+        );
+      } else {
+        // Truly missing game - not in DB by ID or name
+        trulyMissingGames.push({
+          game_id: apiGame.game_id,
+          game_name: apiGame.game_name,
+          provider: apiGame.provider,
+          game_name_cn: apiGame.game_name_cn,
+          game_icon: apiGame.game_icon,
+          rtp: apiGame.rtp,
+        });
+      }
+    });
+
+    // Execute all updates
+    if (updatePromises.length > 0) {
+      await Promise.all(updatePromises);
+    }
+
+    return res.status(200).json({
+      success: true,
+      comparison: {
+        matchedByName: matchedByName,
+        matchedByNameCount: matchedByName.length,
+        trulyMissingGames: trulyMissingGames,
+        trulyMissingCount: trulyMissingGames.length,
+        totalProcessed: missingByIdGames.length,
+      },
+      message: {
+        en: "Game comparison and update completed successfully.",
+        zh: "游戏比较和更新成功完成。",
+        ms: "Perbandingan dan kemas kini permainan berjaya diselesaikan.",
+        zh_hk: "遊戲比較和更新成功完成。",
+        id: "Perbandingan dan pembaruan permainan berhasil diselesaikan.",
+      },
+    });
+  } catch (error) {
+    console.error("HACKSAW error comparing game names:", error.message);
+    return res.status(200).json({
+      success: false,
+      message: {
+        en: "HACKSAW: Game comparison failed. Please try again or contact customer service for assistance.",
+        zh: "HACKSAW: 游戏比较失败，请重试或联系客服以获得帮助。",
+        ms: "HACKSAW: Perbandingan permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+        zh_hk: "HACKSAW: 遊戲比較失敗，請重試或聯絡客服以獲得幫助。",
+        id: "HACKSAW: Perbandingan permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+      },
+    });
+  }
+});
+
+router.post("/api/dct/comparegamenames", async (req, res) => {
+  try {
+    const sign = generateSignature({
+      brandId: dctGameBrandID,
+      apiKey: dctGameKey,
+    });
+
+    const payload = {
+      brand_id: dctGameBrandID,
+      sign,
+      provider: "hs",
+    };
+
+    const response = await axios.post(
+      `${dctGameAPIURL}/dcs/getGameList`,
+      payload,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    // Get all games from database
+    const dbGames = await GameHacksawGameModal.find({}).lean();
+
+    // Extract game names from API response
+    const apiGameNames = new Set(
+      response.data.data.map((game) => game.game_name)
+    );
+
+    // Extract game names from database
+    const dbGameNames = new Set(dbGames.map((game) => game.gameNameEN));
+
+    // Find missing games (in API but not in DB)
+    const missingGames = response.data.data.filter(
+      (game) => !dbGameNames.has(game.game_name)
+    );
+
+    // Find extra games (in DB but not in API) - just for info
+    const extraGames = dbGames.filter(
+      (game) => !apiGameNames.has(game.gameNameEN)
+    );
+
+    // Format missing games for response
+    const missingGamesFormatted = missingGames.map((game) => ({
+      game_id: game.game_id,
+      game_name: game.game_name,
+      provider: game.provider,
+      game_name_cn: game.game_name_cn,
+      game_icon: game.game_icon,
+      rtp: game.rtp,
+    }));
+
+    // Format extra games for response
+    const extraGamesFormatted = extraGames.map((game) => ({
+      game_id: game.gameID,
+      game_name: game.gameNameEN,
+      game_name_cn: game.gameNameCN,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      comparison: {
+        missingGames: missingGamesFormatted,
+        missingCount: missingGames.length,
+        extraGames: extraGamesFormatted,
+        extraCount: extraGames.length,
+      },
+      message: {
+        en: "Game name comparison completed successfully.",
+        zh: "游戏名称比较成功完成。",
+        ms: "Perbandingan nama permainan berjaya diselesaikan.",
+        zh_hk: "遊戲名稱比較成功完成。",
+        id: "Perbandingan nama permainan berhasil diselesaikan.",
+      },
+    });
+  } catch (error) {
+    console.error("HACKSAW error comparing game names:", error.message);
+    return res.status(200).json({
+      success: false,
+      message: {
+        en: "HACKSAW: Game name comparison failed. Please try again or contact customer service for assistance.",
+        zh: "HACKSAW: 游戏名称比较失败，请重试或联系客服以获得帮助。",
+        ms: "HACKSAW: Perbandingan nama permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+        zh_hk: "HACKSAW: 遊戲名稱比較失敗，請重試或聯絡客服以獲得幫助。",
+        id: "HACKSAW: Perbandingan nama permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+      },
+    });
+  }
+});
+
+router.post("/api/dct/comparegame", async (req, res) => {
+  try {
+    const sign = generateSignature({
+      brandId: dctGameBrandID,
+      apiKey: dctGameKey,
+    });
+
+    const payload = {
+      brand_id: dctGameBrandID,
+      sign,
+      provider: "hs",
+    };
+
+    const response = await axios.post(
+      `${dctGameAPIURL}/dcs/getGameList`,
+      payload,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    // Get all games from database
+    const dbGames = await GameHacksawGameModal.find({}).lean();
+
+    // Extract game IDs from API response
+    const apiGameIds = new Set(
+      response.data.data.map((game) => game.game_id.toString())
+    );
+
+    // Extract game IDs from database
+    const dbGameIds = new Set(dbGames.map((game) => game.gameID));
+
+    // Find missing games (in API but not in DB)
+    const missingGames = response.data.data.filter(
+      (game) => !dbGameIds.has(game.game_id.toString())
+    );
+
+    // Find extra games (in DB but not in API) and set maintenance to true
+    const extraGameIds = dbGames
+      .filter((game) => !apiGameIds.has(game.gameID))
+      .map((game) => game._id);
+
+    // Find active games (in both DB and API) and set maintenance to false
+    const activeGameIds = dbGames
+      .filter((game) => apiGameIds.has(game.gameID))
+      .map((game) => game._id);
+
+    console.log(`Extra games (setting to maintenance): ${extraGameIds.length}`);
+    console.log(`Active games (setting to active): ${activeGameIds.length}`);
+
+    // Update extra games to maintenance mode
+    let extraGamesUpdated = 0;
+    if (extraGameIds.length > 0) {
+      const extraResult = await GameHacksawGameModal.updateMany(
+        { _id: { $in: extraGameIds } },
+        { $set: { maintenance: true } }
+      );
+      extraGamesUpdated = extraResult.modifiedCount;
+      console.log(`✅ Set ${extraGamesUpdated} games to maintenance`);
+    }
+
+    // Update active games to set maintenance to false
+    let activeGamesUpdated = 0;
+    if (activeGameIds.length > 0) {
+      const activeResult = await GameHacksawGameModal.updateMany(
+        { _id: { $in: activeGameIds } },
+        { $set: { maintenance: false } }
+      );
+      activeGamesUpdated = activeResult.modifiedCount;
+      console.log(`✅ Set ${activeGamesUpdated} games to active`);
+    }
+
+    // Format missing games for response
+    const missingGamesFormatted = missingGames.map((game) => ({
+      game_id: game.game_id,
+      game_name: game.game_name,
+      provider: game.provider,
+      game_name_cn: game.game_name_cn,
+      game_icon: game.game_icon,
+      rtp: game.rtp,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      gameLobby: response.data,
+      comparison: {
+        missingGames: missingGamesFormatted,
+        missingCount: missingGames.length,
+        extraGamesSetToMaintenance: extraGamesUpdated,
+        activeGamesSetToActive: activeGamesUpdated,
+        totalApiGames: response.data.data.length,
+        totalDbGames: dbGames.length,
+      },
+      message: {
+        en: "Game list retrieved successfully.",
+        zh: "游戏列表检索成功。",
+        ms: "Senarai permainan berjaya diambil.",
+        zh_hk: "遊戲列表檢索成功。",
+        id: "Daftar permainan berhasil diambil.",
+      },
+    });
+  } catch (error) {
+    console.error("HACKSAW error launching game:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: {
+        en: "HACKSAW: Game launch failed. Please try again or customer service for assistance.",
+        zh: "HACKSAW: 游戏启动失败，请重试或联系客服以获得帮助。",
+        ms: "HACKSAW: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+        zh_hk: "HACKSAW: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+        id: "HACKSAW: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+      },
+    });
+  }
+});
+
+router.post("/api/dct/getprovidergamelist", async (req, res) => {
+  try {
+    const sign = generateSignature({
+      brandId: dctGameBrandID,
+      apiKey: dctGameKey,
+    });
+
+    const payload = {
+      brand_id: dctGameBrandID,
+      sign,
+      provider: "hs",
+    };
+
+    const response = await axios.post(
+      `${dctGameAPIURL}/dcs/getGameList`,
+      payload,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    console.log(response.data.data.length);
+    return res.status(200).json({
+      success: true,
+      gameLobby: response.data,
+      message: {
+        en: "Game launched successfully.",
+        zh: "游戏启动成功。",
+        ms: "Permainan berjaya dimulakan.",
+        zh_hk: "遊戲啟動成功。",
+        id: "Permainan berhasil diluncurkan.",
+      },
+    });
+  } catch (error) {
+    console.error("HACKSAW error launching game:", error.message);
+    return res.status(200).json({
+      success: false,
+      message: {
+        en: "HACKSAW: Game launch failed. Please try again or customer service for assistance.",
+        zh: "HACKSAW: 游戏启动失败，请重试或联系客服以获得帮助。",
+        ms: "HACKSAW: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+        zh_hk: "HACKSAW: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+        id: "HACKSAW: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+      },
+    });
+  }
+});
+
 router.post("/api/hacksaw/getgamelist", async (req, res) => {
   try {
     const games = await GameHacksawGameModal.find({
@@ -125,7 +603,6 @@ router.post("/api/hacksaw/getgamelist", async (req, res) => {
       hot: -1,
       createdAt: -1,
     });
-
     if (!games || games.length === 0) {
       return res.status(200).json({
         success: false,
@@ -610,7 +1087,7 @@ router.post("/api/hacksaw/wager", async (req, res) => {
       });
     }
 
-    if (validation.user.gameLock?.hacksaw?.lock) {
+    if (validation.user.gameLock?.dctgame?.lock) {
       return res.status(200).json({
         code: 5010,
         msg: "Player blocked",
