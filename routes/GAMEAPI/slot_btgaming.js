@@ -19,11 +19,11 @@ const SlotBTGamingModal = require("../../models/slot_btgaming.model");
 
 require("dotenv").config();
 
-const btGamingAccount = "951722712515920";
+const btGamingAccount = "197699186042336";
 const webURL = "http://egm8my.vip/";
-const btGamingApiURL = "https://btapi.g8game.net/v2_2";
+const btGamingApiURL = "http://game.stgkg.btgame777.com/v2_2";
 const btGamingSecret = process.env.BTGAMING_SECRET;
-// const btGamingMD5 = process.env.BTGAMING_MD5;
+const btGamingMD5 = process.env.BTGAMING_MD5;
 
 function roundToTwoDecimals(num) {
   return Math.round(num * 100) / 100;
