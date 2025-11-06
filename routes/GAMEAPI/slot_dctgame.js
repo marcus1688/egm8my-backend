@@ -14,6 +14,7 @@ const { adminUser, adminLog } = require("../../models/adminuser.model");
 const { v4: uuidv4 } = require("uuid");
 const GameWalletLog = require("../../models/gamewalletlog.model");
 const GameHacksawGameModal = require("../../models/slot_dcthacksawDatabase.model");
+const GameRelaxGamingGameModal = require("../../models/slot_dctrelaxDatabase.model");
 const SlotDCTGameModal = require("../../models/slot_dctgame.model");
 
 require("dotenv").config();
@@ -431,7 +432,7 @@ router.post("/api/dct/comparegame", async (req, res) => {
     const payload = {
       brand_id: dctGameBrandID,
       sign,
-      provider: "hs",
+      provider: "relax",
     };
 
     const response = await axios.post(
@@ -445,7 +446,7 @@ router.post("/api/dct/comparegame", async (req, res) => {
     );
 
     // Get all games from database
-    const dbGames = await GameHacksawGameModal.find({}).lean();
+    const dbGames = await GameRelaxGamingGameModal.find({}).lean();
 
     // Extract game IDs from API response
     const apiGameIds = new Set(
@@ -476,7 +477,7 @@ router.post("/api/dct/comparegame", async (req, res) => {
     // Update extra games to maintenance mode
     let extraGamesUpdated = 0;
     if (extraGameIds.length > 0) {
-      const extraResult = await GameHacksawGameModal.updateMany(
+      const extraResult = await GameRelaxGamingGameModal.updateMany(
         { _id: { $in: extraGameIds } },
         { $set: { maintenance: true } }
       );
@@ -487,7 +488,7 @@ router.post("/api/dct/comparegame", async (req, res) => {
     // Update active games to set maintenance to false
     let activeGamesUpdated = 0;
     if (activeGameIds.length > 0) {
-      const activeResult = await GameHacksawGameModal.updateMany(
+      const activeResult = await GameRelaxGamingGameModal.updateMany(
         { _id: { $in: activeGameIds } },
         { $set: { maintenance: false } }
       );
@@ -640,6 +641,63 @@ router.post("/api/hacksaw/getgamelist", async (req, res) => {
         ms: "HACKSAW: Tidak dapat mendapatkan senarai permainan. Sila hubungi khidmat pelanggan untuk bantuan.",
         zh_hk: "HACKSAW: 無法獲取遊戲列表，請聯絡客服以獲取幫助。",
         id: "HACKSAW: Tidak dapat mengambil daftar permainan. Silakan hubungi layanan pelanggan untuk bantuan.",
+      },
+    });
+  }
+});
+
+router.post("/api/relaxgaming/getgamelist", async (req, res) => {
+  try {
+    const games = await GameRelaxGamingGameModal.find({
+      $and: [
+        {
+          $or: [{ maintenance: false }, { maintenance: { $exists: false } }],
+        },
+        {
+          imageUrlEN: { $exists: true, $ne: null, $ne: "" },
+        },
+      ],
+    }).sort({
+      hot: -1,
+      createdAt: -1,
+    });
+    if (!games || games.length === 0) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "No games found. Please try again later.",
+          zh: "未找到游戏。请稍后再试。",
+          ms: "Tiada permainan ditemui. Sila cuba lagi kemudian.",
+          zh_hk: "未找到遊戲。請稍後再試。",
+          id: "Tidak ada permainan ditemukan. Silakan coba lagi nanti.",
+        },
+      });
+    }
+
+    const reformattedGamelist = games.map((game) => ({
+      GameCode: game.gameID,
+      GameNameEN: game.gameNameEN,
+      GameNameZH: game.gameNameCN,
+      GameType: game.gameType,
+      GameImage: game.imageUrlEN || "",
+      Hot: game.hot,
+      RTP: game.rtpRate,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      gamelist: reformattedGamelist,
+    });
+  } catch (error) {
+    console.error("RELAX GAMING Error fetching game list:", error.message);
+    return res.status(200).json({
+      success: false,
+      message: {
+        en: "RELAX GAMING: Unable to retrieve game lists. Please contact customer service for assistance.",
+        zh: "RELAX GAMING: 无法获取游戏列表，请联系客服以获取帮助。",
+        ms: "RELAX GAMING: Tidak dapat mendapatkan senarai permainan. Sila hubungi khidmat pelanggan untuk bantuan.",
+        zh_hk: "RELAX GAMING: 無法獲取遊戲列表，請聯絡客服以獲取幫助。",
+        id: "RELAX GAMING: Tidak dapat mengambil daftar permainan. Silakan hubungi layanan pelanggan untuk bantuan.",
       },
     });
   }
