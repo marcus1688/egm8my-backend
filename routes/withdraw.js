@@ -383,9 +383,20 @@ const checkTurnoverRequirements = async (userId) => {
     }
     let startIndex = 0;
     for (let i = allTransactions.length - 1; i >= 0; i--) {
-      if (allTransactions[i].isNewCycle === true) {
+      if (
+        allTransactions[i].isNewCycle === true &&
+        allTransactions[i].type === "deposit"
+      ) {
         startIndex = i;
         break;
+      }
+    }
+    if (startIndex === 0) {
+      for (let i = allTransactions.length - 1; i >= 0; i--) {
+        if (allTransactions[i].isNewCycle === true) {
+          startIndex = i;
+          break;
+        }
       }
     }
     const validTransactions = allTransactions.slice(startIndex);
@@ -465,7 +476,6 @@ const checkTurnoverRequirements = async (userId) => {
         }
       }
     }
-
     if (hasWinoverRequirement && winoverDetails) {
       if (user.wallet >= winoverDetails.requiredAmount) {
         return {
@@ -538,7 +548,6 @@ const checkTurnoverRequirements = async (userId) => {
   }
 };
 
-// User Manual Check Turnover
 router.get("/api/user/turnover-check", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;

@@ -7,6 +7,7 @@ const {
   GameDataLog,
 } = require("../models/users.model");
 const TelegramBot = require("node-telegram-bot-api");
+const { Kiosk } = require("../models/kiosk.model");
 const UserBankList = require("../models/userbanklist.model");
 const Lock = require("../models/lock.model");
 const promotion = require("../models/promotion.model");
@@ -56,7 +57,6 @@ const SlotBNGModal = require("../models/slot_bng.model");
 const SlotPlayStarModal = require("../models/slot_playstar.model");
 const SlotVPowerModal = require("../models/slot_vpower.model");
 const SlotNextSpinModal = require("../models/slot_nextspin.model");
-
 
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
@@ -1751,6 +1751,142 @@ function preventDuplicate(getKey) {
   };
 }
 
+async function updateUserGameLocks(userId) {
+  try {
+    const user = await User.findById(userId);
+    if (!user) {
+      console.error(`User not found: ${userId}`);
+      return { success: false };
+    }
+    const allKiosks = await Kiosk.find({}).select("databaseName name");
+    const latestWithdraw = await Withdraw.findOne({
+      userId: userId,
+      status: "approved",
+    }).sort({ createdAt: -1 });
+    let effectiveResetDate = null;
+    if (latestWithdraw && user.turnoverResetAt) {
+      effectiveResetDate =
+        latestWithdraw.createdAt > user.turnoverResetAt
+          ? latestWithdraw.createdAt
+          : user.turnoverResetAt;
+    } else if (latestWithdraw) {
+      effectiveResetDate = latestWithdraw.createdAt;
+    } else if (user.turnoverResetAt) {
+      effectiveResetDate = user.turnoverResetAt;
+    }
+    const depositsAfterWithdraw = await Deposit.find({
+      userId: userId,
+      status: "approved",
+      ...(effectiveResetDate && { createdAt: { $gt: effectiveResetDate } }),
+    }).sort({ createdAt: 1 });
+    const bonusesAfterWithdraw = await Bonus.find({
+      userId: userId,
+      status: "approved",
+      ...(effectiveResetDate && { createdAt: { $gt: effectiveResetDate } }),
+    }).sort({ createdAt: 1 });
+    const allTransactions = [
+      ...depositsAfterWithdraw.map((d) => ({
+        type: "deposit",
+        data: d,
+        date: d.createdAt,
+        isNewCycle: d.isNewCycle || false,
+      })),
+      ...bonusesAfterWithdraw.map((b) => ({
+        type: "bonus",
+        data: b,
+        date: b.createdAt,
+        isNewCycle: b.isNewCycle || false,
+      })),
+    ].sort((a, b) => a.date - b.date);
+    if (allTransactions.length === 0) {
+      const newGameLock = {};
+      allKiosks.forEach((kiosk) => {
+        if (kiosk.databaseName) {
+          newGameLock[kiosk.databaseName] = { lock: false };
+        }
+      });
+      await User.findByIdAndUpdate(userId, { $set: { gameLock: newGameLock } });
+      console.log(
+        `No transactions - all games unlocked for user ${user.username}`
+      );
+      return { success: true, hasRestrictions: false };
+    }
+    let startIndex = 0;
+    for (let i = allTransactions.length - 1; i >= 0; i--) {
+      if (
+        allTransactions[i].isNewCycle === true &&
+        allTransactions[i].type === "deposit"
+      ) {
+        startIndex = i;
+        break;
+      }
+    }
+    if (startIndex === 0) {
+      for (let i = allTransactions.length - 1; i >= 0; i--) {
+        if (allTransactions[i].isNewCycle === true) {
+          startIndex = i;
+          break;
+        }
+      }
+    }
+    const validTransactions = allTransactions.slice(startIndex);
+    const allowedGamesSet = new Set();
+    let hasRestrictions = false;
+    for (const tx of validTransactions) {
+      if (tx.type === "bonus") {
+        const bonus = tx.data;
+        const promotionData = await promotion.findById(bonus.promotionId);
+        if (
+          promotionData &&
+          promotionData.allowedGameDatabaseNames &&
+          promotionData.allowedGameDatabaseNames.length > 0
+        ) {
+          hasRestrictions = true;
+          promotionData.allowedGameDatabaseNames.forEach((game) => {
+            allowedGamesSet.add(game);
+          });
+        }
+      }
+    }
+    const allowedGames = Array.from(allowedGamesSet);
+    const newGameLock = {};
+    if (hasRestrictions && allowedGames.length > 0) {
+      allKiosks.forEach((kiosk) => {
+        if (kiosk.databaseName) {
+          const isAllowed = allowedGames.some(
+            (allowed) =>
+              allowed.toLowerCase() === kiosk.databaseName.toLowerCase()
+          );
+          newGameLock[kiosk.databaseName] = {
+            lock: !isAllowed,
+            reason: isAllowed ? null : "promotion_restriction",
+          };
+        }
+      });
+    } else {
+      allKiosks.forEach((kiosk) => {
+        if (kiosk.databaseName) {
+          newGameLock[kiosk.databaseName] = {
+            lock: false,
+          };
+        }
+      });
+    }
+    await User.findByIdAndUpdate(userId, {
+      $set: { gameLock: newGameLock },
+    });
+    return {
+      success: true,
+      hasRestrictions,
+      allowedGames,
+      totalGames: Object.keys(newGameLock).length,
+    };
+  } catch (error) {
+    console.error("Error updating game locks:", error);
+    return { success: false, error: error.message };
+  }
+}
+
 // Admin Approve Deposit
 router.post(
   "/admin/api/approvedeposit/:depositId",
@@ -1810,7 +1946,6 @@ router.post(
           },
         });
       }
-
       const kioskSettings = await kioskbalance.findOne({});
       if (kioskSettings && kioskSettings.status) {
         const kioskResult = await updateKioskBalance(
@@ -1833,12 +1968,10 @@ router.post(
           });
         }
       }
-
       const formattedProcessTime = calculateProcessingTime(deposit.createdAt);
       if (user.firstDepositDate === null) {
         deposit.newDeposit = true;
       }
-
       deposit.status = "approved";
       deposit.processBy = adminuser.username;
       deposit.processtime = formattedProcessTime;
@@ -1846,6 +1979,8 @@ router.post(
         deposit.depositname = depositname;
       }
       await deposit.save();
+
+      await updateUserGameLocks(user._id);
 
       const spinSetting = await LuckySpinSetting.findOne();
       let spinCount = 0;
@@ -2288,7 +2423,7 @@ router.post(
       bonus.processBy = adminuser.username;
       bonus.processtime = formattedProcessTime;
       await bonus.save();
-
+      await updateUserGameLocks(user._id);
       const updateFields = {
         $inc: {
           totalbonus: bonus.amount,
@@ -2749,6 +2884,39 @@ router.post(
       deposit.revertedProcessBy = adminuser.username;
       await deposit.save();
 
+      const relatedBonus = await Bonus.findOne({
+        depositId: deposit._id,
+        status: "approved",
+      });
+
+      if (relatedBonus) {
+        const promotionData = await promotion.findById(
+          relatedBonus.promotionId
+        );
+        if (
+          promotionData &&
+          promotionData.allowedGameDatabaseNames &&
+          promotionData.allowedGameDatabaseNames.length > 0
+        ) {
+          const allKiosks = await Kiosk.find({}).select("databaseName name");
+          const currentGameLock = user.gameLock || {};
+          promotionData.allowedGameDatabaseNames.forEach((gameName) => {
+            const kiosk = allKiosks.find(
+              (k) => k.databaseName.toLowerCase() === gameName.toLowerCase()
+            );
+            if (kiosk) {
+              currentGameLock[kiosk.databaseName] = {
+                lock: true,
+                reason: "promotion_reverted",
+              };
+            }
+          });
+          await User.findByIdAndUpdate(user._id, {
+            $set: { gameLock: currentGameLock },
+          });
+        }
+      }
+
       const walletLog = await UserWalletLog.findOne({
         transactionid: deposit.transactionId,
       });
@@ -3066,6 +3234,30 @@ router.post(
       bonus.status = "reverted";
       bonus.revertedProcessBy = adminuser.username;
       await bonus.save();
+
+      const promotionData = await promotion.findById(bonus.promotionId);
+      if (
+        promotionData &&
+        promotionData.allowedGameDatabaseNames &&
+        promotionData.allowedGameDatabaseNames.length > 0
+      ) {
+        const allKiosks = await Kiosk.find({}).select("databaseName name");
+        const currentGameLock = user.gameLock || {};
+        promotionData.allowedGameDatabaseNames.forEach((gameName) => {
+          const kiosk = allKiosks.find(
+            (k) => k.databaseName.toLowerCase() === gameName.toLowerCase()
+          );
+          if (kiosk) {
+            currentGameLock[kiosk.databaseName] = {
+              lock: true,
+              reason: "promotion_reverted",
+            };
+          }
+        });
+        await User.findByIdAndUpdate(user._id, {
+          $set: { gameLock: currentGameLock },
+        });
+      }
 
       const walletLog = await UserWalletLog.findOne({
         transactionid: bonus.transactionId,
