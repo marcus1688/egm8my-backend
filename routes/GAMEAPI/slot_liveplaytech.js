@@ -563,6 +563,7 @@ router.post("/api/playtech/auth", async (req, res) => {
     ).lean();
 
     if (!user || user.playtechGameToken !== externalToken) {
+      console.log("fail auth 1");
       return res
         .status(200)
         .json(
@@ -599,6 +600,7 @@ router.post("/api/playtech/getbalance", async (req, res) => {
     ).lean();
 
     if (!user || user.playtechGameToken !== externalToken) {
+      console.log("fail getbalance 1");
       return res
         .status(200)
         .json(
