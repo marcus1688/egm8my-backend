@@ -437,7 +437,7 @@ router.post("/api/fastspin/getgamelist", async (req, res) => {
 
 router.post("/api/fastspin/launchGame", authenticateToken, async (req, res) => {
   try {
-    const { gameLang, gameCode } = req.body;
+    const { gameLang, gameCode, gameType } = req.body;
     const userId = req.user.userId;
     const user = await User.findById(userId);
 
@@ -454,7 +454,12 @@ router.post("/api/fastspin/launchGame", authenticateToken, async (req, res) => {
       });
     }
 
-    if (user.gameLock.fastspin.lock) {
+    const isLocked =
+      gameType === "Fishing"
+        ? user.gameLock?.fastspinfish?.lock
+        : user.gameLock?.fastspinslot?.lock;
+
+    if (isLocked) {
       return res.status(200).json({
         success: false,
         message: {
@@ -648,10 +653,18 @@ router.post("/api/fastspin", async (req, res) => {
       });
     }
 
-    const user = await User.findOne(
-      { gameId: acctId },
-      { username: 1, wallet: 1, gameLock: 1, _id: 1 }
-    ).lean();
+    const userProjection = {
+      username: 1,
+      wallet: 1,
+      _id: 1,
+    };
+
+    if (apiValue === "transfer") {
+      userProjection["gameLock.fastspinslot.lock"] = 1;
+      userProjection["gameLock.fastspinfish.lock"] = 1;
+    }
+
+    const user = await User.findOne({ gameId: acctId }, userProjection).lean();
 
     const currentBalance = roundToTwoDecimals(user.wallet);
     const reqAmount = roundToTwoDecimals(amount);
@@ -672,8 +685,15 @@ router.post("/api/fastspin", async (req, res) => {
     } else if (apiValue === "transfer") {
       const trxId = generateUniqueTransactionId("bet");
 
+      const isFishGame = gameCode?.startsWith("F-");
+      const gameType = isFishGame ? "FISH" : "SLOT";
+
       if (type === 1) {
-        if (user.gameLock?.fastspin?.lock) {
+        const isLocked = isFishGame
+          ? user.gameLock?.fastspinfish?.lock
+          : user.gameLock?.fastspinslot?.lock;
+
+        if (isLocked) {
           return res.status(200).json({
             transferId: transferId,
             merchantCode: fastSpingMerchant,
@@ -732,24 +752,21 @@ router.post("/api/fastspin", async (req, res) => {
           });
         }
 
-        const createTransactionPromise = !gameCode.startsWith("F-")
-          ? SlotFastSpinModal.create({
-              transferId,
-              betamount: roundToTwoDecimals(reqAmount),
-              bet: true,
-              gametype: "SLOT",
-              username: acctId,
-            })
-          : SlotFastSpinModal.create({
-              transferId,
-              depositamount: roundToTwoDecimals(reqAmount),
-              bet: true,
-              fish: true,
-              gametype: "FISH",
-              username: acctId,
-            });
+        const transactionData = {
+          transferId,
+          bet: true,
+          gametype: gameType,
+          username: acctId,
+        };
 
-        await createTransactionPromise;
+        if (isFishGame) {
+          transactionData.depositamount = roundToTwoDecimals(reqAmount);
+          transactionData.fish = true;
+        } else {
+          transactionData.betamount = roundToTwoDecimals(reqAmount);
+        }
+
+        await SlotFastSpinModal.create(transactionData);
 
         return res.status(200).json({
           transferId: transferId,
@@ -891,7 +908,7 @@ router.post("/api/fastspin", async (req, res) => {
             settle: true,
             bet: true,
             betamount: 0,
-            gametype: gameCode.startsWith("F-") ? "FISH" : "SLOT",
+            gametype: gameType,
           });
         }
 

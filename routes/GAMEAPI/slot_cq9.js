@@ -803,10 +803,7 @@ router.get("/api/cq9my/player/check/:playerId", async (req, res) => {
         .status(200)
         .json(errorResponse("1003", "Parameter error.", currentTime));
     }
-    console.log(req.headers);
-    console.log(cq9API_KEY, "lasldsad");
     const verifyToken = req.headers.wtoken;
-
     if (cq9API_KEY !== verifyToken) {
       console.log("failed 2");
       return res

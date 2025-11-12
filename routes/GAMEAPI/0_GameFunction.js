@@ -193,6 +193,14 @@ router.post("/admin/api/getAllTurnoverForRebate", async (req, res) => {
         url: `${PUBLIC_APIURL}api/playtechlive/getturnoverforrebate`,
         name: "PLAYTECH",
       },
+      {
+        url: `${PUBLIC_APIURL}api/fastspinslot/getturnoverforrebate`,
+        name: "FASTSPIN",
+      },
+      {
+        url: `${PUBLIC_APIURL}api/fastspinfish/getturnoverforrebate`,
+        name: "FASTSPIN",
+      },
     ];
 
     const routePromises = routes.map((route) =>
