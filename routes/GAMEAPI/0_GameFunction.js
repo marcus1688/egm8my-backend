@@ -177,6 +177,14 @@ router.post("/admin/api/getAllTurnoverForRebate", async (req, res) => {
         url: `${PUBLIC_APIURL}api/nextspin/getturnoverforrebate`,
         name: "NEXTSPIN",
       },
+      {
+        url: `${PUBLIC_APIURL}api/hacksaw/getturnoverforrebate`,
+        name: "HACKSAW",
+      },
+      {
+        url: `${PUBLIC_APIURL}api/relaxgaming/getturnoverforrebate`,
+        name: "RELAX GAMING",
+      },
     ];
 
     const routePromises = routes.map((route) =>
