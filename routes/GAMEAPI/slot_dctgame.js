@@ -1533,8 +1533,16 @@ router.post("/api/hacksaw/endWager", async (req, res) => {
 
 router.post("/api/hacksaw/freeSpinResult", async (req, res) => {
   try {
-    const { brand_id, sign, brand_uid, round_id, amount, wager_id, currency } =
-      req.body;
+    const {
+      brand_id,
+      sign,
+      brand_uid,
+      round_id,
+      amount,
+      wager_id,
+      currency,
+      provider,
+    } = req.body;
 
     if (!sign || !brand_uid || !brand_id) {
       return res.status(200).json({
@@ -1580,6 +1588,20 @@ router.post("/api/hacksaw/freeSpinResult", async (req, res) => {
       });
     }
 
+    const providerMap = {
+      hs: { lock: "hacksaw", name: "HACKSAW" },
+      relax: { lock: "relaxgaming", name: "RELAXGAMING" },
+    };
+
+    const providerInfo = providerMap[provider];
+
+    if (!providerInfo) {
+      return res.status(200).json({
+        code: 5015,
+        msg: "Invalid provider",
+      });
+    }
+
     const [updatedUserBalance] = await Promise.all([
       User.findByIdAndUpdate(
         currentUser._id,
@@ -1595,6 +1617,7 @@ router.post("/api/hacksaw/freeSpinResult", async (req, res) => {
             settleamount: roundToTwoDecimals(amount),
             tranId: round_id,
             freespinId: wager_id,
+            provider: providerInfo.name,
           },
         },
         { upsert: true }
