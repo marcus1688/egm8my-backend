@@ -33,12 +33,17 @@ async function uploadFileToS3(file) {
 // User Get Payment Gateways
 router.get("/api/payment-gateways", async (req, res) => {
   try {
-    const gateways = await PaymentGateway.find({ status: true }).sort({
-      createdAt: -1,
+    const gateways = await PaymentGateway.find({ status: true });
+    const sortedGateways = gateways.sort((a, b) => {
+      const orderA = a.order || 0;
+      const orderB = b.order || 0;
+      if (orderA === 0 && orderB !== 0) return 1;
+      if (orderA !== 0 && orderB === 0) return -1;
+      return orderA - orderB;
     });
     res.json({
       success: true,
-      data: gateways,
+      data: sortedGateways,
     });
   } catch (error) {
     res.status(500).json({

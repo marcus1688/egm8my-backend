@@ -29,6 +29,10 @@ const paymentGatewaySchema = new mongoose.Schema(
     maxDeposit: Number,
     remark: String,
     status: Boolean,
+    order: {
+      type: Number,
+      default: 0,
+    },
     banks: [bankSchema],
   },
   {

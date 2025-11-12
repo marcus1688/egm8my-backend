@@ -1474,16 +1474,16 @@ router.post("/api/addbank", async (req, res) => {
       });
     }
 
-    if (userCheck.bankAccounts.length >= 1) {
-      return res.status(200).json({
-        success: false,
-        message: {
-          en: "Maximum 1 bank accounts allowed",
-          zh: "最多只能添加1个银行账户",
-          ms: "Maksimum 1 akaun bank dibenarkan",
-        },
-      });
-    }
+    // if (userCheck.bankAccounts.length >= 1) {
+    //   return res.status(200).json({
+    //     success: false,
+    //     message: {
+    //       en: "Maximum 1 bank accounts allowed",
+    //       zh: "最多只能添加1个银行账户",
+    //       ms: "Maksimum 1 akaun bank dibenarkan",
+    //     },
+    //   });
+    // }
 
     await User.updateOne(
       { fullname: normalizedName },
