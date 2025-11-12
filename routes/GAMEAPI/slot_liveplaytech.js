@@ -1119,19 +1119,39 @@ router.post("/api/playtechslot/getturnoverforrebate", async (req, res) => {
       cancel: { $ne: true },
     });
 
+    const uniqueGameIds = [
+      ...new Set(records.map((record) => record.username)),
+    ];
+
+    const users = await User.find(
+      { gameId: { $in: uniqueGameIds } },
+      { gameId: 1, username: 1 }
+    ).lean();
+
+    const gameIdToUsername = {};
+    users.forEach((user) => {
+      gameIdToUsername[user.gameId] = user.username;
+    });
+
     // Aggregate turnover and win/loss for each player
     let playerSummary = {};
 
     records.forEach((record) => {
-      const username = record.username.toLowerCase();
+      const gameId = record.username;
+      const actualUsername = gameIdToUsername[gameId];
 
-      if (!playerSummary[username]) {
-        playerSummary[username] = { turnover: 0, winloss: 0 };
+      if (!actualUsername) {
+        console.warn(`Playtech User not found for gameId: ${gameId}`);
+        return;
       }
 
-      playerSummary[username].turnover += record.betamount || 0;
+      if (!playerSummary[actualUsername]) {
+        playerSummary[actualUsername] = { turnover: 0, winloss: 0 };
+      }
 
-      playerSummary[username].winloss +=
+      playerSummary[actualUsername].turnover += record.betamount || 0;
+
+      playerSummary[actualUsername].winloss +=
         (record.settleamount || 0) - (record.betamount || 0);
     });
     // Format the turnover and win/loss for each player to two decimal places
@@ -1176,7 +1196,7 @@ router.get(
       const user = await User.findById(userId);
 
       const records = await SlotPlaytechModal.find({
-        username: user.username.toLowerCase(),
+        username: user.gameId,
         createdAt: {
           $gte: moment(new Date(startDate)).utc().toDate(),
           $lte: moment(new Date(endDate)).utc().toDate(),
@@ -1235,7 +1255,7 @@ router.get(
       const user = await User.findById(userId);
 
       const records = await GameDataLog.find({
-        username: user.username.toLowerCase(),
+        username: user.username,
         date: {
           $gte: moment(new Date(startDate))
             .utc()
@@ -1462,19 +1482,38 @@ router.post("/api/playtechlive/getturnoverforrebate", async (req, res) => {
       cancel: { $ne: true },
     });
 
+    const uniqueGameIds = [
+      ...new Set(records.map((record) => record.username)),
+    ];
+
+    const users = await User.find(
+      { gameId: { $in: uniqueGameIds } },
+      { gameId: 1, username: 1 }
+    ).lean();
+
+    const gameIdToUsername = {};
+    users.forEach((user) => {
+      gameIdToUsername[user.gameId] = user.username;
+    });
+
     // Aggregate turnover and win/loss for each player
     let playerSummary = {};
 
     records.forEach((record) => {
-      const username = record.username.toLowerCase();
+      const gameId = record.username;
+      const actualUsername = gameIdToUsername[gameId];
 
-      if (!playerSummary[username]) {
-        playerSummary[username] = { turnover: 0, winloss: 0 };
+      if (!actualUsername) {
+        console.warn(`Playtech Live User not found for gameId: ${gameId}`);
+        return;
+      }
+      if (!playerSummary[actualUsername]) {
+        playerSummary[actualUsername] = { turnover: 0, winloss: 0 };
       }
 
-      playerSummary[username].turnover += record.betamount || 0;
+      playerSummary[actualUsername].turnover += record.betamount || 0;
 
-      playerSummary[username].winloss +=
+      playerSummary[actualUsername].winloss +=
         (record.settleamount || 0) - (record.betamount || 0);
     });
     // Format the turnover and win/loss for each player to two decimal places
@@ -1519,7 +1558,7 @@ router.get(
       const user = await User.findById(userId);
 
       const records = await SlotPlaytechModal.find({
-        username: user.username.toLowerCase(),
+        username: user.gameId,
         createdAt: {
           $gte: moment(new Date(startDate)).utc().toDate(),
           $lte: moment(new Date(endDate)).utc().toDate(),
@@ -1578,7 +1617,7 @@ router.get(
       const user = await User.findById(userId);
 
       const records = await GameDataLog.find({
-        username: user.username.toLowerCase(),
+        username: user.username,
         date: {
           $gte: moment(new Date(startDate))
             .utc()
