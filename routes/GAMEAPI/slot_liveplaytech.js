@@ -294,7 +294,7 @@ router.post("/api/playtech/launchGame", authenticateToken, async (req, res) => {
       });
     }
 
-    if (user.gameLock.playtech.lock) {
+    if (user.gameLock.playtechslot.lock) {
       return res.status(200).json({
         success: false,
         message: {
@@ -429,7 +429,7 @@ router.post(
         });
       }
 
-      if (user.gameLock.playtech.lock) {
+      if (user.gameLock.playtechlive.lock) {
         return res.status(200).json({
           success: false,
           message: {

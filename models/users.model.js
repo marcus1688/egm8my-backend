@@ -316,7 +316,8 @@ const userSchema = new mongoose.Schema(
       vpower: { type: gameLockSchema, default: () => ({}) },
       nextspin: { type: gameLockSchema, default: () => ({}) },
       sbobet: { type: gameLockSchema, default: () => ({}) },
-      playtech: { type: gameLockSchema, default: () => ({}) },
+      playtechslot: { type: gameLockSchema, default: () => ({}) },
+      playtechlive: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },
