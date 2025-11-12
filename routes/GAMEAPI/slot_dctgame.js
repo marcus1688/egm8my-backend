@@ -73,39 +73,44 @@ async function GameWalletLogAttempt(
   });
 }
 
-const validateHacksawToken = async (brand_uid, token) => {
+const validateHacksawToken = async (brand_uid, token, lockType = null) => {
+  const projection = {
+    wallet: 1,
+    hacksawGameToken: 1,
+    relaxgamingGameToken: 1,
+    _id: 1,
+  };
+
+  if (lockType) {
+    projection[`gameLock.${lockType}.lock`] = 1;
+  }
+
   const user = await User.findOne(
-    { gameId: brand_uid },
-    { wallet: 1, hacksawGameToken: 1, "gameLock.dctgame.lock": 1, _id: 1 }
+    {
+      gameId: brand_uid,
+      $or: [{ hacksawGameToken: token }, { relaxgamingGameToken: token }],
+    },
+    projection
   ).lean();
 
   if (!user) {
-    return {
-      valid: false,
-      code: 5009,
-      msg: "Player's account or token does not exist",
-    };
-  }
+    const tokenExists = await User.exists({
+      $or: [{ hacksawGameToken: token }, { relaxgamingGameToken: token }],
+    });
 
-  if (user.hacksawGameToken !== token) {
-    const invalidUser = await User.findOne(
-      { hacksawGameToken: token },
-      { _id: 1 }
-    ).lean();
-
-    if (invalidUser) {
+    if (tokenExists) {
       return {
         valid: false,
         code: 5013,
         msg: "Session authentication failed, token does not match with player",
       };
-    } else {
-      return {
-        valid: false,
-        code: 5009,
-        msg: "Player's account or token does not exist",
-      };
     }
+
+    return {
+      valid: false,
+      code: 5009,
+      msg: "Player's account or token does not exist",
+    };
   }
 
   return { valid: true, user };
@@ -722,7 +727,7 @@ router.post("/api/hacksaw/launchGame", authenticateToken, async (req, res) => {
       });
     }
 
-    if (user.gameLock.dctgame.lock) {
+    if (user.gameLock.hacksaw.lock) {
       return res.status(200).json({
         success: false,
         message: {
@@ -865,7 +870,7 @@ router.post(
         });
       }
 
-      if (user.gameLock.dctgame.lock) {
+      if (user.gameLock.relaxgaming.lock) {
         return res.status(200).json({
           success: false,
           message: {
@@ -931,16 +936,19 @@ router.post(
       );
 
       if (response.data.code !== 1000) {
-        console.log("RELAX fail to launch game with error", response.data);
+        console.log(
+          "RELAX GAMING fail to launch game with error",
+          response.data
+        );
 
         return res.status(200).json({
           success: false,
           message: {
-            en: "RELAX: Game launch failed. Please try again or customer service for assistance.",
-            zh: "RELAX: 游戏启动失败，请重试或联系客服以获得帮助。",
-            ms: "RELAX: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
-            zh_hk: "RELAX: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
-            id: "RELAX: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+            en: "RELAX GAMING: Game launch failed. Please try again or customer service for assistance.",
+            zh: "RELAX GAMING: 游戏启动失败，请重试或联系客服以获得帮助。",
+            ms: "RELAX GAMING: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+            zh_hk: "RELAX GAMING: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+            id: "RELAX GAMING: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
           },
         });
       }
@@ -976,11 +984,11 @@ router.post(
       return res.status(200).json({
         success: false,
         message: {
-          en: "RELAX: Game launch failed. Please try again or customer service for assistance.",
-          zh: "RELAX: 游戏启动失败，请重试或联系客服以获得帮助。",
-          ms: "RELAX: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
-          zh_hk: "RELAX: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
-          id: "RELAX: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+          en: "RELAX GAMING: Game launch failed. Please try again or customer service for assistance.",
+          zh: "RELAX GAMING: 游戏启动失败，请重试或联系客服以获得帮助。",
+          ms: "RELAX GAMING: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          zh_hk: "RELAX GAMING: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+          id: "RELAX GAMING: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
         },
       });
     }
@@ -1108,12 +1116,27 @@ router.post("/api/hacksaw/wager", async (req, res) => {
       wager_id,
       is_endround,
       currency,
+      provider,
     } = req.body;
 
     if (!token || !sign || !brand_uid || !brand_id) {
       return res.status(200).json({
         code: 5001,
         msg: "Request parameter error",
+      });
+    }
+
+    const providerMap = {
+      hs: { lock: "hacksaw", name: "HACKSAW" },
+      relax: { lock: "relaxgaming", name: "RELAXGAMING" },
+    };
+
+    const providerInfo = providerMap[provider];
+
+    if (!providerInfo) {
+      return res.status(200).json({
+        code: 5015,
+        msg: "Invalid provider",
       });
     }
 
@@ -1131,7 +1154,7 @@ router.post("/api/hacksaw/wager", async (req, res) => {
     }
 
     const [validation, existingBet] = await Promise.all([
-      validateHacksawToken(brand_uid, token),
+      validateHacksawToken(brand_uid, token, providerInfo.lock),
       SlotDCTGameModal.findOne(
         { betId: wager_id, tranId: round_id },
         { _id: 1 }
@@ -1145,7 +1168,9 @@ router.post("/api/hacksaw/wager", async (req, res) => {
       });
     }
 
-    if (validation.user.gameLock?.dctgame?.lock) {
+    const isLocked = validation.user.gameLock?.[providerInfo.lock]?.lock;
+
+    if (isLocked) {
       return res.status(200).json({
         code: 5010,
         msg: "Player blocked",
@@ -1191,6 +1216,7 @@ router.post("/api/hacksaw/wager", async (req, res) => {
       betId: wager_id,
       tranId: round_id,
       bet: true,
+      provider: providerInfo.name,
     });
 
     return res.status(200).json({
@@ -1606,6 +1632,7 @@ router.post("/api/hacksaw/promoPayout", async (req, res) => {
       amount,
       promotion_id,
       currency,
+      provider,
     } = req.body;
 
     if (!sign || !brand_uid || !brand_id) {
@@ -1655,6 +1682,20 @@ router.post("/api/hacksaw/promoPayout", async (req, res) => {
       });
     }
 
+    const providerMap = {
+      hs: { lock: "hacksaw", name: "HACKSAW" },
+      relax: { lock: "relaxgaming", name: "RELAXGAMING" },
+    };
+
+    const providerInfo = providerMap[provider];
+
+    if (!providerInfo) {
+      return res.status(200).json({
+        code: 5015,
+        msg: "Invalid provider",
+      });
+    }
+
     const [updatedUserBalance] = await Promise.all([
       User.findByIdAndUpdate(
         currentUser._id,
@@ -1669,6 +1710,7 @@ router.post("/api/hacksaw/promoPayout", async (req, res) => {
         tranId: trans_id,
         bet: true,
         settle: true,
+        provider: providerInfo.name,
       }),
     ]);
 

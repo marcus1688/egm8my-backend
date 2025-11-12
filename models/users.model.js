@@ -293,7 +293,6 @@ const userSchema = new mongoose.Schema(
       fachaifish: { type: gameLockSchema, default: () => ({}) },
       playace: { type: gameLockSchema, default: () => ({}) },
       bng: { type: gameLockSchema, default: () => ({}) },
-      dctgame: { type: gameLockSchema, default: () => ({}) },
       jilislot: { type: gameLockSchema, default: () => ({}) },
       jilifish: { type: gameLockSchema, default: () => ({}) },
       fastspin: { type: gameLockSchema, default: () => ({}) },
@@ -318,6 +317,8 @@ const userSchema = new mongoose.Schema(
       sbobet: { type: gameLockSchema, default: () => ({}) },
       playtechslot: { type: gameLockSchema, default: () => ({}) },
       playtechlive: { type: gameLockSchema, default: () => ({}) },
+      hacksaw: { type: gameLockSchema, default: () => ({}) },
+      relaxgaming: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },

@@ -41,6 +41,9 @@ const slotDCTGamechema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    provider: {
+      type: String,
+    },
   },
   {
     timestamps: {
