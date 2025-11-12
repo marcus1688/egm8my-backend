@@ -498,10 +498,21 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
           turnover: { $sum: { $ifNull: ["$betamount", 0] } },
           winLoss: {
             $sum: {
-              $subtract: [
-                { $ifNull: ["$settleamount", 0] },
-                { $ifNull: ["$betamount", 0] },
-              ],
+              $cond: {
+                if: { $eq: ["$gametype", "FISH"] },
+                then: {
+                  $subtract: [
+                    { $ifNull: ["$withdrawamount", 0] },
+                    { $ifNull: ["$depositamount", 0] },
+                  ],
+                },
+                else: {
+                  $subtract: [
+                    { $ifNull: ["$settleamount", 0] },
+                    { $ifNull: ["$betamount", 0] },
+                  ],
+                },
+              },
             },
           },
         },
