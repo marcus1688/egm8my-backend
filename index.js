@@ -86,14 +86,17 @@ const slotNextSpinRouter = require("./routes/GAMEAPI/slot_nextspin");
 const slotPlayStarRouter = require("./routes/GAMEAPI/slot_playstar");
 const slotLivePlaytechRouter = require("./routes/GAMEAPI/slot_liveplaytech");
 const slotVpowerRouter = require("./routes/GAMEAPI/slot_vpower");
+const slotRich88Router = require("./routes/GAMEAPI/slot_rich88");
 
 const sportSBOBETRouter = require("./routes/GAMEAPI/sport_sbobet");
+const sportM9BetRouter = require("./routes/GAMEAPI/sports_m9bet");
 
 const esportTFGamingRouter = require("./routes/GAMEAPI/esport_tfgaming");
 
 const liveSaGamingRouter = require("./routes/GAMEAPI/live_sagaming");
 const liveYeebetRouter = require("./routes/GAMEAPI/live_yeebet");
 const liveWECasinoRouter = require("./routes/GAMEAPI/live_wecasino");
+const liveOnCasinoRouter = require("./routes/GAMEAPI/live_oncasino");
 
 const importGameListRouter = require("./routes/GAMEAPI/0_ImportGameList");
 const gameStatusRouter = require("./routes/GAMEAPI/0_GameStatus");
@@ -868,14 +871,17 @@ app.use(slotNextSpinRouter);
 app.use(slotPlayStarRouter);
 app.use(slotLivePlaytechRouter);
 app.use(slotVpowerRouter);
+app.use(slotRich88Router);
 
 app.use(sportSBOBETRouter);
+app.use(sportM9BetRouter);
 
 app.use(esportTFGamingRouter);
 
 app.use(liveSaGamingRouter);
 app.use(liveYeebetRouter);
 app.use(liveWECasinoRouter);
+app.use(liveOnCasinoRouter);
 
 app.use(importGameListRouter);
 app.use(gameStatusRouter);

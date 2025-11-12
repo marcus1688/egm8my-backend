@@ -319,6 +319,8 @@ const userSchema = new mongoose.Schema(
       playtechlive: { type: gameLockSchema, default: () => ({}) },
       hacksaw: { type: gameLockSchema, default: () => ({}) },
       relaxgaming: { type: gameLockSchema, default: () => ({}) },
+      m9bet: { type: gameLockSchema, default: () => ({}) },
+      rich88: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },
@@ -428,6 +430,10 @@ const userSchema = new mongoose.Schema(
     },
     playtechGameToken: {
       type: String,
+    },
+    m9betRegistered: {
+      type: Boolean,
+      default: false,
     },
   },
   {

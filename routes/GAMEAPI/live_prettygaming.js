@@ -19,7 +19,7 @@ require("dotenv").config();
 const oncasinoSecret = process.env.ONCASINO_SECRET;
 const webURL = "http://egm8my.vip/";
 const oncasinoAPIURL = "https://third-api.ongames.info";
-const oncasinoAgent = "EGM8MYR";
+const oncasinoAgent = "EGM8MYRUAT";
 
 function roundToTwoDecimals(num) {
   return Math.round(num * 100) / 100;

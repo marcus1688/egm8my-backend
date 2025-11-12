@@ -37,6 +37,7 @@ const GameNextSpinGameModal = require("../../models/slot_nextspinDatabase.model"
 const GamePlayStarGameModal = require("../../models/slot_playstarDatabase.model");
 const GamePlaytechGameModal = require("../../models/slot_playtechDatabase.model");
 const GameVPowerGameModal = require("../../models/slot_vpowerDatabase.model");
+const GameRich88GameModal = require("../../models/slot_rich88Database.model");
 
 const { S3Client, ListObjectsV2Command } = require("@aws-sdk/client-s3");
 const multer = require("multer");
@@ -83,7 +84,7 @@ function parseRTP(rtpRaw) {
 
 router.post("/api/playtech/import-games", async (req, res) => {
   try {
-    const importFilePath = path.join(__dirname, "../../public/vpower.json");
+    const importFilePath = path.join(__dirname, "../../public/rich88.json");
     console.log(importFilePath);
 
     // Check if file exists
@@ -109,9 +110,9 @@ router.post("/api/playtech/import-games", async (req, res) => {
 
     console.log("pass");
     console.log(`Found ${gameList.length} games to import`);
-    await GameVPowerGameModal.deleteMany();
+    await GameRich88GameModal.deleteMany();
     // Insert into MongoDB
-    await GameVPowerGameModal.insertMany(gameList);
+    await GameRich88GameModal.insertMany(gameList);
 
     return res.status(200).json({
       success: true,
