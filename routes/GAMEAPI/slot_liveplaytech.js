@@ -706,7 +706,6 @@ router.post("/api/playtech/bet", async (req, res) => {
     amount,
   } = req.body;
 
-  console.log("playtech bet", req.body, " end");
   try {
     const actualUsername = validateAndExtractUsername(username);
 
@@ -718,7 +717,8 @@ router.post("/api/playtech/bet", async (req, res) => {
           {
             playtechGameToken: 1,
             wallet: 1,
-            "gameLock.playtech.lock": 1,
+            "gameLock.playtechslot.lock": 1,
+            "gameLock.playtechlive.lock": 1,
           }
         ).lean(),
 
@@ -732,15 +732,17 @@ router.post("/api/playtech/bet", async (req, res) => {
 
         GamePlaytechGameModal.findOne(
           { gameID: gameCodeName },
-          { gameType: 1 }
+          { _id: 1 }
         ).lean(),
       ]);
 
-    if (
-      !user ||
-      user.playtechGameToken !== externalToken ||
-      user.gameLock?.playtech?.lock
-    ) {
+    const isSlotGame = gameInfo !== null;
+    const gameType = isSlotGame ? "SLOT" : "LIVE";
+    const isLocked = isSlotGame
+      ? user?.gameLock?.playtechslot?.lock
+      : user?.gameLock?.playtechlive?.lock;
+
+    if (!user || user.playtechGameToken !== externalToken || isLocked) {
       return res
         .status(200)
         .json(
@@ -778,7 +780,6 @@ router.post("/api/playtech/bet", async (req, res) => {
     }
 
     const ourTransactionID = generateTransactionId();
-    const gameType = gameInfo ? "SLOT" : "LIVE";
 
     await SlotPlaytechModal.create({
       username: actualUsername,
@@ -1750,241 +1751,6 @@ router.get(
           en: "PLAYTECH: Failed to fetch win/loss report",
           zh: "PLAYTECH: 获取盈亏报告失败",
         },
-      });
-    }
-  }
-);
-
-const exportPlaytechLogsToExcel = async (filters = {}, options = {}) => {
-  try {
-    // Build query based on filters
-    const query = {};
-
-    if (filters.endpoint) query.endpoint = filters.endpoint;
-    if (filters.username) query.actualUsername = filters.username;
-    if (filters.gameRoundCode) query.gameRoundCode = filters.gameRoundCode;
-    if (filters.hasError !== undefined) query.hasError = filters.hasError;
-    if (filters.startDate || filters.endDate) {
-      query.requestTime = {};
-      if (filters.startDate)
-        query.requestTime.$gte = new Date(filters.startDate);
-      if (filters.endDate) query.requestTime.$lte = new Date(filters.endDate);
-    }
-
-    // Fetch logs from database
-    const logs = await PlaytechLogModal.find(query)
-      .sort({ requestTime: -1 })
-      .limit(options.limit || 10000)
-      .lean();
-
-    console.log(`Found ${logs.length} logs to export`);
-
-    // Create a new workbook and worksheet
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Playtech Logs");
-
-    // Define columns
-    worksheet.columns = [
-      { header: "Request ID", key: "requestId", width: 40 },
-      { header: "Endpoint", key: "endpoint", width: 20 },
-      { header: "Username", key: "username", width: 25 },
-      { header: "Actual Username", key: "actualUsername", width: 25 },
-      { header: "Transaction Code", key: "transactionCode", width: 30 },
-      {
-        header: "External Transaction Code",
-        key: "externalTransactionCode",
-        width: 30,
-      },
-      { header: "Game Round Code", key: "gameRoundCode", width: 40 },
-      { header: "Game Code Name", key: "gameCodeName", width: 20 },
-      { header: "Amount", key: "amount", width: 15 },
-      { header: "Balance Before", key: "balanceBefore", width: 15 },
-      { header: "Balance After", key: "balanceAfter", width: 15 },
-      { header: "Request Time", key: "requestTime", width: 25 },
-      { header: "Response Time", key: "responseTime", width: 25 },
-      { header: "Processing Time (ms)", key: "processingTimeMs", width: 20 },
-      { header: "Status Code", key: "responseStatusCode", width: 15 },
-      { header: "Has Error", key: "hasError", width: 12 },
-      { header: "Error Code", key: "errorCode", width: 20 },
-      { header: "Error Message", key: "errorMessage", width: 40 },
-      { header: "IP Address", key: "ipAddress", width: 20 },
-      { header: "User Agent", key: "userAgent", width: 50 },
-      { header: "Request Body", key: "requestBody", width: 50 },
-      { header: "Response Body", key: "responseBody", width: 50 },
-    ];
-
-    // Style header row
-    worksheet.getRow(1).font = { bold: true };
-    worksheet.getRow(1).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FF4472C4" },
-    };
-    worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
-
-    // Add data rows
-    logs.forEach((log) => {
-      worksheet.addRow({
-        requestId: log.requestId,
-        endpoint: log.endpoint,
-        username: log.username,
-        actualUsername: log.actualUsername,
-        transactionCode: log.transactionCode,
-        externalTransactionCode: log.externalTransactionCode,
-        gameRoundCode: log.gameRoundCode,
-        gameCodeName: log.gameCodeName,
-        amount: log.amount,
-        balanceBefore: log.balanceBefore,
-        balanceAfter: log.balanceAfter,
-        requestTime: log.requestTime ? log.requestTime.toISOString() : "",
-        responseTime: log.responseTime ? log.responseTime.toISOString() : "",
-        processingTimeMs: log.processingTimeMs,
-        responseStatusCode: log.responseStatusCode,
-        hasError: log.hasError ? "Yes" : "No",
-        errorCode: log.errorCode,
-        errorMessage: log.errorMessage,
-        ipAddress: log.ipAddress,
-        userAgent: log.userAgent,
-        requestBody: JSON.stringify(log.requestBody, null, 2),
-        responseBody: JSON.stringify(log.responseBody, null, 2),
-      });
-    });
-
-    // Apply alternating row colors
-    worksheet.eachRow((row, rowNumber) => {
-      if (rowNumber > 1) {
-        row.fill = {
-          type: "pattern",
-          pattern: "solid",
-          fgColor: { argb: rowNumber % 2 === 0 ? "FFF2F2F2" : "FFFFFFFF" },
-        };
-      }
-    });
-
-    // Auto-filter
-    worksheet.autoFilter = {
-      from: "A1",
-      to: "V1",
-    };
-
-    // Freeze header row
-    worksheet.views = [{ state: "frozen", xSplit: 0, ySplit: 1 }];
-
-    // Generate filename
-    const timestamp = new Date()
-      .toISOString()
-      .replace(/[:.]/g, "-")
-      .slice(0, -5);
-    const filename = options.filename || `playtech-logs-${timestamp}.xlsx`;
-
-    // Determine save location
-    if (options.saveToPublic) {
-      // FIXED: Calculate correct path to project root
-      // Go up from utils folder to project root, then to public/exports
-      const projectRoot = path.resolve(__dirname, "..");
-      const publicDir = path.join(projectRoot, "public", "exports");
-
-      console.log("Project root:", projectRoot);
-      console.log("Public exports dir:", publicDir);
-
-      // Create exports directory if it doesn't exist
-      try {
-        await fs.mkdir(publicDir, { recursive: true });
-        console.log("✅ Directory ensured:", publicDir);
-      } catch (err) {
-        console.error("Error creating directory:", err);
-      }
-
-      const filePath = path.join(publicDir, filename);
-      console.log("Saving to:", filePath);
-
-      await workbook.xlsx.writeFile(filePath);
-
-      console.log(`✅ File saved successfully to: ${filePath}`);
-
-      return {
-        success: true,
-        filePath: filePath,
-        publicUrl: `/exports/${filename}`,
-        filename: filename,
-        recordCount: logs.length,
-      };
-    } else if (options.filePath) {
-      // Save to custom path
-      await workbook.xlsx.writeFile(options.filePath);
-      return {
-        success: true,
-        filePath: options.filePath,
-        filename: path.basename(options.filePath),
-        recordCount: logs.length,
-      };
-    } else {
-      // Return buffer for download
-      const buffer = await workbook.xlsx.writeBuffer();
-      return {
-        success: true,
-        buffer: buffer,
-        filename: filename,
-        recordCount: logs.length,
-      };
-    }
-  } catch (error) {
-    console.error("Error exporting logs to Excel:", error);
-    throw error;
-  }
-};
-
-router.post(
-  "/api/admin/playtech/logs/export-local",
-
-  async (req, res) => {
-    try {
-      const {
-        endpoint,
-        username,
-        gameRoundCode,
-        hasError,
-        startDate,
-        endDate,
-        filename,
-        limit,
-      } = req.body;
-
-      // Build filters
-      const filters = {};
-      if (endpoint) filters.endpoint = endpoint;
-      if (username) filters.username = username;
-      if (gameRoundCode) filters.gameRoundCode = gameRoundCode;
-      if (hasError !== undefined) filters.hasError = hasError;
-      if (startDate) filters.startDate = startDate;
-      if (endDate) filters.endDate = endDate;
-
-      // Export options
-      const options = {
-        saveToPublic: true,
-        filename: filename,
-        limit: limit || 10000,
-      };
-
-      // Generate Excel file in /public folder
-      const result = await exportPlaytechLogsToExcel(filters, options);
-
-      res.json({
-        success: true,
-        message: "Logs exported successfully",
-        file: {
-          filename: result.filename,
-          url: result.publicUrl,
-          path: result.filePath,
-          recordCount: result.recordCount,
-        },
-      });
-    } catch (error) {
-      console.error("Error exporting logs:", error);
-      res.status(500).json({
-        success: false,
-        error: "Failed to export logs",
-        message: error.message,
       });
     }
   }
