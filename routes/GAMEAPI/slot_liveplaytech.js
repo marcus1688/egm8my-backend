@@ -21,7 +21,7 @@ require("dotenv").config();
 //Staging
 const playtechKioskKey = process.env.PLAYTECH_SECRET;
 const playtechKioskName = "SJ82_EGM8MYR";
-const playtechPrefix = "SJ82";
+const playtechPrefix = "EG8MY";
 const playtechServerName = "AGCASINO";
 const webURL = "http://egm8my.vip/";
 const playtechApiURL = "https://api.agmidway.com";
@@ -341,7 +341,6 @@ router.post("/api/playtech/launchGame", authenticateToken, async (req, res) => {
       language: lang,
       lobbyUrl: webURL,
     };
-
     const headers = {
       "Content-Type": "application/json",
       "x-auth-kiosk-key": playtechKioskKey,

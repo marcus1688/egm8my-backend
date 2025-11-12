@@ -184,8 +184,7 @@ router.post("/api/oncasino/launchGame", authenticateToken, async (req, res) => {
       {
         headers: {
           "Content-Type": "application/json;charset=UTF-8",
-          "x-session-platform-code":
-            process.env.ONCASINO_PLATFORM_CODE || "your_platform_code",
+          "x-session-platform-code": "IG",
           "x-lang": lang,
         },
       }
