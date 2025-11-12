@@ -939,7 +939,7 @@ router.post("/api/games/active-games", authenticateToken, async (req, res) => {
         {
           $or: [{ settle: false }, { settle: { $exists: false } }],
           cancel: { $ne: true },
-          $or: [{ gametype: "SLOT" }, { gametype: { $exists: false } }],
+          gametype: "SLOT",
         },
         "Playtech"
       ),
@@ -1157,7 +1157,7 @@ router.post(
           {
             $or: [{ settle: false }, { settle: { $exists: false } }],
             cancel: { $ne: true },
-            $or: [{ gametype: "SLOT" }, { gametype: { $exists: false } }],
+            gametype: "SLOT",
           },
           "Playtech"
         ),
