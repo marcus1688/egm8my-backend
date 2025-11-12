@@ -789,7 +789,7 @@ router.post("/api/playtech/bet", async (req, res) => {
       externalTransactionCode: ourTransactionID,
       bet: true,
       ...(existingGameRound && { settle: true, settleAmount: 0 }),
-      betAmount: roundToTwoDecimals(amount || 0),
+      betamount: roundToTwoDecimals(amount || 0),
       gameRoundCode,
       gametype: gameType,
     });
@@ -904,7 +904,7 @@ router.post("/api/playtech/gameround", async (req, res) => {
             gameRoundCode,
             username: actualUsername,
             bet: true,
-            betAmount: 0,
+            betamount: 0,
           },
         },
         {
@@ -1129,10 +1129,10 @@ router.post("/api/playtechslot/getturnoverforrebate", async (req, res) => {
         playerSummary[username] = { turnover: 0, winloss: 0 };
       }
 
-      playerSummary[username].turnover += record.betAmount || 0;
+      playerSummary[username].turnover += record.betamount || 0;
 
       playerSummary[username].winloss +=
-        (record.settleamount || 0) - (record.betAmount || 0);
+        (record.settleamount || 0) - (record.betamount || 0);
     });
     // Format the turnover and win/loss for each player to two decimal places
     Object.keys(playerSummary).forEach((playerId) => {
@@ -1191,8 +1191,8 @@ router.get(
       let totalWinLoss = 0;
 
       records.forEach((record) => {
-        totalTurnover += record.betAmount || 0;
-        totalWinLoss += (record.settleamount || 0) - (record.betAmount || 0);
+        totalTurnover += record.betamount || 0;
+        totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
       });
 
       totalTurnover = Number(totalTurnover.toFixed(2));
@@ -1323,9 +1323,9 @@ router.get(
       let totalWinLoss = 0;
 
       records.forEach((record) => {
-        totalTurnover += record.betAmount || 0;
+        totalTurnover += record.betamount || 0;
 
-        totalWinLoss += (record.betAmount || 0) - (record.settleamount || 0);
+        totalWinLoss += (record.betamount || 0) - (record.settleamount || 0);
       });
 
       return res.status(200).json({
@@ -1472,10 +1472,10 @@ router.post("/api/playtechlive/getturnoverforrebate", async (req, res) => {
         playerSummary[username] = { turnover: 0, winloss: 0 };
       }
 
-      playerSummary[username].turnover += record.betAmount || 0;
+      playerSummary[username].turnover += record.betamount || 0;
 
       playerSummary[username].winloss +=
-        (record.settleamount || 0) - (record.betAmount || 0);
+        (record.settleamount || 0) - (record.betamount || 0);
     });
     // Format the turnover and win/loss for each player to two decimal places
     Object.keys(playerSummary).forEach((playerId) => {
@@ -1534,8 +1534,8 @@ router.get(
       let totalWinLoss = 0;
 
       records.forEach((record) => {
-        totalTurnover += record.betAmount || 0;
-        totalWinLoss += (record.settleamount || 0) - (record.betAmount || 0);
+        totalTurnover += record.betamount || 0;
+        totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
       });
 
       totalTurnover = Number(totalTurnover.toFixed(2));
@@ -1666,9 +1666,9 @@ router.get(
       let totalWinLoss = 0;
 
       records.forEach((record) => {
-        totalTurnover += record.betAmount || 0;
+        totalTurnover += record.betamount || 0;
 
-        totalWinLoss += (record.betAmount || 0) - (record.settleamount || 0);
+        totalWinLoss += (record.betamount || 0) - (record.settleamount || 0);
       });
 
       return res.status(200).json({

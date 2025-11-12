@@ -36,7 +36,7 @@ const slotplaytechSchema = new mongoose.Schema(
     externalBonusTransactionCode: {
       type: String,
     },
-    betAmount: {
+    betamount: {
       type: Number,
     },
     settleamount: {
