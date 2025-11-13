@@ -713,31 +713,12 @@ router.post("/api/rsg/launchGame", authenticateToken, async (req, res) => {
 
 router.post("/api/rsg/GetBalance", async (req, res) => {
   try {
-    // Decrypt the incoming request
     const decryptedRequest = decryptDES(req.body.Msg, rsgDesKey, rsgDesIV);
     const requestData = JSON.parse(decryptedRequest);
 
     const { SystemCode, WebId, UserId, Currency } = requestData;
-    console.log("rsg, request data", requestData);
-    // Validate required parameters
+
     if (!SystemCode || !WebId || !UserId || !Currency) {
-      const errorResponse = {
-        ErrorCode: 2001,
-        ErrorMessage: "Illegal arguments.",
-        Timestamp: Math.floor(Date.now() / 1000),
-      };
-
-      const encryptedResponse = encryptDES(
-        JSON.stringify(errorResponse),
-        rsgDesKey,
-        rsgDesIV
-      );
-
-      return res.status(200).send(encryptedResponse); // No Msg= prefix
-    }
-
-    // Validate SystemCode and WebId
-    if (SystemCode !== rsgSystemCode || WebId !== rsgAccount) {
       const errorResponse = {
         ErrorCode: 2001,
         ErrorMessage: "Illegal arguments.",
@@ -753,13 +734,28 @@ router.post("/api/rsg/GetBalance", async (req, res) => {
       return res.status(200).send(encryptedResponse);
     }
 
-    // Find user by UserId (gameId)
-    const user = await User.findOne(
+    if (SystemCode !== rsgSystemCode || WebId !== "EGM8MY") {
+      const errorResponse = {
+        ErrorCode: 2001,
+        ErrorMessage: "Illegal arguments.",
+        Timestamp: Math.floor(Date.now() / 1000),
+      };
+
+      const encryptedResponse = encryptDES(
+        JSON.stringify(errorResponse),
+        rsgDesKey,
+        rsgDesIV
+      );
+
+      return res.status(200).send(encryptedResponse);
+    }
+
+    const currentUser = await User.findOne(
       { gameId: UserId },
       { wallet: 1, _id: 1 }
     ).lean();
-
-    if (!user) {
+    console.log(currentUser, "succesful obain user and return wallet");
+    if (!currentUser) {
       const errorResponse = {
         ErrorCode: 4001,
         ErrorMessage: "The player's currency doesn't exist.",
@@ -775,29 +771,27 @@ router.post("/api/rsg/GetBalance", async (req, res) => {
       return res.status(200).send(encryptedResponse);
     }
 
-    // Prepare success response
     const successResponse = {
       ErrorCode: 0,
       ErrorMessage: "OK",
       Timestamp: Math.floor(Date.now() / 1000),
       Data: {
-        Balance: roundToTwoDecimals(user.wallet),
+        Balance: roundToTwoDecimals(currentUser.wallet),
       },
     };
 
-    // Encrypt the response
     const encryptedResponse = encryptDES(
       JSON.stringify(successResponse),
       rsgDesKey,
       rsgDesIV
     );
 
-    // Return without Msg= prefix (as per API documentation FAQ)
     return res.status(200).send(encryptedResponse);
   } catch (error) {
-    console.error("RSG GetBalance callback error:", error);
-
-    // Return system error
+    console.error(
+      "RSG: Error in game provider calling get balance api:",
+      error.message
+    );
     const errorResponse = {
       ErrorCode: 1001,
       ErrorMessage: "Execute failed.",
