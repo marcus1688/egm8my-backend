@@ -19,10 +19,10 @@ const GameRich88GeneralGameModal = require("../../models/slot_rich88General.mode
 const Decimal = require("decimal.js");
 require("dotenv").config();
 
-const rich88PFID = "pmyr_IEGT";
+const rich88PFID = "pmyr_IEGP";
 const rich88Secret = process.env.RICH88_SECRET;
 const webURL = "http://egm8my.vip/";
-const rich88APIURL = "https://betacenter.ark8899.com/";
+const rich88APIURL = "https://lobbycenter.ark8899.com/";
 
 function roundToTwoDecimals(num) {
   return Math.round(num * 100) / 100;
@@ -775,7 +775,7 @@ function generateRich88SessionId() {
   return sessionId;
 }
 
-router.get("/api/rich88/session_id", async (req, res) => {
+router.get("/api/rich88prod/session_id", async (req, res) => {
   const sessionID = generateRich88SessionId();
 
   try {
@@ -833,7 +833,7 @@ router.get("/api/rich88/session_id", async (req, res) => {
   }
 });
 
-router.get("/api/rich88/balance/:account", async (req, res) => {
+router.get("/api/rich88prod/balance/:account", async (req, res) => {
   try {
     const { account } = req.params;
 
@@ -893,7 +893,7 @@ router.get("/api/rich88/balance/:account", async (req, res) => {
   }
 });
 
-router.post("/api/rich88/transfer", async (req, res) => {
+router.post("/api/rich88prod/transfer", async (req, res) => {
   try {
     const { account, record_id, action, round_id, money } = req.body;
     const authorization = req.headers["authorization"];
@@ -1114,7 +1114,7 @@ router.post("/api/rich88/transfer", async (req, res) => {
   }
 });
 
-router.post("/api/rich88/award_activity", async (req, res) => {
+router.post("/api/rich88prod/award_activity", async (req, res) => {
   try {
     const { account, award_id, action, event_id, money } = req.body;
     const authorization = req.headers["authorization"];

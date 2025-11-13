@@ -201,6 +201,10 @@ router.post("/admin/api/getAllTurnoverForRebate", async (req, res) => {
         url: `${PUBLIC_APIURL}api/fastspinfish/getturnoverforrebate`,
         name: "FASTSPIN",
       },
+      {
+        url: `${PUBLIC_APIURL}api/rich88/getturnoverforrebate`,
+        name: "RICH88",
+      },
     ];
 
     const routePromises = routes.map((route) =>

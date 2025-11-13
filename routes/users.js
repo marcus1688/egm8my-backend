@@ -60,6 +60,7 @@ const SlotNextSpinModal = require("../models/slot_nextspin.model");
 const SlotDCTGameModal = require("../models/slot_dctgame.model");
 const SlotPlaytechModal = require("../models/slot_playtech.model");
 const SlotFastSpinModal = require("../models/slot_fastspin.model");
+const SlotRich88Modal = require("../models/slot_rich88.model");
 
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
@@ -5398,6 +5399,12 @@ router.get(
 
           // FastSpin
           getAllUsersTurnover(SlotFastSpinModal, {
+            cancel: { $ne: true },
+            settle: true,
+          }),
+
+          // Rich88
+          getAllUsersTurnover(SlotRich88Modal, {
             cancel: { $ne: true },
             settle: true,
           }),
