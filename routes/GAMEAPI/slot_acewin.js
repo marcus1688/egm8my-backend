@@ -619,46 +619,40 @@ router.post("/api/acewin/auth", async (req, res) => {
   }
 });
 
-function mapGameCategory(categoryId) {
-  const categoryMap = {
-    1: "SLOT",
-    2: "POKER",
-    3: "LOBBY",
-    5: "FISH",
-    6: "CASINO",
-  };
-
-  return categoryMap[categoryId] || "SLOT";
-}
-
 router.post("/api/acewin/bet", async (req, res) => {
   try {
-    const { reqId, token, round, betAmount, winloseAmount, gameCategory } =
-      req.body;
-    console.log(req.body, "bet");
-    if (!token) {
+    const { reqId, token, round, betAmount, winloseAmount, game } = req.body;
+
+    if (
+      !token ||
+      !game ||
+      !round ||
+      betAmount === undefined ||
+      betAmount === null ||
+      winloseAmount === undefined ||
+      winloseAmount === null
+    ) {
       return res.status(200).json({
         errorCode: 3,
         message: "Invalid parameter",
       });
     }
 
-    const tokenParts = token.split(":");
+    const username = token.split(":")[0];
 
-    const username = tokenParts[0];
-
-    const [currentUser, existingTransaction] = await Promise.all([
+    const [currentUser, existingTransaction, gameInfo] = await Promise.all([
       User.findOne(
         { gameId: username },
         {
           acewinGameToken: 1,
-          "gameLock.jilifish.lock": 1,
-          "gameLock.jilislot.lock": 1,
+          "gameLock.acewinfish.lock": 1,
+          "gameLock.acewinslot.lock": 1,
           wallet: 1,
           _id: 1,
         }
       ).lean(),
       SlotAceWinModal.findOne({ roundId: round, bet: true }, { _id: 1 }).lean(),
+      GameAceWinGameModal.findOne({ gameID: game }, { gameType: 1 }).lean(),
     ]);
 
     if (!currentUser || currentUser.acewinGameToken !== token) {
@@ -668,10 +662,12 @@ router.post("/api/acewin/bet", async (req, res) => {
       });
     }
 
+    const gameTypeCode = gameInfo?.gameType === "Fishing" ? "FISH" : "SLOT";
+
     const isLocked =
-      gameCategory === 5
-        ? currentUser.gameLock?.jilifish?.lock
-        : currentUser.gameLock?.jilislot?.lock;
+      gameTypeCode === "FISH"
+        ? currentUser.gameLock?.acewinfish?.lock
+        : currentUser.gameLock?.acewinslot?.lock;
 
     if (isLocked) {
       return res.status(200).json({
@@ -720,8 +716,6 @@ router.post("/api/acewin/bet", async (req, res) => {
       });
     }
 
-    const gameType = mapGameCategory(gameCategory);
-
     await SlotAceWinModal.create({
       username: username,
       roundId: round,
@@ -729,7 +723,7 @@ router.post("/api/acewin/bet", async (req, res) => {
       settle: true,
       betamount: roundToTwoDecimals(betAmount),
       settleamount: roundToTwoDecimals(winloseAmount),
-      gametype: gameType,
+      gametype: gameTypeCode,
     });
 
     return res.status(200).json({
@@ -755,25 +749,18 @@ router.post("/api/acewin/bet", async (req, res) => {
 
 router.post("/api/acewin/cancelBet", async (req, res) => {
   try {
-    const { reqId, token, round, betAmount, winloseAmount } = req.body;
+    const { reqId, userId, round, betAmount, winloseAmount } = req.body;
 
-    if (!token) {
+    if (!userId || !round || betAmount == null || winloseAmount == null) {
       return res.status(200).json({
         errorCode: 3,
         message: "Invalid parameter",
       });
     }
 
-    const tokenParts = token.split(":");
-
-    const username = tokenParts[0];
-
     const [currentUser, existingTransaction, existingCancelledTransaction] =
       await Promise.all([
-        User.findOne(
-          { gameId: username },
-          { acewinGameToken: 1, wallet: 1, _id: 1 }
-        ).lean(),
+        User.findOne({ gameId: userId }, { wallet: 1, _id: 1 }).lean(),
         SlotAceWinModal.findOne(
           { roundId: round, bet: true },
           { _id: 1 }
@@ -784,7 +771,7 @@ router.post("/api/acewin/cancelBet", async (req, res) => {
         ).lean(),
       ]);
 
-    if (!currentUser || currentUser.acewinGameToken !== token) {
+    if (!currentUser) {
       return res.status(200).json({
         errorCode: 5,
         message: "Token expired",
@@ -813,31 +800,43 @@ router.post("/api/acewin/cancelBet", async (req, res) => {
       });
     }
 
-    const adjustedAmount = betAmount - winloseAmount;
+    const adjustedAmount = roundToTwoDecimals(betAmount - winloseAmount);
 
-    const updatedUserBalance = await User.findOneAndUpdate(
-      {
-        gameId: username,
-        wallet: { $gte: roundToTwoDecimals(adjustedAmount) },
-      },
-      { $inc: { wallet: roundToTwoDecimals(adjustedAmount) } },
-      { new: true, projection: { wallet: 1, username: 1 } }
-    ).lean();
+    let updatedUserBalance;
 
-    if (!updatedUserBalance) {
-      const latestUser = await User.findOne(
-        { gameId: username },
-        { wallet: 1, _id: 1 }
+    if (adjustedAmount > 0) {
+      updatedUserBalance = await User.findOneAndUpdate(
+        { gameId: userId },
+        { $inc: { wallet: adjustedAmount } },
+        { new: true, projection: { wallet: 1, username: 1 } }
+      ).lean();
+    } else if (adjustedAmount < 0) {
+      updatedUserBalance = await User.findOneAndUpdate(
+        {
+          gameId: userId,
+          wallet: { $gte: Math.abs(adjustedAmount) },
+        },
+        { $inc: { wallet: adjustedAmount } },
+        { new: true, projection: { wallet: 1, username: 1 } }
       ).lean();
 
-      return res.status(200).json({
-        errorCode: 6,
-        message: "Not enough balance",
-        username: username,
-        currency: "MYR",
-        balance: roundToTwoDecimals(latestUser?.wallet || 0),
-        txId: round,
-      });
+      if (!updatedUserBalance) {
+        const latestUser = await User.findOne(
+          { gameId: userId },
+          { wallet: 1, username: 1 }
+        ).lean();
+
+        return res.status(200).json({
+          errorCode: 5,
+          message: "Not enough balance",
+          username: latestUser?.username || userId,
+          currency: "MYR",
+          balance: roundToTwoDecimals(latestUser?.wallet || 0),
+          txId: round,
+        });
+      }
+    } else {
+      updatedUserBalance = currentUser;
     }
 
     await SlotAceWinModal.findOneAndUpdate(
@@ -865,5 +864,736 @@ router.post("/api/acewin/cancelBet", async (req, res) => {
     });
   }
 });
+
+router.post("/api/acewinslot/getturnoverforrebate", async (req, res) => {
+  try {
+    const { date } = req.body;
+
+    let startDate, endDate;
+    if (date === "today") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    } else if (date === "yesterday") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    }
+
+    console.log("ACEWIN SLOT QUERYING TIME", startDate, endDate);
+
+    const records = await SlotAceWinModal.find({
+      createdAt: {
+        $gte: startDate,
+        $lt: endDate,
+      },
+      cancel: { $ne: true },
+      gametype: "SLOT",
+      settle: true,
+    });
+
+    const uniqueGameIds = [
+      ...new Set(records.map((record) => record.username)),
+    ];
+
+    const users = await User.find(
+      { gameId: { $in: uniqueGameIds } },
+      { gameId: 1, username: 1 }
+    ).lean();
+
+    const gameIdToUsername = {};
+    users.forEach((user) => {
+      gameIdToUsername[user.gameId] = user.username;
+    });
+
+    let playerSummary = {};
+
+    records.forEach((record) => {
+      const gameId = record.username;
+      const actualUsername = gameIdToUsername[gameId];
+
+      if (!actualUsername) {
+        console.warn(`ACEWIN User not found for gameId: ${gameId}`);
+        return;
+      }
+
+      if (!playerSummary[actualUsername]) {
+        playerSummary[actualUsername] = { turnover: 0, winloss: 0 };
+      }
+
+      playerSummary[actualUsername].turnover += record.betamount || 0;
+
+      playerSummary[actualUsername].winloss +=
+        (record.settleamount || 0) - (record.betamount || 0);
+    });
+    // Format the turnover and win/loss for each player to two decimal places
+    Object.keys(playerSummary).forEach((playerId) => {
+      playerSummary[playerId].turnover = Number(
+        playerSummary[playerId].turnover.toFixed(2)
+      );
+      playerSummary[playerId].winloss = Number(
+        playerSummary[playerId].winloss.toFixed(2)
+      );
+    });
+    // Return the aggregated results
+    return res.status(200).json({
+      success: true,
+      summary: {
+        gamename: "ACEWIN",
+        gamecategory: "Slot Games",
+        users: playerSummary,
+      },
+    });
+  } catch (error) {
+    console.log("ACEWIN: Failed to fetch win/loss report:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: {
+        en: "ACEWIN: Failed to fetch win/loss report",
+        zh: "ACEWIN: 获取盈亏报告失败",
+      },
+    });
+  }
+});
+
+router.get(
+  "/admin/api/acewinslot/:userId/dailygamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      const records = await SlotAceWinModal.find({
+        username: user.gameId,
+        createdAt: {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        },
+        cancel: { $ne: true },
+        gametype: "SLOT",
+        settle: true,
+      });
+
+      // Aggregate turnover and win/loss for each player
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        totalTurnover += record.betamount || 0;
+        totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
+      });
+
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+      // Return the aggregated results
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "ACEWIN",
+          gamecategory: "Slot Games",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("ACEWIN: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "ACEWIN: Failed to fetch win/loss report",
+          zh: "ACEWIN: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/acewinslot/:userId/gamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      const records = await GameDataLog.find({
+        username: user.username,
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      // Sum up the values for EVOLUTION under Live Casino
+      records.forEach((record) => {
+        // Convert Mongoose Map to Plain Object
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
+
+        if (
+          gameCategories &&
+          gameCategories["Slot Games"] &&
+          gameCategories["Slot Games"] instanceof Map
+        ) {
+          const slotGames = Object.fromEntries(gameCategories["Slot Games"]);
+
+          if (slotGames["ACEWIN"]) {
+            totalTurnover += slotGames["ACEWIN"].turnover || 0;
+            totalWinLoss += slotGames["ACEWIN"].winloss || 0;
+          }
+        }
+      });
+
+      // Format the total values to two decimal places
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "ACEWIN",
+          gamecategory: "Slot Games",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("ACEWIN: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "ACEWIN: Failed to fetch win/loss report",
+          zh: "ACEWIN: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/acewinslot/dailykioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const records = await SlotAceWinModal.find({
+        createdAt: {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        },
+        cancel: { $ne: true },
+        gametype: "SLOT",
+        settle: true,
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        totalTurnover += record.betamount || 0;
+
+        totalWinLoss += (record.betamount || 0) - (record.settleamount || 0);
+      });
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "ACEWIN",
+          gamecategory: "Slot Games",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("ACEWIN: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "ACEWIN: Failed to fetch win/loss report",
+          zh: "ACEWIN: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/acewinslot/kioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const records = await GameDataLog.find({
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
+
+        if (
+          gameCategories &&
+          gameCategories["Slot Games"] &&
+          gameCategories["Slot Games"] instanceof Map
+        ) {
+          const liveCasino = Object.fromEntries(gameCategories["Slot Games"]);
+
+          if (liveCasino["ACEWIN"]) {
+            totalTurnover += Number(liveCasino["ACEWIN"].turnover || 0);
+            totalWinLoss += Number(liveCasino["ACEWIN"].winloss || 0) * -1;
+          }
+        }
+      });
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "ACEWIN",
+          gamecategory: "Slot Games",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("ACEWIN: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "ACEWIN: Failed to fetch win/loss report",
+          zh: "ACEWIN: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+// -------------
+
+router.post("/api/acewinfish/getturnoverforrebate", async (req, res) => {
+  try {
+    const { date } = req.body;
+
+    let startDate, endDate;
+    if (date === "today") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    } else if (date === "yesterday") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    }
+
+    console.log("ACEWIN FISH QUERYING TIME", startDate, endDate);
+
+    const records = await SlotAceWinModal.find({
+      createdAt: {
+        $gte: startDate,
+        $lt: endDate,
+      },
+      cancel: { $ne: true },
+      gametype: "FISH",
+
+      settle: true,
+    });
+
+    const uniqueGameIds = [
+      ...new Set(records.map((record) => record.username)),
+    ];
+
+    const users = await User.find(
+      { gameId: { $in: uniqueGameIds } },
+      { gameId: 1, username: 1 }
+    ).lean();
+
+    const gameIdToUsername = {};
+    users.forEach((user) => {
+      gameIdToUsername[user.gameId] = user.username;
+    });
+
+    let playerSummary = {};
+
+    records.forEach((record) => {
+      const gameId = record.username;
+      const actualUsername = gameIdToUsername[gameId];
+
+      if (!actualUsername) {
+        console.warn(`ACEWIN User not found for gameId: ${gameId}`);
+        return;
+      }
+
+      if (!playerSummary[actualUsername]) {
+        playerSummary[actualUsername] = { turnover: 0, winloss: 0 };
+      }
+
+      playerSummary[actualUsername].turnover += record.betamount || 0;
+
+      playerSummary[actualUsername].winloss +=
+        (record.settleamount || 0) - (record.betamount || 0);
+    });
+    // Format the turnover and win/loss for each player to two decimal places
+    Object.keys(playerSummary).forEach((playerId) => {
+      playerSummary[playerId].turnover = Number(
+        playerSummary[playerId].turnover.toFixed(2)
+      );
+      playerSummary[playerId].winloss = Number(
+        playerSummary[playerId].winloss.toFixed(2)
+      );
+    });
+    // Return the aggregated results
+    return res.status(200).json({
+      success: true,
+      summary: {
+        gamename: "ACEWIN",
+        gamecategory: "Fishing",
+        users: playerSummary,
+      },
+    });
+  } catch (error) {
+    console.log("ACEWIN: Failed to fetch win/loss report:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: {
+        en: "ACEWIN: Failed to fetch win/loss report",
+        zh: "ACEWIN: 获取盈亏报告失败",
+      },
+    });
+  }
+});
+
+router.get(
+  "/admin/api/acewinfish/:userId/dailygamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      const records = await SlotAceWinModal.find({
+        username: user.gameId,
+        createdAt: {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        },
+        cancel: { $ne: true },
+        gametype: "FISH",
+
+        settle: true,
+      });
+
+      // Aggregate turnover and win/loss for each player
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        totalTurnover += record.betamount || 0;
+        totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
+      });
+
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+      // Return the aggregated results
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "ACEWIN",
+          gamecategory: "Fishing",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("ACEWIN: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "ACEWIN: Failed to fetch win/loss report",
+          zh: "ACEWIN: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/acewinfish/:userId/gamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      const records = await GameDataLog.find({
+        username: user.username,
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      // Sum up the values for EVOLUTION under Live Casino
+      records.forEach((record) => {
+        // Convert Mongoose Map to Plain Object
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
+
+        if (
+          gameCategories &&
+          gameCategories["Fishing"] &&
+          gameCategories["Fishing"] instanceof Map
+        ) {
+          const slotGames = Object.fromEntries(gameCategories["Fishing"]);
+
+          if (slotGames["ACEWIN"]) {
+            totalTurnover += slotGames["ACEWIN"].turnover || 0;
+            totalWinLoss += slotGames["ACEWIN"].winloss || 0;
+          }
+        }
+      });
+
+      // Format the total values to two decimal places
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "ACEWIN",
+          gamecategory: "Fishing",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("ACEWIN: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "ACEWIN: Failed to fetch win/loss report",
+          zh: "ACEWIN: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/acewinfish/dailykioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const records = await SlotAceWinModal.find({
+        createdAt: {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        },
+        cancel: { $ne: true },
+        gametype: "FISH",
+
+        settle: true,
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        totalTurnover += record.betamount || 0;
+
+        totalWinLoss += (record.betamount || 0) - (record.settleamount || 0);
+      });
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "ACEWIN",
+          gamecategory: "Fishing",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("ACEWIN: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "ACEWIN: Failed to fetch win/loss report",
+          zh: "ACEWIN: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/acewinfish/kioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const records = await GameDataLog.find({
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
+
+        if (
+          gameCategories &&
+          gameCategories["Fishing"] &&
+          gameCategories["Fishing"] instanceof Map
+        ) {
+          const liveCasino = Object.fromEntries(gameCategories["Fishing"]);
+
+          if (liveCasino["ACEWIN"]) {
+            totalTurnover += Number(liveCasino["ACEWIN"].turnover || 0);
+            totalWinLoss += Number(liveCasino["ACEWIN"].winloss || 0) * -1;
+          }
+        }
+      });
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "ACEWIN",
+          gamecategory: "Fishing",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("ACEWIN: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "ACEWIN: Failed to fetch win/loss report",
+          zh: "ACEWIN: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
 
 module.exports = router;
