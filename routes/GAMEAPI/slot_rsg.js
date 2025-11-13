@@ -15,6 +15,7 @@ const { adminUser, adminLog } = require("../../models/adminuser.model");
 const GameWalletLog = require("../../models/gamewalletlog.model");
 const Decimal = require("decimal.js");
 const GameRSGGameModal = require("../../models/slot_rsgDatabase.model");
+const SlotRSGModal = require("../../models/slot_rsg.model");
 require("dotenv").config();
 
 const webURL = "http://egm8my.vip/";
@@ -828,12 +829,130 @@ router.post("/api/rsg/Bet", async (req, res) => {
       BelongSequenNumber,
     } = requestData;
 
+    if (
+      !WebId ||
+      !SystemCode ||
+      !SequenNumber ||
+      !UserId ||
+      !TransactionID ||
+      Amount === null ||
+      Amount === undefined
+    ) {
+      const errorResponse = {
+        ErrorCode: 2001,
+        ErrorMessage: "Illegal arguments.",
+        Timestamp: Math.floor(Date.now() / 1000),
+      };
+
+      const encryptedResponse = encryptDES(
+        JSON.stringify(errorResponse),
+        rsgDesKey,
+        rsgDesIV
+      );
+
+      return res.status(200).send(encryptedResponse);
+    }
+
+    if (SystemCode !== rsgSystemCode || WebId !== "EGM8MY") {
+      const errorResponse = {
+        ErrorCode: 2001,
+        ErrorMessage: "Illegal arguments.",
+        Timestamp: Math.floor(Date.now() / 1000),
+      };
+
+      const encryptedResponse = encryptDES(
+        JSON.stringify(errorResponse),
+        rsgDesKey,
+        rsgDesIV
+      );
+
+      return res.status(200).send(encryptedResponse);
+    }
+
+    const [currentUser, existingTransaction] = await Promise.all([
+      User.findOne(
+        { gameId: UserId },
+        {
+          username: 1,
+          wallet: 1,
+          "gameLock.rsg.lock": 1,
+        }
+      ).lean(),
+      SlotRSGModal.findOne({ betId: SequenNumber }, { _id: 1 }).lean(),
+    ]);
+
+    if (!currentUser || currentUser.gameLock?.rsg?.lock) {
+      const errorResponse = {
+        ErrorCode: 4001,
+        ErrorMessage: "The player's currency doesn't exist.",
+        Timestamp: Math.floor(Date.now() / 1000),
+      };
+
+      const encryptedResponse = encryptDES(
+        JSON.stringify(errorResponse),
+        rsgDesKey,
+        rsgDesIV
+      );
+
+      return res.status(200).send(encryptedResponse);
+    }
+
+    if (existingTransaction) {
+      const errorResponse = {
+        ErrorCode: 4002,
+        ErrorMessage: "Duplicate SequenNumber.",
+        Timestamp: Math.floor(Date.now() / 1000),
+      };
+
+      const encryptedResponse = encryptDES(
+        JSON.stringify(errorResponse),
+        rsgDesKey,
+        rsgDesIV
+      );
+
+      return res.status(200).send(encryptedResponse);
+    }
+
+    const updatedUserBalance = await User.findOneAndUpdate(
+      {
+        gameId: UserId,
+        wallet: { $gte: roundToTwoDecimals(Amount) },
+      },
+      { $inc: { wallet: -roundToTwoDecimals(Amount) } },
+      { new: true, projection: { wallet: 1 } }
+    ).lean();
+
+    if (!updatedUserBalance) {
+      const errorResponse = {
+        ErrorCode: 4003,
+        ErrorMessage: "Balance is not enough.",
+        Timestamp: Math.floor(Date.now() / 1000),
+      };
+
+      const encryptedResponse = encryptDES(
+        JSON.stringify(errorResponse),
+        rsgDesKey,
+        rsgDesIV
+      );
+
+      return res.status(200).send(encryptedResponse);
+    }
+
+    await SlotRSGModal.create({
+      username: UserId,
+      betId: SequenNumber,
+      uniquebetId: TransactionID,
+      bet: true,
+      betamount: roundToTwoDecimals(Amount),
+      gametype: "SLOT",
+    });
+
     const successResponse = {
       ErrorCode: 0,
       ErrorMessage: "OK",
       Timestamp: Math.floor(Date.now() / 1000),
       Data: {
-        Balance: 2,
+        Balance: roundToTwoDecimals(updatedUserBalance.wallet),
       },
     };
 
@@ -844,221 +963,190 @@ router.post("/api/rsg/Bet", async (req, res) => {
     );
 
     return res.status(200).send(encryptedResponse);
-
-    const validationResult = validateRequest(req);
-    if (validationResult.error) {
-      return res.status(200).json(validationResult.response);
-    }
-
-    const { AgentCode, Params, Sign } = req.body;
-
-    const decryptedParams = aesDecrypt(Params, fachaiSecret);
-    if (!verifySignature(decryptedParams, Sign)) {
-      return res.status(200).json({
-        Result: 604,
-        MainPoints: 0,
-        ErrorText: "Verification failed",
-      });
-    }
-
-    const originalPayload = JSON.parse(decryptedParams);
-
-    const {
-      RecordID,
-      MemberAccount,
-      BetID,
-      GameID,
-      GameType,
-      Bet,
-      CreateDate,
-      Ts,
-    } = originalPayload;
-
-    const [currentUser, existingTransaction] = await Promise.all([
-      User.findOne(
-        { gameId: MemberAccount },
-        {
-          username: 1,
-          wallet: 1,
-          "gameLock.fachaifish.lock": 1,
-          "gameLock.fachaislot.lock": 1,
-        }
-      ).lean(),
-      SlotFachaiModal.findOne({ betId: BetID }, { _id: 1 }).lean(),
-    ]);
-
-    if (!currentUser) {
-      return res.status(200).json({
-        Result: 500,
-        MainPoints: 0,
-        ErrorText: "Player ID not exist",
-      });
-    }
-
-    const isLocked =
-      GameType === 1
-        ? currentUser.gameLock?.fachaifish?.lock
-        : currentUser.gameLock?.fachaislot?.lock;
-
-    if (isLocked) {
-      return res.status(200).json({
-        Result: 407,
-        ErrorText: "Account locked",
-      });
-    }
-
-    if (existingTransaction) {
-      return res.status(200).json({
-        Result: 0,
-        MainPoints: roundToTwoDecimals(currentUser.wallet),
-        ErrorText: "Success",
-      });
-    }
-
-    const updatedUserBalance = await User.findOneAndUpdate(
-      {
-        gameId: MemberAccount,
-        wallet: { $gte: roundToTwoDecimals(Bet) },
-      },
-      { $inc: { wallet: -roundToTwoDecimals(Bet) } },
-      { new: true, projection: { wallet: 1 } }
-    ).lean();
-
-    if (!updatedUserBalance) {
-      const latestUser = await User.findOne(
-        { gameId: MemberAccount },
-        { wallet: 1 }
-      ).lean();
-
-      return res.status(200).json({
-        Result: 203,
-        MainPoints: roundToTwoDecimals(latestUser?.wallet || 0),
-        ErrorText: "Insufficient Balance",
-      });
-    }
-
-    SlotFachaiModal.create({
-      betId: BetID,
-      username: MemberAccount,
-      bet: true,
-      betamount: roundToTwoDecimals(Bet),
-      gametype: "SLOT",
-    }).catch((error) => {
-      console.error("Error creating transaction:", error.message);
-    });
-
-    return res.status(200).json({
-      Result: 0,
-      MainPoints: roundToTwoDecimals(updatedUserBalance.wallet),
-      ErrorText: "Success",
-    });
   } catch (error) {
     console.error(
-      "FACHAI: Error in game provider calling ae96 bet api:",
+      "RSG: Error in game provider calling bet api:",
       error.message
     );
-    return res.status(200).json({
-      Result: 999,
-      MainPoints: 0,
-      ErrorText: "Unknown errors",
-    });
+    const errorResponse = {
+      ErrorCode: 1001,
+      ErrorMessage: "Execute failed.",
+      Timestamp: Math.floor(Date.now() / 1000),
+    };
+
+    try {
+      const encryptedResponse = encryptDES(
+        JSON.stringify(errorResponse),
+        rsgDesKey,
+        rsgDesIV
+      );
+      return res.status(200).send(encryptedResponse);
+    } catch (encryptError) {
+      console.error("RSG GetBalance encryption error:", encryptError);
+      return res.status(500).send("System error");
+    }
   }
 });
 
-router.post("/api/fachai/settle", async (req, res) => {
+router.post("/api/rsg/BetResult", async (req, res) => {
   try {
-    const validationResult = validateRequest(req);
-    if (validationResult.error) {
-      return res.status(200).json(validationResult.response);
+    const decryptedRequest = decryptDES(req.body.Msg, rsgDesKey, rsgDesIV);
+    const requestData = JSON.parse(decryptedRequest);
+
+    const {
+      SystemCode,
+      WebId,
+      UserId,
+      TransactionID,
+      Currency,
+      GameId,
+      SequenNumber,
+      Amount,
+      BelongSequenNumber,
+      BetAmount,
+    } = requestData;
+
+    if (
+      !WebId ||
+      !SystemCode ||
+      !SequenNumber ||
+      !UserId ||
+      !TransactionID ||
+      Amount === null ||
+      Amount === undefined
+    ) {
+      const errorResponse = {
+        ErrorCode: 2001,
+        ErrorMessage: "Illegal arguments.",
+        Timestamp: Math.floor(Date.now() / 1000),
+      };
+
+      const encryptedResponse = encryptDES(
+        JSON.stringify(errorResponse),
+        rsgDesKey,
+        rsgDesIV
+      );
+
+      return res.status(200).send(encryptedResponse);
     }
-
-    const { AgentCode, Params, Sign } = req.body;
-
-    const decryptedParams = aesDecrypt(Params, fachaiSecret);
-    if (!verifySignature(decryptedParams, Sign)) {
-      return res.status(200).json({
-        Result: 604,
-        MainPoints: 0,
-        ErrorText: "Verification failed",
-      });
-    }
-
-    const originalPayload = JSON.parse(decryptedParams);
-
-    const { MemberAccount, SettleBetIDs, Win, Bet, Refund, ValidBet } =
-      originalPayload;
-
-    const betID = SettleBetIDs[0].betID;
 
     const [currentUser, existingTransaction, existingSettledTransaction] =
       await Promise.all([
         User.findOne(
-          { gameId: MemberAccount },
+          { gameId: UserId },
           { username: 1, wallet: 1, _id: 1 }
         ).lean(),
-        SlotFachaiModal.findOne({ betId: betID }, { _id: 1 }).lean(),
-        SlotFachaiModal.findOne(
-          { betId: betID, $or: [{ cancel: true }, { settle: true }] },
+        SlotRSGModal.findOne({ betId: SequenNumber }, { _id: 1 }).lean(),
+        SlotRSGModal.findOne(
+          { betId: SequenNumber, $or: [{ cancel: true }, { settle: true }] },
           { _id: 1 }
         ).lean(),
       ]);
 
     if (!currentUser) {
-      return res.status(200).json({
-        Result: 500,
-        MainPoints: 0,
-        ErrorText: "Player ID not exist",
-      });
+      const errorResponse = {
+        ErrorCode: 4001,
+        ErrorMessage: "The player's currency doesn't exist.",
+        Timestamp: Math.floor(Date.now() / 1000),
+      };
+
+      const encryptedResponse = encryptDES(
+        JSON.stringify(errorResponse),
+        rsgDesKey,
+        rsgDesIV
+      );
+
+      return res.status(200).send(encryptedResponse);
     }
 
     if (!existingTransaction) {
-      return res.status(200).json({
-        Result: 221,
-        MainPoints: roundToTwoDecimals(currentUser.wallet),
-        ErrorText: "Transaction ID not exist",
-      });
+      const errorResponse = {
+        ErrorCode: 4004,
+        ErrorMessage: "The SequenNumber doesn't exist.",
+        Timestamp: Math.floor(Date.now() / 1000),
+      };
+
+      const encryptedResponse = encryptDES(
+        JSON.stringify(errorResponse),
+        rsgDesKey,
+        rsgDesIV
+      );
+
+      return res.status(200).send(encryptedResponse);
     }
 
     if (existingSettledTransaction) {
-      return res.status(200).json({
-        Result: 0,
-        MainPoints: roundToTwoDecimals(currentUser.wallet),
-        ErrorText: "Success",
-      });
+      const errorResponse = {
+        ErrorCode: 4005,
+        ErrorMessage: "This SequenNumber has been settled.",
+        Timestamp: Math.floor(Date.now() / 1000),
+      };
+
+      const encryptedResponse = encryptDES(
+        JSON.stringify(errorResponse),
+        rsgDesKey,
+        rsgDesIV
+      );
+
+      return res.status(200).send(encryptedResponse);
     }
 
     const [updatedUserBalance] = await Promise.all([
       User.findOneAndUpdate(
-        { gameId: MemberAccount },
-        { $inc: { wallet: roundToTwoDecimals(Refund) } },
+        { gameId: UserId },
+        { $inc: { wallet: roundToTwoDecimals(Amount) } },
         { new: true, projection: { wallet: 1 } }
       ).lean(),
-      SlotFachaiModal.findOneAndUpdate(
-        { betId: betID },
+      SlotRSGModal.findOneAndUpdate(
+        { betId: SequenNumber },
         {
           settle: true,
-          betamount: roundToTwoDecimals(ValidBet),
-          settleamount: roundToTwoDecimals(Win),
+          settleamount: roundToTwoDecimals(Amount),
+          uniquesettlementId: TransactionID,
+          mainbetId: BelongSequenNumber,
         },
         { new: false }
       ),
     ]);
 
-    return res.status(200).json({
-      Result: 0,
-      MainPoints: roundToTwoDecimals(updatedUserBalance.wallet),
-      ErrorText: "Success",
-    });
+    const successResponse = {
+      ErrorCode: 0,
+      ErrorMessage: "OK",
+      Timestamp: Math.floor(Date.now() / 1000),
+      Data: {
+        Balance: roundToTwoDecimals(updatedUserBalance.wallet),
+      },
+    };
+
+    const encryptedResponse = encryptDES(
+      JSON.stringify(successResponse),
+      rsgDesKey,
+      rsgDesIV
+    );
+
+    return res.status(200).send(encryptedResponse);
   } catch (error) {
     console.error(
-      "FACHAI: Error in game provider calling ae96 settle bet api:",
+      "RSG: Error in game provider calling settle api:",
       error.message
     );
-    return res.status(200).json({
-      Result: 999,
-      MainPoints: 0,
-      ErrorText: "Unknown errors",
-    });
+    const errorResponse = {
+      ErrorCode: 1001,
+      ErrorMessage: "Execute failed.",
+      Timestamp: Math.floor(Date.now() / 1000),
+    };
+
+    try {
+      const encryptedResponse = encryptDES(
+        JSON.stringify(errorResponse),
+        rsgDesKey,
+        rsgDesIV
+      );
+      return res.status(200).send(encryptedResponse);
+    } catch (encryptError) {
+      console.error("RSG GetBalance encryption error:", encryptError);
+      return res.status(500).send("System error");
+    }
   }
 });
 
