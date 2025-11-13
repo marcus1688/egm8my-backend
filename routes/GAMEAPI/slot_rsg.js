@@ -1476,7 +1476,7 @@ router.post("/api/rsg/Prepay", async (req, res) => {
 
     const { SystemCode, WebId, UserId, TransactionId, Amount, SessionId } =
       requestData;
-    console.log("Prepay", requestData, "prepay");
+
     if (
       !WebId ||
       !SystemCode ||
@@ -1691,10 +1691,10 @@ router.post("/api/rsg/Refund", async (req, res) => {
           { gameId: UserId },
           { username: 1, wallet: 1, _id: 1 }
         ).lean(),
-        SlotRSGModal.findOne({ uniquebetId: TransactionId }, { _id: 1 }).lean(),
+        SlotRSGModal.findOne({ betId: SessionId }, { _id: 1 }).lean(),
         SlotRSGModal.findOne(
           {
-            uniquebetId: TransactionId,
+            betId: SessionId,
             $or: [{ cancel: true }, { settle: true }],
           },
           { _id: 1 }
@@ -1756,10 +1756,11 @@ router.post("/api/rsg/Refund", async (req, res) => {
         { new: true, projection: { wallet: 1 } }
       ).lean(),
       SlotRSGModal.findOneAndUpdate(
-        { uniquebetId: TransactionId },
+        { betId: SessionId },
         {
           settle: true,
           withdrawamount: roundToTwoDecimals(Amount),
+          uniquesettlementId: TransactionId,
         },
         { new: false }
       ),
@@ -1875,9 +1876,15 @@ router.post("/api/rsg/CheckTransaction", async (req, res) => {
 
     // Find the transaction
     const transaction = await SlotRSGModal.findOne(
-      { uniquebetId: TransactionId },
+      {
+        $or: [
+          { uniquebetId: TransactionId },
+          { uniquesettlementId: TransactionId },
+        ],
+      },
       {
         uniquebetId: 1,
+        uniquesettlementId: 1,
         createdAt: 1,
         depositamount: 1,
         withdrawamount: 1,
@@ -1903,29 +1910,37 @@ router.post("/api/rsg/CheckTransaction", async (req, res) => {
 
       return res.status(200).send(encryptedResponse);
     }
+    let action;
+    let amount;
 
-    const action = transaction.bet && !transaction.settle ? 1 : 2;
+    if (transaction.uniquebetId === TransactionId) {
+      // This is a Prepay transaction
+      action = 1;
+      amount = roundToTwoDecimals(transaction.depositamount || 0);
+    } else if (transaction.uniquesettlementId === TransactionId) {
+      // This is a Refund transaction
+      action = 2;
+      amount = roundToTwoDecimals(transaction.withdrawamount || 0);
+    }
 
-    const amount =
-      action === 1
-        ? roundToTwoDecimals(transaction.depositamount || 0)
-        : roundToTwoDecimals(transaction.withdrawamount || 0);
-
+    // Get user's current balance
     const currentUser = await User.findOne(
       { gameId: UserId },
       { wallet: 1 }
     ).lean();
 
+    // Format transaction time
     const transactionTime = moment(transaction.createdAt).format(
       "YYYY-MM-DD HH:mm:ss"
     );
 
+    // Prepare success response
     const successResponse = {
       ErrorCode: 0,
       ErrorMessage: "OK",
       Timestamp: Math.floor(Date.now() / 1000),
       Data: {
-        TransactionId: transaction.uniquebetId,
+        TransactionId: TransactionId,
         TransactionTime: transactionTime,
         WebId: WebId,
         UserId: UserId,
