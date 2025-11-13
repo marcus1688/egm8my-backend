@@ -527,7 +527,7 @@ router.post("/api/rsg/getgamelist", async (req, res) => {
 
 router.post("/api/rsg/launchGame", authenticateToken, async (req, res) => {
   try {
-    const { gameLang, gameCode } = req.body;
+    const { gameLang, gameCode, gameType } = req.body;
     const userId = req.user.userId;
     const user = await User.findById(userId);
 
@@ -544,7 +544,12 @@ router.post("/api/rsg/launchGame", authenticateToken, async (req, res) => {
       });
     }
 
-    if (user.gameLock?.rsg?.lock) {
+    const isLocked =
+      gameType === "Fishing"
+        ? user.gameLock?.rsgfish?.lock
+        : user.gameLock?.rsgslot?.lock;
+
+    if (isLocked) {
       return res.status(200).json({
         success: false,
         message: {
