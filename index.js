@@ -87,6 +87,7 @@ const slotPlayStarRouter = require("./routes/GAMEAPI/slot_playstar");
 const slotLivePlaytechRouter = require("./routes/GAMEAPI/slot_liveplaytech");
 const slotVpowerRouter = require("./routes/GAMEAPI/slot_vpower");
 const slotRich88Router = require("./routes/GAMEAPI/slot_rich88");
+const slotRSGRouter = require("./routes/GAMEAPI/slot_rsg");
 
 const sportSBOBETRouter = require("./routes/GAMEAPI/sport_sbobet");
 const sportM9BetRouter = require("./routes/GAMEAPI/sports_m9bet");
@@ -872,6 +873,7 @@ app.use(slotPlayStarRouter);
 app.use(slotLivePlaytechRouter);
 app.use(slotVpowerRouter);
 app.use(slotRich88Router);
+app.use(slotRSGRouter);
 
 app.use(sportSBOBETRouter);
 app.use(sportM9BetRouter);
@@ -954,31 +956,31 @@ if (process.env.NODE_ENV !== "development") {
 //   }
 // );
 
-// cron.schedule(
-//   "5 0 * * *",
-//   async () => {
-//     try {
-//       console.log("began proces getallturnover forrebate");
-//       const response = await axios.post(
-//         `${process.env.BASE_URL}admin/api/getAllTurnoverForRebate`,
-//         {
-//           date: "yesterday",
-//         }
-//       );
-//       if (response.data.success) {
-//         console.log("Turnover data fetched successfully:", {
-//           price: response.data.data,
-//           time: moment().format("YYYY-MM-DD HH:mm:ss"),
-//         });
-//       }
-//     } catch (error) {
-//       console.error("Error in getallturnover:", error.message);
-//     }
-//   },
-//   {
-//     timezone: "Asia/Shanghai",
-//   }
-// );
+cron.schedule(
+  "5 0 * * *",
+  async () => {
+    try {
+      console.log("began proces getallturnover forrebate");
+      const response = await axios.post(
+        `${process.env.BASE_URL}admin/api/getAllTurnoverForRebate`,
+        {
+          date: "yesterday",
+        }
+      );
+      if (response.data.success) {
+        console.log("Turnover data fetched successfully:", {
+          price: response.data.data,
+          time: moment().format("YYYY-MM-DD HH:mm:ss"),
+        });
+      }
+    } catch (error) {
+      console.error("Error in getallturnover:", error.message);
+    }
+  },
+  {
+    timezone: "Asia/Shanghai",
+  }
+);
 
 // if (process.env.NODE_ENV !== "development") {
 //   fetchAcceptedBetsCron();
