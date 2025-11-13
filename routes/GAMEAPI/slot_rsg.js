@@ -754,7 +754,6 @@ router.post("/api/rsg/GetBalance", async (req, res) => {
       { gameId: UserId },
       { wallet: 1, _id: 1 }
     ).lean();
-    console.log(currentUser, "succesful obain user and return wallet");
     if (!currentUser) {
       const errorResponse = {
         ErrorCode: 4001,
@@ -809,6 +808,257 @@ router.post("/api/rsg/GetBalance", async (req, res) => {
       console.error("RSG GetBalance encryption error:", encryptError);
       return res.status(500).send("System error");
     }
+  }
+});
+
+router.post("/api/rsg/Bet", async (req, res) => {
+  try {
+    const decryptedRequest = decryptDES(req.body.Msg, rsgDesKey, rsgDesIV);
+    const requestData = JSON.parse(decryptedRequest);
+
+    const {
+      SystemCode,
+      WebId,
+      UserId,
+      TransactionID,
+      Currency,
+      GameId,
+      SequenNumber,
+      Amount,
+      BelongSequenNumber,
+    } = requestData;
+
+    const successResponse = {
+      ErrorCode: 0,
+      ErrorMessage: "OK",
+      Timestamp: Math.floor(Date.now() / 1000),
+      Data: {
+        Balance: 2,
+      },
+    };
+
+    const encryptedResponse = encryptDES(
+      JSON.stringify(successResponse),
+      rsgDesKey,
+      rsgDesIV
+    );
+
+    return res.status(200).send(encryptedResponse);
+
+    const validationResult = validateRequest(req);
+    if (validationResult.error) {
+      return res.status(200).json(validationResult.response);
+    }
+
+    const { AgentCode, Params, Sign } = req.body;
+
+    const decryptedParams = aesDecrypt(Params, fachaiSecret);
+    if (!verifySignature(decryptedParams, Sign)) {
+      return res.status(200).json({
+        Result: 604,
+        MainPoints: 0,
+        ErrorText: "Verification failed",
+      });
+    }
+
+    const originalPayload = JSON.parse(decryptedParams);
+
+    const {
+      RecordID,
+      MemberAccount,
+      BetID,
+      GameID,
+      GameType,
+      Bet,
+      CreateDate,
+      Ts,
+    } = originalPayload;
+
+    const [currentUser, existingTransaction] = await Promise.all([
+      User.findOne(
+        { gameId: MemberAccount },
+        {
+          username: 1,
+          wallet: 1,
+          "gameLock.fachaifish.lock": 1,
+          "gameLock.fachaislot.lock": 1,
+        }
+      ).lean(),
+      SlotFachaiModal.findOne({ betId: BetID }, { _id: 1 }).lean(),
+    ]);
+
+    if (!currentUser) {
+      return res.status(200).json({
+        Result: 500,
+        MainPoints: 0,
+        ErrorText: "Player ID not exist",
+      });
+    }
+
+    const isLocked =
+      GameType === 1
+        ? currentUser.gameLock?.fachaifish?.lock
+        : currentUser.gameLock?.fachaislot?.lock;
+
+    if (isLocked) {
+      return res.status(200).json({
+        Result: 407,
+        ErrorText: "Account locked",
+      });
+    }
+
+    if (existingTransaction) {
+      return res.status(200).json({
+        Result: 0,
+        MainPoints: roundToTwoDecimals(currentUser.wallet),
+        ErrorText: "Success",
+      });
+    }
+
+    const updatedUserBalance = await User.findOneAndUpdate(
+      {
+        gameId: MemberAccount,
+        wallet: { $gte: roundToTwoDecimals(Bet) },
+      },
+      { $inc: { wallet: -roundToTwoDecimals(Bet) } },
+      { new: true, projection: { wallet: 1 } }
+    ).lean();
+
+    if (!updatedUserBalance) {
+      const latestUser = await User.findOne(
+        { gameId: MemberAccount },
+        { wallet: 1 }
+      ).lean();
+
+      return res.status(200).json({
+        Result: 203,
+        MainPoints: roundToTwoDecimals(latestUser?.wallet || 0),
+        ErrorText: "Insufficient Balance",
+      });
+    }
+
+    SlotFachaiModal.create({
+      betId: BetID,
+      username: MemberAccount,
+      bet: true,
+      betamount: roundToTwoDecimals(Bet),
+      gametype: "SLOT",
+    }).catch((error) => {
+      console.error("Error creating transaction:", error.message);
+    });
+
+    return res.status(200).json({
+      Result: 0,
+      MainPoints: roundToTwoDecimals(updatedUserBalance.wallet),
+      ErrorText: "Success",
+    });
+  } catch (error) {
+    console.error(
+      "FACHAI: Error in game provider calling ae96 bet api:",
+      error.message
+    );
+    return res.status(200).json({
+      Result: 999,
+      MainPoints: 0,
+      ErrorText: "Unknown errors",
+    });
+  }
+});
+
+router.post("/api/fachai/settle", async (req, res) => {
+  try {
+    const validationResult = validateRequest(req);
+    if (validationResult.error) {
+      return res.status(200).json(validationResult.response);
+    }
+
+    const { AgentCode, Params, Sign } = req.body;
+
+    const decryptedParams = aesDecrypt(Params, fachaiSecret);
+    if (!verifySignature(decryptedParams, Sign)) {
+      return res.status(200).json({
+        Result: 604,
+        MainPoints: 0,
+        ErrorText: "Verification failed",
+      });
+    }
+
+    const originalPayload = JSON.parse(decryptedParams);
+
+    const { MemberAccount, SettleBetIDs, Win, Bet, Refund, ValidBet } =
+      originalPayload;
+
+    const betID = SettleBetIDs[0].betID;
+
+    const [currentUser, existingTransaction, existingSettledTransaction] =
+      await Promise.all([
+        User.findOne(
+          { gameId: MemberAccount },
+          { username: 1, wallet: 1, _id: 1 }
+        ).lean(),
+        SlotFachaiModal.findOne({ betId: betID }, { _id: 1 }).lean(),
+        SlotFachaiModal.findOne(
+          { betId: betID, $or: [{ cancel: true }, { settle: true }] },
+          { _id: 1 }
+        ).lean(),
+      ]);
+
+    if (!currentUser) {
+      return res.status(200).json({
+        Result: 500,
+        MainPoints: 0,
+        ErrorText: "Player ID not exist",
+      });
+    }
+
+    if (!existingTransaction) {
+      return res.status(200).json({
+        Result: 221,
+        MainPoints: roundToTwoDecimals(currentUser.wallet),
+        ErrorText: "Transaction ID not exist",
+      });
+    }
+
+    if (existingSettledTransaction) {
+      return res.status(200).json({
+        Result: 0,
+        MainPoints: roundToTwoDecimals(currentUser.wallet),
+        ErrorText: "Success",
+      });
+    }
+
+    const [updatedUserBalance] = await Promise.all([
+      User.findOneAndUpdate(
+        { gameId: MemberAccount },
+        { $inc: { wallet: roundToTwoDecimals(Refund) } },
+        { new: true, projection: { wallet: 1 } }
+      ).lean(),
+      SlotFachaiModal.findOneAndUpdate(
+        { betId: betID },
+        {
+          settle: true,
+          betamount: roundToTwoDecimals(ValidBet),
+          settleamount: roundToTwoDecimals(Win),
+        },
+        { new: false }
+      ),
+    ]);
+
+    return res.status(200).json({
+      Result: 0,
+      MainPoints: roundToTwoDecimals(updatedUserBalance.wallet),
+      ErrorText: "Success",
+    });
+  } catch (error) {
+    console.error(
+      "FACHAI: Error in game provider calling ae96 settle bet api:",
+      error.message
+    );
+    return res.status(200).json({
+      Result: 999,
+      MainPoints: 0,
+      ErrorText: "Unknown errors",
+    });
   }
 });
 
