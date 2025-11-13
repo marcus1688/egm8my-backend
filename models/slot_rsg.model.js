@@ -24,14 +24,16 @@ const slotrsgSchema = new mongoose.Schema(
     settleamount: {
       type: Number,
     },
-
+    cancelamount: {
+      type: Number,
+    },
     bet: {
       type: Boolean,
     },
     cancel: {
       type: Boolean,
     },
-    bonus: {
+    jackpot: {
       type: Boolean,
     },
     settle: {
@@ -40,6 +42,12 @@ const slotrsgSchema = new mongoose.Schema(
     },
     gametype: {
       type: String,
+    },
+    depositamount: {
+      type: Number,
+    },
+    withdrawamount: {
+      type: Number,
     },
   },
   {

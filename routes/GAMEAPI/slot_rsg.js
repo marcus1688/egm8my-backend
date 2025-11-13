@@ -527,7 +527,7 @@ router.post("/api/rsg/getgamelist", async (req, res) => {
 
 router.post("/api/rsg/launchGame", authenticateToken, async (req, res) => {
   try {
-    const { gameLang, gameCode } = req.body;
+    const { gameLang, gameCode, gameType } = req.body;
     const userId = req.user.userId;
     const user = await User.findById(userId);
 
@@ -544,7 +544,12 @@ router.post("/api/rsg/launchGame", authenticateToken, async (req, res) => {
       });
     }
 
-    if (user.gameLock?.rsg?.lock) {
+    const isLocked =
+      gameType === "Fishing"
+        ? user.gameLock?.rsgfish?.lock
+        : user.gameLock?.rsgslot?.lock;
+
+    if (isLocked) {
       return res.status(200).json({
         success: false,
         message: {
@@ -712,122 +717,83 @@ router.post("/api/rsg/launchGame", authenticateToken, async (req, res) => {
   }
 });
 
+const createRSGErrorResponse = (errorCode, errorMessage) => ({
+  ErrorCode: errorCode,
+  ErrorMessage: errorMessage,
+  Timestamp: Math.floor(Date.now() / 1000),
+});
+
+const sendEncryptedResponse = (res, responseData) => {
+  try {
+    const encryptedResponse = encryptDES(
+      JSON.stringify(responseData),
+      rsgDesKey,
+      rsgDesIV
+    );
+    return res.status(200).send(encryptedResponse);
+  } catch (error) {
+    console.error("RSG encryption error:", error);
+    return res.status(500).send("System error");
+  }
+};
+
+const validateRSGRequest = (SystemCode, WebId) => {
+  return SystemCode === rsgSystemCode && WebId === "EGM8MY";
+};
+
 router.post("/api/rsg/GetBalance", async (req, res) => {
   try {
     const decryptedRequest = decryptDES(req.body.Msg, rsgDesKey, rsgDesIV);
-    const requestData = JSON.parse(decryptedRequest);
+    const { SystemCode, WebId, UserId, Currency } =
+      JSON.parse(decryptedRequest);
 
-    const { SystemCode, WebId, UserId, Currency } = requestData;
-
-    if (!SystemCode || !WebId || !UserId || !Currency) {
-      const errorResponse = {
-        ErrorCode: 2001,
-        ErrorMessage: "Illegal arguments.",
-        Timestamp: Math.floor(Date.now() / 1000),
-      };
-
-      const encryptedResponse = encryptDES(
-        JSON.stringify(errorResponse),
-        rsgDesKey,
-        rsgDesIV
+    if (
+      !SystemCode ||
+      !WebId ||
+      !UserId ||
+      !Currency ||
+      !validateRSGRequest(SystemCode, WebId)
+    ) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(2001, "Illegal arguments.")
       );
-
-      return res.status(200).send(encryptedResponse);
-    }
-
-    if (SystemCode !== rsgSystemCode || WebId !== "EGM8MY") {
-      const errorResponse = {
-        ErrorCode: 2001,
-        ErrorMessage: "Illegal arguments.",
-        Timestamp: Math.floor(Date.now() / 1000),
-      };
-
-      const encryptedResponse = encryptDES(
-        JSON.stringify(errorResponse),
-        rsgDesKey,
-        rsgDesIV
-      );
-
-      return res.status(200).send(encryptedResponse);
     }
 
     const currentUser = await User.findOne(
       { gameId: UserId },
       { wallet: 1, _id: 1 }
     ).lean();
+
     if (!currentUser) {
-      const errorResponse = {
-        ErrorCode: 4001,
-        ErrorMessage: "The player's currency doesn't exist.",
-        Timestamp: Math.floor(Date.now() / 1000),
-      };
-
-      const encryptedResponse = encryptDES(
-        JSON.stringify(errorResponse),
-        rsgDesKey,
-        rsgDesIV
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4001, "The player's currency doesn't exist.")
       );
-
-      return res.status(200).send(encryptedResponse);
     }
 
-    const successResponse = {
+    return sendEncryptedResponse(res, {
       ErrorCode: 0,
       ErrorMessage: "OK",
       Timestamp: Math.floor(Date.now() / 1000),
       Data: {
         Balance: roundToTwoDecimals(currentUser.wallet),
       },
-    };
-
-    const encryptedResponse = encryptDES(
-      JSON.stringify(successResponse),
-      rsgDesKey,
-      rsgDesIV
-    );
-
-    return res.status(200).send(encryptedResponse);
+    });
   } catch (error) {
-    console.error(
-      "RSG: Error in game provider calling get balance api:",
-      error.message
+    console.error("RSG GetBalance error:", error.message);
+    return sendEncryptedResponse(
+      res,
+      createRSGErrorResponse(1001, "Execute failed.")
     );
-    const errorResponse = {
-      ErrorCode: 1001,
-      ErrorMessage: "Execute failed.",
-      Timestamp: Math.floor(Date.now() / 1000),
-    };
-
-    try {
-      const encryptedResponse = encryptDES(
-        JSON.stringify(errorResponse),
-        rsgDesKey,
-        rsgDesIV
-      );
-      return res.status(200).send(encryptedResponse);
-    } catch (encryptError) {
-      console.error("RSG GetBalance encryption error:", encryptError);
-      return res.status(500).send("System error");
-    }
   }
 });
 
 router.post("/api/rsg/Bet", async (req, res) => {
   try {
     const decryptedRequest = decryptDES(req.body.Msg, rsgDesKey, rsgDesIV);
-    const requestData = JSON.parse(decryptedRequest);
-
-    const {
-      SystemCode,
-      WebId,
-      UserId,
-      TransactionID,
-      Currency,
-      GameId,
-      SequenNumber,
-      Amount,
-      BelongSequenNumber,
-    } = requestData;
+    const { SystemCode, WebId, UserId, TransactionID, SequenNumber, Amount } =
+      JSON.parse(decryptedRequest);
 
     if (
       !WebId ||
@@ -835,82 +801,50 @@ router.post("/api/rsg/Bet", async (req, res) => {
       !SequenNumber ||
       !UserId ||
       !TransactionID ||
-      Amount === null ||
-      Amount === undefined
+      Amount == null ||
+      !validateRSGRequest(SystemCode, WebId)
     ) {
-      const errorResponse = {
-        ErrorCode: 2001,
-        ErrorMessage: "Illegal arguments.",
-        Timestamp: Math.floor(Date.now() / 1000),
-      };
-
-      const encryptedResponse = encryptDES(
-        JSON.stringify(errorResponse),
-        rsgDesKey,
-        rsgDesIV
+      console.log("failed 1");
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(2001, "Illegal arguments.")
       );
-
-      return res.status(200).send(encryptedResponse);
     }
 
-    if (SystemCode !== rsgSystemCode || WebId !== "EGM8MY") {
-      const errorResponse = {
-        ErrorCode: 2001,
-        ErrorMessage: "Illegal arguments.",
-        Timestamp: Math.floor(Date.now() / 1000),
-      };
-
-      const encryptedResponse = encryptDES(
-        JSON.stringify(errorResponse),
-        rsgDesKey,
-        rsgDesIV
-      );
-
-      return res.status(200).send(encryptedResponse);
-    }
-
-    const [currentUser, existingTransaction] = await Promise.all([
+    const [currentUser, existingBet] = await Promise.all([
       User.findOne(
         { gameId: UserId },
         {
-          username: 1,
+          _id: 1,
           wallet: 1,
-          "gameLock.rsg.lock": 1,
+          "gameLock.rsgslot.lock": 1,
         }
       ).lean(),
       SlotRSGModal.findOne({ betId: SequenNumber }, { _id: 1 }).lean(),
     ]);
 
-    if (!currentUser || currentUser.gameLock?.rsg?.lock) {
-      const errorResponse = {
-        ErrorCode: 4001,
-        ErrorMessage: "The player's currency doesn't exist.",
-        Timestamp: Math.floor(Date.now() / 1000),
-      };
-
-      const encryptedResponse = encryptDES(
-        JSON.stringify(errorResponse),
-        rsgDesKey,
-        rsgDesIV
+    if (!currentUser) {
+      console.log("failed 2");
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4001, "The player's currency doesn't exist.")
       );
-
-      return res.status(200).send(encryptedResponse);
     }
 
-    if (existingTransaction) {
-      const errorResponse = {
-        ErrorCode: 4002,
-        ErrorMessage: "Duplicate SequenNumber.",
-        Timestamp: Math.floor(Date.now() / 1000),
-      };
-
-      const encryptedResponse = encryptDES(
-        JSON.stringify(errorResponse),
-        rsgDesKey,
-        rsgDesIV
+    if (currentUser.gameLock?.rsgslot?.lock) {
+      console.log("failed 3");
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(1001, "Execute failed.")
       );
+    }
 
-      return res.status(200).send(encryptedResponse);
+    if (existingBet) {
+      console.log("failed4");
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4002, "Duplicate SequenNumber.")
+      );
     }
 
     const updatedUserBalance = await User.findOneAndUpdate(
@@ -923,19 +857,11 @@ router.post("/api/rsg/Bet", async (req, res) => {
     ).lean();
 
     if (!updatedUserBalance) {
-      const errorResponse = {
-        ErrorCode: 4003,
-        ErrorMessage: "Balance is not enough.",
-        Timestamp: Math.floor(Date.now() / 1000),
-      };
-
-      const encryptedResponse = encryptDES(
-        JSON.stringify(errorResponse),
-        rsgDesKey,
-        rsgDesIV
+      console.log("failed5");
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4003, "Balance is not enough.")
       );
-
-      return res.status(200).send(encryptedResponse);
     }
 
     await SlotRSGModal.create({
@@ -947,64 +873,35 @@ router.post("/api/rsg/Bet", async (req, res) => {
       gametype: "SLOT",
     });
 
-    const successResponse = {
+    return sendEncryptedResponse(res, {
       ErrorCode: 0,
       ErrorMessage: "OK",
       Timestamp: Math.floor(Date.now() / 1000),
       Data: {
         Balance: roundToTwoDecimals(updatedUserBalance.wallet),
       },
-    };
-
-    const encryptedResponse = encryptDES(
-      JSON.stringify(successResponse),
-      rsgDesKey,
-      rsgDesIV
-    );
-
-    return res.status(200).send(encryptedResponse);
+    });
   } catch (error) {
-    console.error(
-      "RSG: Error in game provider calling bet api:",
-      error.message
+    console.error("RSG Bet error:", error.message);
+    return sendEncryptedResponse(
+      res,
+      createRSGErrorResponse(1001, "Execute failed.")
     );
-    const errorResponse = {
-      ErrorCode: 1001,
-      ErrorMessage: "Execute failed.",
-      Timestamp: Math.floor(Date.now() / 1000),
-    };
-
-    try {
-      const encryptedResponse = encryptDES(
-        JSON.stringify(errorResponse),
-        rsgDesKey,
-        rsgDesIV
-      );
-      return res.status(200).send(encryptedResponse);
-    } catch (encryptError) {
-      console.error("RSG GetBalance encryption error:", encryptError);
-      return res.status(500).send("System error");
-    }
   }
 });
 
 router.post("/api/rsg/BetResult", async (req, res) => {
   try {
     const decryptedRequest = decryptDES(req.body.Msg, rsgDesKey, rsgDesIV);
-    const requestData = JSON.parse(decryptedRequest);
-
     const {
       SystemCode,
       WebId,
       UserId,
       TransactionID,
-      Currency,
-      GameId,
       SequenNumber,
       Amount,
       BelongSequenNumber,
-      BetAmount,
-    } = requestData;
+    } = JSON.parse(decryptedRequest);
 
     if (
       !WebId ||
@@ -1012,83 +909,45 @@ router.post("/api/rsg/BetResult", async (req, res) => {
       !SequenNumber ||
       !UserId ||
       !TransactionID ||
-      Amount === null ||
-      Amount === undefined
+      Amount == null ||
+      !validateRSGRequest(SystemCode, WebId)
     ) {
-      const errorResponse = {
-        ErrorCode: 2001,
-        ErrorMessage: "Illegal arguments.",
-        Timestamp: Math.floor(Date.now() / 1000),
-      };
-
-      const encryptedResponse = encryptDES(
-        JSON.stringify(errorResponse),
-        rsgDesKey,
-        rsgDesIV
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(2001, "Illegal arguments.")
       );
-
-      return res.status(200).send(encryptedResponse);
     }
 
-    const [currentUser, existingTransaction, existingSettledTransaction] =
-      await Promise.all([
-        User.findOne(
-          { gameId: UserId },
-          { username: 1, wallet: 1, _id: 1 }
-        ).lean(),
-        SlotRSGModal.findOne({ betId: SequenNumber }, { _id: 1 }).lean(),
-        SlotRSGModal.findOne(
-          { betId: SequenNumber, $or: [{ cancel: true }, { settle: true }] },
-          { _id: 1 }
-        ).lean(),
-      ]);
-
+    const [currentUser, bet, settledBet] = await Promise.all([
+      User.findOne(
+        { gameId: UserId },
+        { username: 1, wallet: 1, _id: 1 }
+      ).lean(),
+      SlotRSGModal.findOne({ betId: SequenNumber }, { _id: 1 }).lean(),
+      SlotRSGModal.findOne(
+        { betId: SequenNumber, $or: [{ cancel: true }, { settle: true }] },
+        { _id: 1 }
+      ).lean(),
+    ]);
     if (!currentUser) {
-      const errorResponse = {
-        ErrorCode: 4001,
-        ErrorMessage: "The player's currency doesn't exist.",
-        Timestamp: Math.floor(Date.now() / 1000),
-      };
-
-      const encryptedResponse = encryptDES(
-        JSON.stringify(errorResponse),
-        rsgDesKey,
-        rsgDesIV
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4001, "The player's currency doesn't exist.")
       );
-
-      return res.status(200).send(encryptedResponse);
     }
 
-    if (!existingTransaction) {
-      const errorResponse = {
-        ErrorCode: 4004,
-        ErrorMessage: "The SequenNumber doesn't exist.",
-        Timestamp: Math.floor(Date.now() / 1000),
-      };
-
-      const encryptedResponse = encryptDES(
-        JSON.stringify(errorResponse),
-        rsgDesKey,
-        rsgDesIV
+    if (!bet) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4004, "The SequenNumber doesn't exist.")
       );
-
-      return res.status(200).send(encryptedResponse);
     }
 
-    if (existingSettledTransaction) {
-      const errorResponse = {
-        ErrorCode: 4005,
-        ErrorMessage: "This SequenNumber has been settled.",
-        Timestamp: Math.floor(Date.now() / 1000),
-      };
-
-      const encryptedResponse = encryptDES(
-        JSON.stringify(errorResponse),
-        rsgDesKey,
-        rsgDesIV
+    if (settledBet) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4005, "This SequenNumber has been settled.")
       );
-
-      return res.status(200).send(encryptedResponse);
     }
 
     const [updatedUserBalance] = await Promise.all([
@@ -1104,49 +963,593 @@ router.post("/api/rsg/BetResult", async (req, res) => {
           settleamount: roundToTwoDecimals(Amount),
           uniquesettlementId: TransactionID,
           mainbetId: BelongSequenNumber,
-        },
-        { new: false }
+        }
       ),
     ]);
 
-    const successResponse = {
+    return sendEncryptedResponse(res, {
       ErrorCode: 0,
       ErrorMessage: "OK",
       Timestamp: Math.floor(Date.now() / 1000),
       Data: {
         Balance: roundToTwoDecimals(updatedUserBalance.wallet),
       },
-    };
-
-    const encryptedResponse = encryptDES(
-      JSON.stringify(successResponse),
-      rsgDesKey,
-      rsgDesIV
-    );
-
-    return res.status(200).send(encryptedResponse);
+    });
   } catch (error) {
-    console.error(
-      "RSG: Error in game provider calling settle api:",
-      error.message
+    console.error("RSG BetResult error:", error.message);
+    return sendEncryptedResponse(
+      res,
+      createRSGErrorResponse(1001, "Execute failed.")
     );
-    const errorResponse = {
-      ErrorCode: 1001,
-      ErrorMessage: "Execute failed.",
+  }
+});
+
+router.post("/api/rsg/JackpotResult", async (req, res) => {
+  try {
+    const decryptedRequest = decryptDES(req.body.Msg, rsgDesKey, rsgDesIV);
+    const {
+      SystemCode,
+      WebId,
+      UserId,
+      TransactionID,
+      SequenNumber,
+      Amount,
+      BelongSequenNumber,
+    } = JSON.parse(decryptedRequest);
+
+    if (
+      !WebId ||
+      !SystemCode ||
+      !SequenNumber ||
+      !UserId ||
+      !TransactionID ||
+      Amount == null ||
+      !validateRSGRequest(SystemCode, WebId)
+    ) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(2001, "Illegal arguments.")
+      );
+    }
+
+    const [currentUser, existingJackpot] = await Promise.all([
+      User.findOne({ gameId: UserId }, { _id: 1 }).lean(),
+      SlotRSGModal.exists({ betId: SequenNumber }),
+    ]);
+
+    if (!currentUser) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4001, "The player's currency doesn't exist.")
+      );
+    }
+
+    if (existingJackpot) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4005, "This SequenNumber has been settled.")
+      );
+    }
+
+    const [updatedUserBalance] = await Promise.all([
+      User.findOneAndUpdate(
+        { gameId: UserId },
+        { $inc: { wallet: roundToTwoDecimals(Amount) } },
+        { new: true, projection: { wallet: 1 } }
+      ).lean(),
+
+      SlotRSGModal.create({
+        username: UserId,
+        betId: SequenNumber,
+        uniquesettlementId: TransactionID,
+        bet: true,
+        jackpot: true,
+        settle: true,
+        settleamount: roundToTwoDecimals(Amount),
+        betamount: 0,
+        gametype: "SLOT",
+        mainbetId: BelongSequenNumber,
+      }),
+    ]);
+
+    return sendEncryptedResponse(res, {
+      ErrorCode: 0,
+      ErrorMessage: "OK",
       Timestamp: Math.floor(Date.now() / 1000),
+      Data: {
+        Balance: roundToTwoDecimals(updatedUserBalance.wallet),
+      },
+    });
+  } catch (error) {
+    console.error("RSG JackpotResult error:", error.message);
+    return sendEncryptedResponse(
+      res,
+      createRSGErrorResponse(1001, "Execute failed.")
+    );
+  }
+});
+
+router.post("/api/rsg/CancelBet", async (req, res) => {
+  try {
+    const decryptedRequest = decryptDES(req.body.Msg, rsgDesKey, rsgDesIV);
+    const {
+      SystemCode,
+      WebId,
+      UserId,
+      TransactionID,
+      SequenNumber,
+      BetAmount,
+    } = JSON.parse(decryptedRequest);
+
+    if (
+      !WebId ||
+      !SystemCode ||
+      !SequenNumber ||
+      !UserId ||
+      !TransactionID ||
+      BetAmount == null ||
+      !validateRSGRequest(SystemCode, WebId)
+    ) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(2001, "Illegal arguments.")
+      );
+    }
+
+    const [currentUser, existingCancelBet, existingTransaction] =
+      await Promise.all([
+        User.findOne({ gameId: UserId }, { _id: 1 }).lean(),
+        SlotRSGModal.exists({ betId: SequenNumber, cancel: true }),
+        SlotRSGModal.findOne(
+          { betId: SequenNumber },
+          { betamount: 1, _id: 1 }
+        ).lean(),
+      ]);
+
+    if (!currentUser) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4001, "The player's currency doesn't exist.")
+      );
+    }
+
+    if (existingCancelBet) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4006, "This SequenNumber has been cancelled.")
+      );
+    }
+
+    if (!existingTransaction) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4004, "The SequenNumber doesn't exist.")
+      );
+    }
+
+    const [updatedUserBalance] = await Promise.all([
+      User.findOneAndUpdate(
+        { gameId: UserId },
+        { $inc: { wallet: roundToTwoDecimals(existingTransaction.betamount) } },
+        { new: true, projection: { wallet: 1 } }
+      ).lean(),
+      SlotRSGModal.findOneAndUpdate(
+        { betId: SequenNumber },
+        {
+          cancel: true,
+          cancelamount: roundToTwoDecimals(BetAmount),
+        }
+      ),
+    ]);
+
+    return sendEncryptedResponse(res, {
+      ErrorCode: 0,
+      ErrorMessage: "OK",
+      Timestamp: Math.floor(Date.now() / 1000),
+      Data: {
+        Balance: roundToTwoDecimals(updatedUserBalance.wallet),
+      },
+    });
+  } catch (error) {
+    console.error("RSG CancelBet error:", error.message);
+    return sendEncryptedResponse(
+      res,
+      createRSGErrorResponse(1001, "Execute failed.")
+    );
+  }
+});
+
+router.post("/api/rsg/Prepay", async (req, res) => {
+  try {
+    const decryptedRequest = decryptDES(req.body.Msg, rsgDesKey, rsgDesIV);
+    const { SystemCode, WebId, UserId, TransactionId, Amount, SessionId } =
+      JSON.parse(decryptedRequest);
+
+    if (
+      !WebId ||
+      !SystemCode ||
+      !SessionId ||
+      !UserId ||
+      !TransactionId ||
+      Amount == null ||
+      !validateRSGRequest(SystemCode, WebId)
+    ) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(2001, "Illegal arguments.")
+      );
+    }
+
+    const [currentUser, existingTransaction] = await Promise.all([
+      User.findOne(
+        { gameId: UserId },
+        {
+          username: 1,
+          "gameLock.rsgfish.lock": 1,
+        }
+      ).lean(),
+      SlotRSGModal.exists({ uniquebetId: TransactionId }),
+    ]);
+
+    if (!currentUser) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4001, "The player's currency doesn't exist.")
+      );
+    }
+
+    if (currentUser.gameLock?.rsgfish?.lock) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4008, "Deny prepay, other reasons.")
+      );
+    }
+
+    if (existingTransaction) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4007, "Duplicate TransactionId.")
+      );
+    }
+
+    const updatedUserBalance = await User.findOneAndUpdate(
+      {
+        gameId: UserId,
+        wallet: { $gte: roundToTwoDecimals(Amount) },
+      },
+      { $inc: { wallet: -roundToTwoDecimals(Amount) } },
+      { new: true, projection: { wallet: 1 } }
+    ).lean();
+
+    if (!updatedUserBalance) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4003, "Balance is not enough.")
+      );
+    }
+
+    await SlotRSGModal.create({
+      username: UserId,
+      betId: SessionId,
+      uniquebetId: TransactionId,
+      bet: true,
+      depositamount: roundToTwoDecimals(Amount),
+      gametype: "FISH",
+    });
+
+    return sendEncryptedResponse(res, {
+      ErrorCode: 0,
+      ErrorMessage: "OK",
+      Timestamp: Math.floor(Date.now() / 1000),
+      Data: {
+        Balance: roundToTwoDecimals(updatedUserBalance.wallet),
+        Amount: roundToTwoDecimals(Amount),
+      },
+    });
+  } catch (error) {
+    console.error("RSG Prepay error:", error.message);
+    return sendEncryptedResponse(
+      res,
+      createRSGErrorResponse(1001, "Execute failed.")
+    );
+  }
+});
+
+router.post("/api/rsg/Refund", async (req, res) => {
+  try {
+    const decryptedRequest = decryptDES(req.body.Msg, rsgDesKey, rsgDesIV);
+    const { SystemCode, WebId, UserId, TransactionId, SessionId, Amount } =
+      JSON.parse(decryptedRequest);
+
+    if (
+      !WebId ||
+      !SystemCode ||
+      !SessionId ||
+      !UserId ||
+      !TransactionId ||
+      Amount == null ||
+      !validateRSGRequest(SystemCode, WebId)
+    ) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(2001, "Illegal arguments.")
+      );
+    }
+
+    const [currentUser, existingTransaction, existingSettledTransaction] =
+      await Promise.all([
+        User.findOne(
+          { gameId: UserId },
+          { username: 1, wallet: 1, _id: 1 }
+        ).lean(),
+        SlotRSGModal.findOne({ betId: SessionId }, { _id: 1 }).lean(),
+        SlotRSGModal.exists({ uniquesettlementId: TransactionId }),
+      ]);
+
+    if (!currentUser) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4001, "The player's currency doesn't exist.")
+      );
+    }
+
+    if (!existingTransaction) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4009, "Transaction is not found.")
+      );
+    }
+
+    if (existingSettledTransaction) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4007, "Duplicate TransactionId.")
+      );
+    }
+
+    const [updatedUserBalance] = await Promise.all([
+      User.findOneAndUpdate(
+        { gameId: UserId },
+        { $inc: { wallet: roundToTwoDecimals(Amount) } },
+        { new: true, projection: { wallet: 1 } }
+      ).lean(),
+      SlotRSGModal.findOneAndUpdate(
+        { betId: SessionId },
+        {
+          settle: true,
+          withdrawamount: roundToTwoDecimals(Amount),
+          uniquesettlementId: TransactionId,
+        }
+      ),
+    ]);
+
+    return sendEncryptedResponse(res, {
+      ErrorCode: 0,
+      ErrorMessage: "OK",
+      Timestamp: Math.floor(Date.now() / 1000),
+      Data: {
+        Balance: roundToTwoDecimals(updatedUserBalance.wallet),
+        Amount: roundToTwoDecimals(Amount),
+      },
+    });
+  } catch (error) {
+    console.error("RSG Refund error:", error.message);
+    return sendEncryptedResponse(
+      res,
+      createRSGErrorResponse(1001, "Execute failed.")
+    );
+  }
+});
+
+router.post("/api/rsg/CheckTransaction", async (req, res) => {
+  try {
+    const decryptedRequest = decryptDES(req.body.Msg, rsgDesKey, rsgDesIV);
+    const { SystemCode, WebId, UserId, GameId, Currency, TransactionId } =
+      JSON.parse(decryptedRequest);
+
+    if (
+      !SystemCode ||
+      !WebId ||
+      !UserId ||
+      !GameId ||
+      !Currency ||
+      !TransactionId ||
+      !validateRSGRequest(SystemCode, WebId)
+    ) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(2001, "Illegal arguments.")
+      );
+    }
+
+    const [user, transaction] = await Promise.all([
+      User.findOne(
+        { gameId: UserId },
+        {
+          _id: 1,
+          wallet: 1,
+          "gameLock.rsgfish.lock": 1,
+        }
+      ).lean(),
+      SlotRSGModal.findOne(
+        {
+          $or: [
+            { uniquebetId: TransactionId },
+            { uniquesettlementId: TransactionId },
+          ],
+        },
+        {
+          uniquebetId: 1,
+          uniquesettlementId: 1,
+          createdAt: 1,
+          depositamount: 1,
+          withdrawamount: 1,
+          betamount: 1,
+          settleamount: 1,
+        }
+      ).lean(),
+    ]);
+
+    if (!user) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4001, "The player's currency doesn't exist.")
+      );
+    }
+
+    if (user.gameLock?.rsgfish?.lock) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4009, "Transaction is not found.")
+      );
+    }
+
+    if (!transaction) {
+      return sendEncryptedResponse(
+        res,
+        createRSGErrorResponse(4009, "Transaction is not found.")
+      );
+    }
+
+    const isPrepay = transaction.uniquebetId === TransactionId;
+    const action = isPrepay ? 1 : 2;
+    const amount = roundToTwoDecimals(
+      isPrepay
+        ? transaction.depositamount || 0
+        : transaction.withdrawamount || 0
+    );
+
+    return sendEncryptedResponse(res, {
+      ErrorCode: 0,
+      ErrorMessage: "OK",
+      Timestamp: Math.floor(Date.now() / 1000),
+      Data: {
+        TransactionId,
+        TransactionTime: moment(transaction.createdAt).format(
+          "YYYY-MM-DD HH:mm:ss"
+        ),
+        WebId,
+        UserId,
+        GameId,
+        Currency,
+        Action: action,
+        Amount: amount,
+        AfterBalance: roundToTwoDecimals(user?.wallet || 0),
+      },
+    });
+  } catch (error) {
+    console.error("RSG CheckTransaction error:", error.message);
+    return sendEncryptedResponse(
+      res,
+      createRSGErrorResponse(1001, "Execute failed.")
+    );
+  }
+});
+
+router.post("/api/rsg/getGameMinReport", async (req, res) => {
+  try {
+    const gameType = 2;
+
+    const now = moment.utc().add(8, "hours");
+    const end = now.clone().subtract(70, "minutes");
+    const start = end.clone().subtract(14, "minutes");
+
+    const formattedTimeStart = start.format("YYYY-MM-DD HH:mm");
+    const formattedTimeEnd = end.format("YYYY-MM-DD HH:mm");
+
+    const timestamp = Math.floor(Date.now() / 1000);
+
+    const payload = {
+      SystemCode: rsgSystemCode,
+      WebId: "EGM8MY",
+      GameType: 2,
+      TimeStart: formattedTimeStart,
+      TimeEnd: formattedTimeEnd,
     };
 
-    try {
-      const encryptedResponse = encryptDES(
-        JSON.stringify(errorResponse),
-        rsgDesKey,
-        rsgDesIV
-      );
-      return res.status(200).send(encryptedResponse);
-    } catch (encryptError) {
-      console.error("RSG GetBalance encryption error:", encryptError);
-      return res.status(500).send("System error");
+    const jsonData = JSON.stringify(payload);
+    const encryptedData = encryptDES(jsonData, rsgDesKey, rsgDesIV);
+    const signature = generateMD5Signature(
+      rsgAccount,
+      rsgSecret,
+      timestamp,
+      encryptedData
+    );
+
+    console.log("RSG Get Game Report Request:", {
+      gameType,
+      timeStart: formattedTimeStart,
+      timeEnd: formattedTimeEnd,
+    });
+
+    // Make API request
+    const response = await axios.post(
+      `${rsgAPIURL}/Report/GetGameMinReport`,
+      `Msg=${encryptedData}`,
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-API-ClientID": rsgAccount,
+          "X-API-Signature": signature,
+          "X-API-Timestamp": timestamp.toString(),
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
+      }
+    );
+
+    // Decrypt response
+    const decryptedResponse = decryptDES(response.data, rsgDesKey, rsgDesIV);
+    const responseData = JSON.parse(decryptedResponse);
+
+    console.log("RSG Get Game Report Response:", responseData);
+
+    // Handle errors
+    if (responseData.ErrorCode !== 0) {
+      let errorMessage = {
+        en: "Failed to retrieve game report",
+        zh: "获取游戏报告失败",
+      };
+
+      if (responseData.ErrorCode === 3011) {
+        errorMessage = {
+          en: "Permission denied for system",
+          zh: "系统权限不足",
+        };
+      } else if (responseData.ErrorCode === 3015) {
+        errorMessage = {
+          en: "Time is not in the allowed range",
+          zh: "时间不在允许的范围内",
+        };
+      }
+
+      return res.status(200).json({
+        success: false,
+        message: errorMessage,
+        error: responseData.ErrorMessage,
+      });
     }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        responseData,
+      },
+      message: {
+        en: "Game report retrieved successfully",
+        zh: "游戏报告检索成功",
+      },
+    });
+  } catch (error) {
+    console.error("RSG Get Game Report error:", error);
+    return res.status(500).json({
+      success: false,
+      message: {
+        en: "Failed to retrieve game report. Please try again.",
+        zh: "获取游戏报告失败，请重试。",
+      },
+      error: error.message,
+    });
   }
 });
 
