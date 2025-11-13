@@ -61,6 +61,7 @@ const SlotDCTGameModal = require("../models/slot_dctgame.model");
 const SlotPlaytechModal = require("../models/slot_playtech.model");
 const SlotFastSpinModal = require("../models/slot_fastspin.model");
 const SlotRich88Modal = require("../models/slot_rich88.model");
+const SlotBTGamingModal = require("../models/slot_btgaming.model");
 
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
@@ -5405,6 +5406,12 @@ router.get(
 
           // Rich88
           getAllUsersTurnover(SlotRich88Modal, {
+            cancel: { $ne: true },
+            settle: true,
+          }),
+
+          // BT Gaming
+          getAllUsersTurnover(SlotBTGamingModal, {
             cancel: { $ne: true },
             settle: true,
           }),

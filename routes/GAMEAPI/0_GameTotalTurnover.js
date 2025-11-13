@@ -33,6 +33,7 @@ const SlotDCTGameModal = require("../../models/slot_dctgame.model");
 const SlotPlaytechModal = require("../../models/slot_playtech.model");
 const SlotFastSpinModal = require("../../models/slot_fastspin.model");
 const SlotRich88Modal = require("../../models/slot_rich88.model");
+const SlotBTGamingModal = require("../../models/slot_btgaming.model");
 
 const { v4: uuidv4 } = require("uuid");
 const querystring = require("querystring");
@@ -536,6 +537,24 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
           },
         },
       },
+      btgaming: {
+        $match: {
+          cancel: { $ne: true },
+          settle: true,
+        },
+        $group: {
+          _id: null,
+          turnover: { $sum: { $ifNull: ["$betamount", 0] } },
+          winLoss: {
+            $sum: {
+              $subtract: [
+                { $ifNull: ["$settleamount", 0] },
+                { $ifNull: ["$betamount", 0] },
+              ],
+            },
+          },
+        },
+      },
     };
 
     // Create an array of promises for all aggregations to match player-report
@@ -696,6 +715,13 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
         end,
         aggregations.rich88
       ),
+      getGameDataSummary(
+        SlotBTGamingModal,
+        user.gameId,
+        start,
+        end,
+        aggregations.btgaming
+      ),
     ]);
 
     // Create a result map from the resolved promises
@@ -789,6 +815,10 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
       rich88:
         promiseResults[21].status === "fulfilled"
           ? promiseResults[21].value
+          : { turnover: 0, winLoss: 0 },
+      btgaming:
+        promiseResults[22].status === "fulfilled"
+          ? promiseResults[22].value
           : { turnover: 0, winLoss: 0 },
     };
     // Calculate total turnover and win loss
@@ -1030,6 +1060,14 @@ router.post("/api/games/active-games", authenticateToken, async (req, res) => {
         },
         "Rich88"
       ),
+      queryModel(
+        SlotBTGamingModal,
+        {
+          $or: [{ settle: false }, { settle: { $exists: false } }],
+          cancel: { $ne: true },
+        },
+        "BT Gaming"
+      ),
     ]);
 
     // Process results - much faster since we're only getting 1 game per provider
@@ -1264,6 +1302,14 @@ router.post(
           },
           "Rich88"
         ),
+        queryModel(
+          SlotBTGamingModal,
+          {
+            $or: [{ settle: false }, { settle: { $exists: false } }],
+            cancel: { $ne: true },
+          },
+          "BT Gaming"
+        ),
       ]);
 
       // Process results and combine all active games
@@ -1368,6 +1414,7 @@ router.post(
         Playtech: SlotPlaytechModal,
         Fastspin: SlotFastSpinModal,
         Rich88: SlotRich88Modal,
+        "BT Gaming": SlotBTGamingModal,
       };
 
       const Model = providerModels[gameName];
@@ -1437,6 +1484,7 @@ router.post(
           case "Playtech":
           case "Fastspin":
           case "Rich88":
+          case "BT Gaming":
           default:
             isAlreadySettled = gameRecord.settle === true;
             isAlreadyCanceled = gameRecord.cancel === true;
