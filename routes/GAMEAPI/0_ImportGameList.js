@@ -39,6 +39,7 @@ const GamePlaytechGameModal = require("../../models/slot_playtechDatabase.model"
 const GameVPowerGameModal = require("../../models/slot_vpowerDatabase.model");
 const GameRich88GameModal = require("../../models/slot_rich88Database.model");
 const GameRSGGameModal = require("../../models/slot_rsgDatabase.model");
+const GameAceWinGameModal = require("../../models/slot_acewinDatabase.model");
 const { S3Client, ListObjectsV2Command } = require("@aws-sdk/client-s3");
 const multer = require("multer");
 
@@ -268,8 +269,6 @@ router.post("/api/importGameList/168168", async (req, res) => {
         gameNameEN: row["Game Name"],
         gameNameCN: row["Simplified Chinese"],
         gameNameHK: row["Traditional Chinese"],
-        gameNameID: row["Indonesia"],
-        gameNameMS: row["Malay"],
         gameID: row["Game Code"],
         gameType: normalizedType,
         rtpRate: rtpValue,
@@ -282,7 +281,7 @@ router.post("/api/importGameList/168168", async (req, res) => {
         .json({ success: false, message: "No valid games to import." });
     }
 
-    await GameRSGGameModal.insertMany(games);
+    await GameAceWinGameModal.insertMany(games);
     res.status(200).json({
       success: true,
       imported: games.length,
@@ -296,25 +295,22 @@ router.post("/api/importGameList/168168", async (req, res) => {
   }
 });
 
-router.post("/api/importImgUrl/rsg", async (req, res) => {
+router.post("/api/importImgUrl/acewin", async (req, res) => {
   try {
     const bucket = "allgameslist";
-    const basePathEN = "rsg/en/";
-    const basePathCN = "rsg/zh/";
-    const basePathTW = "rsg/tw/";
+    const basePathEN = "acewin/en/";
+    const basePathCN = "acewin/zh/";
 
     // Get all games from the database that need images
-    const allGames = await GameRSGGameModal.find(
+    const allGames = await GameAceWinGameModal.find(
       {
         $or: [
           { imageUrlEN: { $exists: false } },
           { imageUrlEN: "" },
           { imageUrlCN: { $exists: false } },
           { imageUrlCN: "" },
-          { imageUrlHK: { $exists: false } },
-          { imageUrlHK: "" },
         ],
-        gameNameEN: { $exists: true, $ne: "" },
+        gameID: { $exists: true, $ne: "" },
       },
       { gameID: 1, gameNameEN: 1, _id: 1 }
     ).lean();
@@ -329,81 +325,46 @@ router.post("/api/importImgUrl/rsg", async (req, res) => {
     console.log(`Found ${allGames.length} games needing image sync`);
 
     /**
-     * Normalize game name for comparison
-     * Remove special characters, convert to lowercase, remove spaces
+     * Extract GameID from AWS filename
+     * Format: "SLOT_1002_木乃伊来了呀!_MummyMia_500X500_EN.png"
+     * Returns: "1002"
      */
-    const normalizeGameName = (name) => {
-      if (!name) return "";
-      return name
-        .replace(/[^a-zA-Z0-9]/g, "") // Remove all special characters and spaces
-        .toLowerCase();
-    };
+    const extractGameIDFromFilename = (filename) => {
+      console.log(`  Processing filename: ${filename}`);
 
-    /**
-     * Extract normalized game name from AWS filename
-     * EN Format: "game-Dragon Fortune.png"
-     * CN Format: "game-Dragon Fortune_cn.png"
-     * TW Format: "game-Dragon Fortune_tw.png"
-     * Returns: "dragonfortune"
-     */
-    const extractGameNameFromFilename = (filename, language = "en") => {
-      console.log(
-        `  Processing ${language.toUpperCase()} filename: ${filename}`
-      );
+      // Split by underscore
+      const parts = filename.split("_");
 
-      // Remove file extension first
-      const nameWithoutExt = filename.replace(
-        /\.(jpg|jpeg|png|gif|webp)$/i,
-        ""
-      );
-
-      // Remove language suffix (_cn or _tw) if present
-      let nameWithoutSuffix = nameWithoutExt;
-      if (language === "cn") {
-        nameWithoutSuffix = nameWithoutExt.replace(/_cn$/i, "");
-      } else if (language === "tw") {
-        nameWithoutSuffix = nameWithoutExt.replace(/_tw$/i, "");
+      // GameID is between first and second underscore (parts[1])
+      if (parts.length >= 2) {
+        const gameID = parts[1];
+        console.log(`  Extracted GameID: "${gameID}"`);
+        return gameID;
       }
 
-      // Remove "game-" prefix (case insensitive)
-      const nameWithoutPrefix = nameWithoutSuffix.replace(/^game-/i, "");
-
-      // Normalize the name (remove spaces, special chars, lowercase)
-      const normalizedName = normalizeGameName(nameWithoutPrefix);
-
-      console.log(
-        `  Original: "${filename}" -> Without suffix: "${nameWithoutSuffix}" -> Without prefix: "${nameWithoutPrefix}" -> Normalized: "${normalizedName}"`
-      );
-      return normalizedName;
+      console.log(`  ❌ Could not extract GameID from: ${filename}`);
+      return null;
     };
 
-    // Get all objects from S3 for all three language paths
-    const [enObjectsResult, cnObjectsResult, twObjectsResult] =
-      await Promise.all([
-        s3Client.send(
-          new ListObjectsV2Command({
-            Bucket: bucket,
-            Prefix: basePathEN,
-          })
-        ),
-        s3Client.send(
-          new ListObjectsV2Command({
-            Bucket: bucket,
-            Prefix: basePathCN,
-          })
-        ),
-        s3Client.send(
-          new ListObjectsV2Command({
-            Bucket: bucket,
-            Prefix: basePathTW,
-          })
-        ),
-      ]);
+    // Get all objects from S3 for both language paths
+    const [enObjectsResult, cnObjectsResult] = await Promise.all([
+      s3Client.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: basePathEN,
+        })
+      ),
+      s3Client.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: basePathCN,
+        })
+      ),
+    ]);
 
-    // Create lookup maps based on normalized game name
+    // Create lookup maps based on GameID
     const enImageMap = {};
     const cnImageMap = {};
-    const twImageMap = {};
 
     console.log("\n=== Processing EN Images ===");
     // Process EN images
@@ -411,18 +372,18 @@ router.post("/api/importImgUrl/rsg", async (req, res) => {
       enObjectsResult.Contents.forEach((object) => {
         const filename = object.Key.split("/").pop();
 
-        // Only process image files that start with "game-"
-        if (!filename.match(/^game-.*\.(jpg|jpeg|png|gif|webp)$/i)) {
-          console.log(`  Skipping non-matching EN file: ${filename}`);
+        // Only process image files
+        if (!filename.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+          console.log(`  Skipping non-image file: ${filename}`);
           return;
         }
 
-        const normalizedName = extractGameNameFromFilename(filename, "en");
+        const gameID = extractGameIDFromFilename(filename);
 
-        if (normalizedName) {
+        if (gameID) {
           const imageUrl = `https://${bucket}.s3.ap-southeast-1.amazonaws.com/${object.Key}`;
-          enImageMap[normalizedName] = imageUrl;
-          console.log(`  ✅ EN Mapped "${normalizedName}" -> ${imageUrl}`);
+          enImageMap[gameID] = imageUrl;
+          console.log(`  ✅ EN Mapped GameID "${gameID}" -> ${imageUrl}`);
         }
       });
     }
@@ -433,95 +394,64 @@ router.post("/api/importImgUrl/rsg", async (req, res) => {
       cnObjectsResult.Contents.forEach((object) => {
         const filename = object.Key.split("/").pop();
 
-        // Only process image files that start with "game-" and end with "_cn"
-        if (!filename.match(/^game-.*_cn\.(jpg|jpeg|png|gif|webp)$/i)) {
-          console.log(`  Skipping non-matching CN file: ${filename}`);
+        // Only process image files
+        if (!filename.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+          console.log(`  Skipping non-image file: ${filename}`);
           return;
         }
 
-        const normalizedName = extractGameNameFromFilename(filename, "cn");
+        const gameID = extractGameIDFromFilename(filename);
 
-        if (normalizedName) {
+        if (gameID) {
           const imageUrl = `https://${bucket}.s3.ap-southeast-1.amazonaws.com/${object.Key}`;
-          cnImageMap[normalizedName] = imageUrl;
-          console.log(`  ✅ CN Mapped "${normalizedName}" -> ${imageUrl}`);
-        }
-      });
-    }
-
-    console.log("\n=== Processing TW Images ===");
-    // Process TW images
-    if (twObjectsResult.Contents) {
-      twObjectsResult.Contents.forEach((object) => {
-        const filename = object.Key.split("/").pop();
-
-        // Only process image files that start with "game-" and end with "_tw"
-        if (!filename.match(/^game-.*_tw\.(jpg|jpeg|png|gif|webp)$/i)) {
-          console.log(`  Skipping non-matching TW file: ${filename}`);
-          return;
-        }
-
-        const normalizedName = extractGameNameFromFilename(filename, "tw");
-
-        if (normalizedName) {
-          const imageUrl = `https://${bucket}.s3.ap-southeast-1.amazonaws.com/${object.Key}`;
-          twImageMap[normalizedName] = imageUrl;
-          console.log(`  ✅ TW Mapped "${normalizedName}" -> ${imageUrl}`);
+          cnImageMap[gameID] = imageUrl;
+          console.log(`  ✅ CN Mapped GameID "${gameID}" -> ${imageUrl}`);
         }
       });
     }
 
     console.log(`\nEN Image Map: ${Object.keys(enImageMap).length} entries`);
     console.log(`CN Image Map: ${Object.keys(cnImageMap).length} entries`);
-    console.log(`TW Image Map: ${Object.keys(twImageMap).length} entries`);
 
     // Update each game document with the corresponding image URLs
     const updatePromises = allGames.map(async (game) => {
       const updates = {};
 
-      // Normalize the game name from database
-      const normalizedGameName = normalizeGameName(game.gameNameEN);
-
       console.log(
-        `\nProcessing game: gameNameEN="${game.gameNameEN}", normalized="${normalizedGameName}"`
+        `\nProcessing game: gameNameEN="${game.gameNameEN}", gameID="${game.gameID}"`
       );
 
-      // Match images using normalized game name
-      if (enImageMap[normalizedGameName]) {
-        updates.imageUrlEN = enImageMap[normalizedGameName];
-        console.log(`  ✅ EN image found: ${enImageMap[normalizedGameName]}`);
+      // Match images using GameID
+      if (enImageMap[game.gameID]) {
+        updates.imageUrlEN = enImageMap[game.gameID];
+        console.log(`  ✅ EN image found: ${enImageMap[game.gameID]}`);
       } else {
-        console.log(`  ❌ EN image NOT found for: ${normalizedGameName}`);
+        console.log(`  ❌ EN image NOT found for GameID: ${game.gameID}`);
       }
 
-      if (cnImageMap[normalizedGameName]) {
-        updates.imageUrlCN = cnImageMap[normalizedGameName];
-        console.log(`  ✅ CN image found: ${cnImageMap[normalizedGameName]}`);
+      if (cnImageMap[game.gameID]) {
+        updates.imageUrlCN = cnImageMap[game.gameID];
+        console.log(`  ✅ CN image found: ${cnImageMap[game.gameID]}`);
       } else {
-        console.log(`  ❌ CN image NOT found for: ${normalizedGameName}`);
-      }
-
-      if (twImageMap[normalizedGameName]) {
-        updates.imageUrlHK = twImageMap[normalizedGameName];
-        console.log(`  ✅ TW image found: ${twImageMap[normalizedGameName]}`);
-      } else {
-        console.log(`  ❌ TW image NOT found for: ${normalizedGameName}`);
+        console.log(`  ❌ CN image NOT found for GameID: ${game.gameID}`);
       }
 
       // Only update if we found at least one matching image
       if (Object.keys(updates).length > 0) {
         console.log(
-          `  ✅ Updating game "${game.gameNameEN}" with ${
+          `  ✅ Updating game "${game.gameNameEN}" (${game.gameID}) with ${
             Object.keys(updates).length
           } image(s)`
         );
-        return GameRSGGameModal.findByIdAndUpdate(
+        return GameAceWinGameModal.findByIdAndUpdate(
           game._id,
           { $set: updates },
           { new: true }
         );
       } else {
-        console.log(`  ⚠️ No images found for game "${game.gameNameEN}"`);
+        console.log(
+          `  ⚠️ No images found for game "${game.gameNameEN}" (${game.gameID})`
+        );
       }
 
       return null;
@@ -539,7 +469,7 @@ router.post("/api/importImgUrl/rsg", async (req, res) => {
       .slice(0, 10)
       .map((game) => ({
         gameNameEN: game.gameNameEN,
-        normalizedName: normalizeGameName(game.gameNameEN),
+        gameID: game.gameID,
       }));
 
     // Get examples of matched games
@@ -548,9 +478,9 @@ router.post("/api/importImgUrl/rsg", async (req, res) => {
       .slice(0, 5)
       .map((game) => ({
         gameNameEN: game.gameNameEN,
+        gameID: game.gameID,
         imageUrlEN: game.imageUrlEN || "Not set",
         imageUrlCN: game.imageUrlCN || "Not set",
-        imageUrlHK: game.imageUrlHK || "Not set",
       }));
 
     return res.status(200).json({
@@ -561,12 +491,11 @@ router.post("/api/importImgUrl/rsg", async (req, res) => {
       unmatchedGames: allGames.length - updatedCount,
       enImagesAvailable: Object.keys(enImageMap).length,
       cnImagesAvailable: Object.keys(cnImageMap).length,
-      twImagesAvailable: Object.keys(twImageMap).length,
       matchedExamples: matchedGames,
       unmatchedExamples: unmatchedGames,
     });
   } catch (error) {
-    console.error("Error syncing RSG images:", error);
+    console.error("Error syncing AceWin images:", error);
 
     return res.status(500).json({
       success: false,
@@ -810,14 +739,12 @@ router.post("/api/jili/updateMalayName", async (req, res) => {
 router.post("/api/jili/getgamelistMissing", async (req, res) => {
   try {
     // Fetch all games from the database (or add filters as needed)
-    const missingImageGames = await GameRSGGameModal.find({
+    const missingImageGames = await GameAceWinGameModal.find({
       $or: [
         { imageUrlEN: { $exists: false } },
         { imageUrlEN: "" },
         { imageUrlCN: { $exists: false } },
         { imageUrlCN: "" },
-        { imageUrlHK: { $exists: false } },
-        { imageUrlHK: "" },
       ],
       maintenance: false,
     });

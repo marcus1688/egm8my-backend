@@ -324,6 +324,8 @@ const userSchema = new mongoose.Schema(
       rich88: { type: gameLockSchema, default: () => ({}) },
       rsgslot: { type: gameLockSchema, default: () => ({}) },
       rsgfish: { type: gameLockSchema, default: () => ({}) },
+      acewinslot: { type: gameLockSchema, default: () => ({}) },
+      acewinfish: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },
@@ -438,9 +440,16 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    m9betDeposited: {
+      type: Boolean,
+      default: false,
+    },
     rsgRegistered: {
       type: Boolean,
       default: false,
+    },
+    acewinGameToken: {
+      type: String,
     },
   },
   {

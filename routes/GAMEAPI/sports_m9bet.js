@@ -10,6 +10,7 @@ const {
   adminUserWalletLog,
   GameDataLog,
 } = require("../../models/users.model");
+const { v4: uuidv4 } = require("uuid");
 const { adminUser, adminLog } = require("../../models/adminuser.model");
 const GameWalletLog = require("../../models/gamewalletlog.model");
 const Decimal = require("decimal.js");
@@ -41,6 +42,11 @@ async function GameWalletLogAttempt(
   });
 }
 
+function generateTransactionId(prefix = "") {
+  const uuid = uuidv4().replace(/-/g, "").substring(0, 12);
+  return prefix ? `${prefix}${uuid}` : uuid;
+}
+
 async function registerM9BetUser(user) {
   try {
     const params = new URLSearchParams({
@@ -48,6 +54,57 @@ async function registerM9BetUser(user) {
       secret: m9betSecret,
       agent: m9betAccount,
       username: user.gameId,
+    });
+
+    const response = await axios.post(
+      `${m9betAPIURL}/apijs.aspx?${params.toString()}`,
+      {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
+      }
+    );
+    if (response.data.errcode !== 0) {
+      if (response.data.errcode === -1) {
+        return {
+          success: false,
+          error: response.data.errtext,
+          maintenance: true,
+        };
+      }
+
+      return {
+        success: false,
+        error: response.data.errtext,
+        maintenance: false,
+      };
+    }
+    return {
+      success: true,
+      data: response.data,
+      maintenance: false,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response.data,
+      maintenance: false,
+    };
+  }
+}
+
+async function depositM9BetUser(user) {
+  try {
+    const refNo = generateTransactionId(user.gameId);
+
+    const params = new URLSearchParams({
+      action: "deposit",
+      secret: m9betSecret,
+      agent: m9betAccount,
+      username: user.gameId,
+      serial: refNo,
+      amount: 9999999,
     });
 
     const response = await axios.post(
@@ -156,6 +213,46 @@ router.post("/api/m9bet/launchGame", authenticateToken, async (req, res) => {
         {
           $set: {
             m9betRegistered: true,
+          },
+        }
+      );
+    }
+
+    if (!user.m9betDeposited) {
+      const depositData = await depositM9BetUser(user);
+      if (!depositData.success) {
+        console.log(`M9BET error in depositing account ${registeredData}`);
+
+        if (depositData.maintenance) {
+          return res.status(200).json({
+            success: false,
+            message: {
+              en: "Game under maintenance. Please try again later.",
+              zh: "游戏正在维护中，请稍后再试。",
+              ms: "Permainan sedang diselenggara, sila cuba lagi nanti.",
+              zh_hk: "遊戲而家維護緊，老闆遲啲再試下。",
+              id: "Permainan sedang dalam pemeliharaan. Silakan coba lagi nanti.",
+            },
+          });
+        }
+
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "M9BET: Game launch failed. Please try again or customer service for assistance.",
+            zh: "M9BET: 游戏启动失败，请重试或联系客服以获得帮助。",
+            ms: "M9BET: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+            zh_hk: "M9BET: 遊戲開唔到，老闆試多次或者搵客服幫手。",
+            id: "M9BET: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+          },
+        });
+      }
+
+      await User.findOneAndUpdate(
+        { username: user.username },
+        {
+          $set: {
+            m9betDeposited: true,
           },
         }
       );
