@@ -856,7 +856,7 @@ router.post("/api/rsg/Bet", async (req, res) => {
       { new: true, projection: { wallet: 1 } }
     ).lean();
 
-    if (!updatedUser) {
+    if (!updatedUserBalance) {
       console.log("failed5");
       return sendEncryptedResponse(
         res,
