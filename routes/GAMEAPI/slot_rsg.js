@@ -1660,7 +1660,6 @@ router.post("/api/rsg/Refund", async (req, res) => {
 
     const { SystemCode, WebId, UserId, TransactionId, SessionId, Amount } =
       requestData;
-    console.log("Refund", requestData, "refund");
     if (
       !WebId ||
       !SystemCode ||
