@@ -804,6 +804,7 @@ router.post("/api/rsg/Bet", async (req, res) => {
       Amount == null ||
       !validateRSGRequest(SystemCode, WebId)
     ) {
+      console.log("failed 1");
       return sendEncryptedResponse(
         res,
         createRSGErrorResponse(2001, "Illegal arguments.")
@@ -823,6 +824,7 @@ router.post("/api/rsg/Bet", async (req, res) => {
     ]);
 
     if (!currentUser) {
+      console.log("failed 2");
       return sendEncryptedResponse(
         res,
         createRSGErrorResponse(4001, "The player's currency doesn't exist.")
@@ -830,6 +832,7 @@ router.post("/api/rsg/Bet", async (req, res) => {
     }
 
     if (currentUser.gameLock?.rsgslot?.lock) {
+      console.log("failed 3");
       return sendEncryptedResponse(
         res,
         createRSGErrorResponse(1001, "Execute failed.")
@@ -837,6 +840,7 @@ router.post("/api/rsg/Bet", async (req, res) => {
     }
 
     if (existingBet) {
+      console.log("failed4");
       return sendEncryptedResponse(
         res,
         createRSGErrorResponse(4002, "Duplicate SequenNumber.")
@@ -853,6 +857,7 @@ router.post("/api/rsg/Bet", async (req, res) => {
     ).lean();
 
     if (!updatedUser) {
+      console.log("failed5");
       return sendEncryptedResponse(
         res,
         createRSGErrorResponse(4003, "Balance is not enough.")
