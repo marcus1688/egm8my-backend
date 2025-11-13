@@ -322,6 +322,7 @@ const userSchema = new mongoose.Schema(
       relaxgaming: { type: gameLockSchema, default: () => ({}) },
       m9bet: { type: gameLockSchema, default: () => ({}) },
       rich88: { type: gameLockSchema, default: () => ({}) },
+      rsg: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },
@@ -433,6 +434,10 @@ const userSchema = new mongoose.Schema(
       type: String,
     },
     m9betRegistered: {
+      type: Boolean,
+      default: false,
+    },
+    rsgRegistered: {
       type: Boolean,
       default: false,
     },
