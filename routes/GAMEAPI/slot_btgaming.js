@@ -19,9 +19,9 @@ const SlotBTGamingModal = require("../../models/slot_btgaming.model");
 
 require("dotenv").config();
 
-const btGamingAccount = "197699186042336";
+const btGamingAccount = "103235631101481";
 const webURL = "http://egm8my.vip/";
-const btGamingApiURL = "http://game.stgkg.btgame777.com/v2_2";
+const btGamingApiURL = "https://btapi.g8game.net/v2_2";
 const btGamingSecret = process.env.BTGAMING_SECRET;
 const btGamingMD5 = process.env.BTGAMING_MD5;
 
@@ -648,7 +648,7 @@ router.post("/api/btgaming/launchGame", authenticateToken, async (req, res) => {
   }
 });
 
-router.post("/api/btgamingstag/get_user_balance", async (req, res) => {
+router.post("/api/btgamingmy/get_user_balance", async (req, res) => {
   try {
     const { tran_id, username, currency } = req.body;
     const isAuthValid = verifyAuthorization(req.body, btGamingMD5);
@@ -733,7 +733,7 @@ router.post("/api/btgamingstag/get_user_balance", async (req, res) => {
   }
 });
 
-router.post("/api/btgamingstag/transfer", async (req, res) => {
+router.post("/api/btgamingmy/transfer", async (req, res) => {
   try {
     const {
       tran_id,
