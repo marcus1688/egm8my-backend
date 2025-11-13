@@ -599,12 +599,16 @@ router.post("/api/acewin/auth", async (req, res) => {
       });
     }
 
+    const currentBalance = new Decimal(
+      Number(currentUser.wallet)
+    ).toDecimalPlaces(4);
+
     return res.status(200).json({
       errorCode: 0,
       message: "Success",
       username: username,
       currency: "MYR",
-      balance: roundToTwoDecimals(currentUser.wallet),
+      balance: currentBalance.toNumber(),
       token: token,
     });
   } catch (error) {
@@ -639,6 +643,11 @@ router.post("/api/acewin/bet", async (req, res) => {
     }
 
     const username = token.split(":")[0];
+
+    const betAmountDecimal = new Decimal(Number(betAmount)).toDecimalPlaces(4);
+    const winloseAmountDecimal = new Decimal(
+      Number(winloseAmount)
+    ).toDecimalPlaces(4);
 
     const [currentUser, existingTransaction, gameInfo] = await Promise.all([
       User.findOne(
@@ -677,25 +686,31 @@ router.post("/api/acewin/bet", async (req, res) => {
     }
 
     if (existingTransaction) {
+      const currentBalance = new Decimal(
+        Number(currentUser.wallet)
+      ).toDecimalPlaces(4);
       return res.status(200).json({
         errorCode: 1,
         message: "Already accepted",
         username: username,
         currency: "MYR",
-        balance: roundToTwoDecimals(currentUser.wallet),
+        balance: currentBalance.toNumber(),
         txId: round,
         token,
       });
     }
 
-    const adjustedAmount = -betAmount + winloseAmount;
+    const adjustedAmount = betAmountDecimal
+      .neg()
+      .plus(winloseAmountDecimal)
+      .toDecimalPlaces(4);
 
     const updatedUserBalance = await User.findOneAndUpdate(
       {
         gameId: username,
-        wallet: { $gte: roundToTwoDecimals(betAmount) },
+        wallet: { $gte: betAmountDecimal.toNumber() },
       },
-      { $inc: { wallet: roundToTwoDecimals(adjustedAmount) } },
+      { $inc: { wallet: adjustedAmount.toNumber() } },
       { new: true, projection: { wallet: 1, username: 1 } }
     ).lean();
 
@@ -705,12 +720,16 @@ router.post("/api/acewin/bet", async (req, res) => {
         { wallet: 1, _id: 1 }
       ).lean();
 
+      const latestBalance = new Decimal(
+        Number(latestUser?.wallet || 0)
+      ).toDecimalPlaces(4);
+
       return res.status(200).json({
         errorCode: 2,
         message: "Not enough balance",
         username: username,
         currency: "MYR",
-        balance: roundToTwoDecimals(latestUser?.wallet || 0),
+        balance: latestBalance.toNumber(),
         txId: round,
         token,
       });
@@ -721,17 +740,21 @@ router.post("/api/acewin/bet", async (req, res) => {
       roundId: round,
       bet: true,
       settle: true,
-      betamount: roundToTwoDecimals(betAmount),
-      settleamount: roundToTwoDecimals(winloseAmount),
+      betamount: betAmountDecimal.toNumber(),
+      settleamount: winloseAmountDecimal.toNumber(),
       gametype: gameTypeCode,
     });
+
+    const finalBalance = new Decimal(
+      Number(updatedUserBalance.wallet)
+    ).toDecimalPlaces(4);
 
     return res.status(200).json({
       errorCode: 0,
       message: "Success",
       username: username,
       currency: "MYR",
-      balance: roundToTwoDecimals(updatedUserBalance.wallet),
+      balance: finalBalance.toNumber(),
       txId: round,
       token,
     });
@@ -758,6 +781,11 @@ router.post("/api/acewin/cancelBet", async (req, res) => {
       });
     }
 
+    const betAmountDecimal = new Decimal(Number(betAmount)).toDecimalPlaces(4);
+    const winloseAmountDecimal = new Decimal(
+      Number(winloseAmount)
+    ).toDecimalPlaces(4);
+
     const [currentUser, existingTransaction, existingCancelledTransaction] =
       await Promise.all([
         User.findOne({ gameId: userId }, { wallet: 1, _id: 1 }).lean(),
@@ -773,50 +801,60 @@ router.post("/api/acewin/cancelBet", async (req, res) => {
 
     if (!currentUser) {
       return res.status(200).json({
-        errorCode: 5,
+        errorCode: 4,
         message: "Token expired",
       });
     }
 
     if (!existingTransaction) {
+      const currentBalance = new Decimal(
+        Number(currentUser.wallet)
+      ).toDecimalPlaces(4);
+
       return res.status(200).json({
         errorCode: 2,
         message: "Round not found",
         username: username,
         currency: "MYR",
-        balance: roundToTwoDecimals(currentUser.wallet),
+        balance: currentBalance.toNumber(),
         txId: round,
       });
     }
 
     if (existingCancelledTransaction) {
+      const currentBalance = new Decimal(
+        Number(currentUser.wallet)
+      ).toDecimalPlaces(4);
+
       return res.status(200).json({
         errorCode: 1,
         message: "Already cancelled",
         username: username,
         currency: "MYR",
-        balance: roundToTwoDecimals(currentUser.wallet),
+        balance: currentBalance.toNumber(),
         txId: round,
       });
     }
 
-    const adjustedAmount = roundToTwoDecimals(betAmount - winloseAmount);
+    const adjustedAmount = betAmountDecimal
+      .minus(winloseAmountDecimal)
+      .toDecimalPlaces(4);
 
     let updatedUserBalance;
 
-    if (adjustedAmount > 0) {
+    if (adjustedAmount.greaterThan(0)) {
       updatedUserBalance = await User.findOneAndUpdate(
         { gameId: userId },
-        { $inc: { wallet: adjustedAmount } },
+        { $inc: { wallet: adjustedAmount.toNumber() } },
         { new: true, projection: { wallet: 1, username: 1 } }
       ).lean();
-    } else if (adjustedAmount < 0) {
+    } else if (adjustedAmount.lessThan(0)) {
       updatedUserBalance = await User.findOneAndUpdate(
         {
           gameId: userId,
-          wallet: { $gte: Math.abs(adjustedAmount) },
+          wallet: { $gte: adjustedAmount.abs().toNumber() },
         },
-        { $inc: { wallet: adjustedAmount } },
+        { $inc: { wallet: adjustedAmount.toNumber() } },
         { new: true, projection: { wallet: 1, username: 1 } }
       ).lean();
 
@@ -826,12 +864,16 @@ router.post("/api/acewin/cancelBet", async (req, res) => {
           { wallet: 1, username: 1 }
         ).lean();
 
+        const latestBalance = new Decimal(
+          Number(latestUser?.wallet || 0)
+        ).toDecimalPlaces(4);
+
         return res.status(200).json({
           errorCode: 5,
           message: "Not enough balance",
           username: latestUser?.username || userId,
           currency: "MYR",
-          balance: roundToTwoDecimals(latestUser?.wallet || 0),
+          balance: latestBalance.toNumber(),
           txId: round,
         });
       }
@@ -845,12 +887,16 @@ router.post("/api/acewin/cancelBet", async (req, res) => {
       { upsert: true, new: true }
     );
 
+    const finalBalance = new Decimal(
+      Number(updatedUserBalance.wallet)
+    ).toDecimalPlaces(4);
+
     return res.status(200).json({
       errorCode: 0,
       message: "Success",
       username: username,
       currency: "MYR",
-      balance: roundToTwoDecimals(updatedUserBalance.wallet),
+      balance: finalBalance.toNumber(),
       txId: round,
     });
   } catch (error) {

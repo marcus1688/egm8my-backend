@@ -15,6 +15,7 @@ const { adminUser, adminLog } = require("../../models/adminuser.model");
 const GameWalletLog = require("../../models/gamewalletlog.model");
 const Decimal = require("decimal.js");
 const SportM9BetModal = require("../../models/sport_m9bet.model");
+const cron = require("node-cron");
 require("dotenv").config();
 
 const webURL = "http://egm8my.vip/";
@@ -140,6 +141,155 @@ async function depositM9BetUser(user) {
     return {
       success: false,
       error: error.response.data,
+      maintenance: false,
+    };
+  }
+}
+
+async function fetchAndProcessResult() {
+  try {
+    const params = new URLSearchParams({
+      action: "fetch_result2",
+      secret: m9betSecret,
+      agent: m9betAccount,
+    });
+
+    const response = await axios.post(
+      `${m9betAPIURL}/apijs.aspx?${params.toString()}`,
+      {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
+      }
+    );
+
+    if (response.data.errcode !== 0) {
+      console.error("M9BET fetch result error:", response.data.errtext);
+      return {
+        success: false,
+        error: response.data.errtext,
+        maintenance: response.data.errcode === -1,
+      };
+    }
+
+    const tickets = response.data.result?.ticket || [];
+
+    if (!tickets.length) {
+      console.log("No tickets to process");
+      return {
+        success: true,
+        processed: 0,
+        skipped: 0,
+        maintenance: false,
+      };
+    }
+
+    console.log(`\n=== Processing ${tickets.length} M9BET tickets ===`);
+
+    let processedCount = 0;
+    let skippedCount = 0;
+    const errors = [];
+
+    // Process each ticket
+    for (const ticket of tickets) {
+      const { ventransid, res, w, u, id } = ticket;
+
+      // STEP 1: Skip if match is pending (res === 'P')
+      if (res === "P") {
+        console.log(`⏳ Skipping pending match: ${ventransid} (res: ${res})`);
+        skippedCount++;
+        continue;
+      }
+
+      try {
+        // STEP 2: Check if bet exists and is not already settled
+        const existingBet = await SportM9BetModal.findOne(
+          { betId: ventransid, settle: { $ne: true } },
+          { username: 1, betamount: 1, settle: 1, _id: 1 }
+        ).lean();
+
+        if (!existingBet) {
+          console.log(`⚠️  Bet not found or already settled: ${ventransid}`);
+          skippedCount++;
+          continue;
+        }
+
+        // STEP 3: Verify user exists
+        const user = await User.findOne(
+          { gameId: u },
+          { _id: 1, wallet: 1 }
+        ).lean();
+
+        if (!user) {
+          console.error(`❌ User not found: ${u} for bet ${ventransid}`);
+          errors.push({
+            ventransid,
+            error: `User not found: ${u}`,
+          });
+          continue;
+        }
+
+        const winAmount = roundToTwoDecimals(Math.abs(w || 0));
+
+        // STEP 4: Update user balance and bet record in parallel
+        const [updatedUser, updatedBet] = await Promise.all([
+          // Update user balance
+          User.findOneAndUpdate(
+            { gameId: u },
+            { $inc: { wallet: winAmount } },
+            { new: true, projection: { wallet: 1 } }
+          ).lean(),
+
+          // Update bet record
+          SportM9BetModal.findOneAndUpdate(
+            { betId: ventransid },
+            {
+              $set: {
+                settle: true,
+                settleamount: winAmount,
+                tranId: id,
+              },
+            },
+            { new: true }
+          ),
+        ]);
+
+        console.log(
+          `✅ Processed ${ventransid}: User ${u}, Win: ${winAmount}, Result: ${res}, New Balance: ${roundToTwoDecimals(
+            updatedUser.wallet
+          )}`
+        );
+        processedCount++;
+      } catch (error) {
+        console.error(
+          `❌ Error processing ticket ${ventransid}:`,
+          error.message
+        );
+        errors.push({
+          ventransid,
+          user: u,
+          error: error.message,
+        });
+      }
+    }
+
+    console.log(
+      `\n=== Processing Summary ===\n✅ Processed: ${processedCount}\n⏳ Skipped: ${skippedCount}\n❌ Errors: ${errors.length}\n========================\n`
+    );
+
+    return {
+      success: true,
+      processed: processedCount,
+      skipped: skippedCount,
+      errors: errors.length > 0 ? errors : undefined,
+      maintenance: false,
+    };
+  } catch (error) {
+    console.error("M9BET fetch result error:", error.message);
+    return {
+      success: false,
+      error: error.response?.data || error.message,
       maintenance: false,
     };
   }
@@ -360,197 +510,233 @@ router.post("/api/m9bet/launchGame", authenticateToken, async (req, res) => {
   }
 });
 
+const createM9BETXMLResponse = (errcode, errtext, result) => {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<response>
+  <errcode>${errcode}</errcode>
+  <errtext>${errtext}</errtext>
+  <result>${result}</result>
+</response>`;
+};
+
+const sendXMLResponse = (res, errcode, errtext, result = 0) => {
+  return res
+    .status(200)
+    .set("Content-Type", "application/xml")
+    .send(createM9BETXMLResponse(errcode, errtext, result));
+};
+
 router.get("/api/m9bet", async (req, res) => {
   try {
     const { secret, action, userName, betId, amt } = req.query;
 
     if (!secret || !action || !userName) {
-      return res.status(200).set("Content-Type", "application/xml")
-        .send(`<?xml version="1.0" encoding="UTF-8"?>
-  <response>
-    <errcode>-100</errcode>
-    <errtext>Missing required parameters</errtext>
-    <result>0</result>
-  </response>`);
+      return sendXMLResponse(res, -100, "Missing required parameters");
     }
 
     if (secret !== m9betSecret) {
-      return res.status(200).set("Content-Type", "application/xml")
-        .send(`<?xml version="1.0" encoding="UTF-8"?>
-  <response>
-    <errcode>-2</errcode>
-    <errtext>Invalid secret</errtext>
-    <result>0</result>
-  </response>`);
+      return sendXMLResponse(res, -2, "Invalid secret");
     }
 
-    if (action === "getbalance") {
-      const currentUser = await User.findOne(
-        { gameId: userName },
-        { wallet: 1, _id: 1 }
-      ).lean();
-
-      if (!currentUser) {
-        return res.status(200).set("Content-Type", "application/xml")
-          .send(`<?xml version="1.0" encoding="UTF-8"?>
-    <response>
-      <errcode>-4</errcode>
-      <errtext>Invalid username</errtext>
-      <result>0</result>
-    </response>`);
-      }
-      return res.status(200).set("Content-Type", "application/xml")
-        .send(`<?xml version="1.0" encoding="UTF-8"?>
-<response>
-  <errcode>0</errcode>
-  <errtext></errtext>
-  <result>${roundToTwoDecimals(currentUser.wallet)}</result>
-</response>`);
-    } else if (action === "placebet") {
-      const [currentUser, existingTransaction] = await Promise.all([
-        User.findOne(
+    switch (action) {
+      case "getbalance": {
+        const user = await User.findOne(
           { gameId: userName },
+          { wallet: 1, _id: 1 }
+        ).lean();
+
+        if (!user) {
+          return sendXMLResponse(res, -4, "Invalid username");
+        }
+
+        return sendXMLResponse(res, 0, "", roundToTwoDecimals(user.wallet));
+      }
+
+      // ===== PLACE BET =====
+      case "placebet": {
+        if (!betId || amt == null) {
+          return sendXMLResponse(res, -100, "Missing betId or amt");
+        }
+
+        const roundedAmount = roundToTwoDecimals(amt);
+
+        const [user, existingBet] = await Promise.all([
+          User.findOne(
+            { gameId: userName },
+            { wallet: 1, "gameLock.m9bet.lock": 1, _id: 1 }
+          ).lean(),
+          SportM9BetModal.exists({ betId }),
+        ]);
+
+        if (!user) {
+          return sendXMLResponse(res, -4, "Invalid username");
+        }
+
+        if (user.gameLock?.m9bet?.lock) {
+          return sendXMLResponse(res, -99, "Player account banned");
+        }
+
+        if (existingBet) {
+          return sendXMLResponse(res, 0, "", roundToTwoDecimals(user.wallet));
+        }
+
+        const updatedUser = await User.findOneAndUpdate(
           {
-            wallet: 1,
-            "gameLock.m9bet.lock": 1,
-            _id: 1,
-          }
-        ).lean(),
-        SportM9BetModal.findOne({ betId: betId }, { _id: 1 }).lean(),
-      ]);
-
-      if (!currentUser) {
-        return res.status(200).set("Content-Type", "application/xml")
-          .send(`<?xml version="1.0" encoding="UTF-8"?>
-    <response>
-      <errcode>-4</errcode>
-      <errtext>Invalid username</errtext>
-      <result>0</result>
-    </response>`);
-      }
-
-      if (currentUser.gameLock?.m9bet?.lock) {
-        return res.status(200).set("Content-Type", "application/xml")
-          .send(`<?xml version="1.0" encoding="UTF-8"?>
-    <response>
-      <errcode>-99</errcode>
-      <errtext>Player account banned</errtext>
-      <result>0</result>
-    </response>`);
-      }
-
-      if (existingTransaction) {
-        return res.status(200).set("Content-Type", "application/xml")
-          .send(`<?xml version="1.0" encoding="UTF-8"?>
-<response>
-  <errcode>0</errcode>
-  <errtext></errtext>
-  <result>${roundToTwoDecimals(currentUser.wallet)}</result>
-</response>`);
-      }
-
-      const updatedUserBalance = await User.findOneAndUpdate(
-        {
-          gameId: userName,
-          wallet: { $gte: roundToTwoDecimals(amt) },
-        },
-        { $inc: { wallet: -roundToTwoDecimals(amt) } },
-        { new: true, projection: { wallet: 1 } }
-      ).lean();
-
-      if (!updatedUserBalance) {
-        return res.status(200).set("Content-Type", "application/xml")
-          .send(`<?xml version="1.0" encoding="UTF-8"?>
-<response>
-<errcode>-98</errcode>
-<errtext>Insufficient Balance</errtext>
-<result>${roundToTwoDecimals(currentUser.wallet)}</result>
-</response>`);
-      }
-
-      await SportM9BetModal.create({
-        username: userName,
-        betId: betId,
-        bet: true,
-        betamount: roundToTwoDecimals(amt),
-      });
-
-      return res.status(200).set("Content-Type", "application/xml")
-        .send(`<?xml version="1.0" encoding="UTF-8"?>
-<response>
-<errcode>0</errcode>
-<errtext></errtext>
-<result>${roundToTwoDecimals(updatedUserBalance.wallet)}</result>
-</response>`);
-    } else if (action === "rejectbet") {
-      const [currentUser, existingTransaction] = await Promise.all([
-        User.findOne(
-          { gameId: userName },
-          {
-            wallet: 1,
-            _id: 1,
-          }
-        ).lean(),
-        SportM9BetModal.findOne(
-          { betId: betId },
-          { _id: 1, betamount: 1 }
-        ).lean(),
-      ]);
-
-      if (!currentUser) {
-        return res.status(200).set("Content-Type", "application/xml")
-          .send(`<?xml version="1.0" encoding="UTF-8"?>
-      <response>
-        <errcode>-4</errcode>
-        <errtext>Invalid username</errtext>
-        <result>0</result>
-      </response>`);
-      }
-
-      if (!existingTransaction) {
-        return res.status(200).set("Content-Type", "application/xml")
-          .send(`<?xml version="1.0" encoding="UTF-8"?>
-  <response>
-    <errcode>-97</errcode>
-    <errtext>Bet not found</errtext>
-    <result>${roundToTwoDecimals(currentUser.wallet)}</result>
-  </response>`);
-      }
-
-      const [updatedUserBalance] = await Promise.all([
-        User.findByIdAndUpdate(
-          currentUser._id,
-          {
-            $inc: { wallet: roundToTwoDecimals(existingTransaction.betamount) },
+            gameId: userName,
+            wallet: { $gte: roundedAmount },
           },
+          { $inc: { wallet: -roundedAmount } },
           { new: true, projection: { wallet: 1 } }
-        ).lean(),
+        ).lean();
 
-        SportM9BetModal.findOneAndUpdate(
-          { betId: betId },
-          { $set: { cancel: true } },
-          { upsert: true, new: true }
-        ),
-      ]);
+        if (!updatedUser) {
+          return sendXMLResponse(
+            res,
+            -98,
+            "Insufficient Balance",
+            roundToTwoDecimals(user.wallet)
+          );
+        }
 
-      return res.status(200).set("Content-Type", "application/xml")
-        .send(`<?xml version="1.0" encoding="UTF-8"?>
-  <response>
-  <errcode>0</errcode>
-  <errtext></errtext>
-  <result>${roundToTwoDecimals(updatedUserBalance.wallet)}</result>
-  </response>`);
+        await SportM9BetModal.create({
+          username: userName,
+          betId,
+          bet: true,
+          settle: false,
+          betamount: roundedAmount,
+        });
+
+        return sendXMLResponse(
+          res,
+          0,
+          "",
+          roundToTwoDecimals(updatedUser.wallet)
+        );
+      }
+
+      case "rejectbet": {
+        if (!betId) {
+          return sendXMLResponse(res, -100, "Missing betId");
+        }
+
+        const [user, bet] = await Promise.all([
+          User.findOne({ gameId: userName }, { wallet: 1, _id: 1 }).lean(),
+          SportM9BetModal.findOne(
+            { betId },
+            { betamount: 1, cancel: 1 }
+          ).lean(),
+        ]);
+
+        if (!user) {
+          return sendXMLResponse(res, -4, "Invalid username");
+        }
+
+        if (!bet || bet.cancel) {
+          return sendXMLResponse(res, 0, "", roundToTwoDecimals(user.wallet));
+        }
+
+        const [updatedUser] = await Promise.all([
+          User.findByIdAndUpdate(
+            user._id,
+            { $inc: { wallet: roundToTwoDecimals(bet.betamount || 0) } },
+            { new: true, projection: { wallet: 1 } }
+          ).lean(),
+          SportM9BetModal.findOneAndUpdate(
+            { betId },
+            { $set: { cancel: true } }
+          ),
+        ]);
+
+        return sendXMLResponse(
+          res,
+          0,
+          "",
+          roundToTwoDecimals(updatedUser.wallet)
+        );
+      }
+
+      case "placebet2": {
+        if (!betId || amt == null) {
+          return sendXMLResponse(res, -100, "Missing betId or amt");
+        }
+
+        const roundedAmount = roundToTwoDecimals(amt);
+
+        const [user, existingBet] = await Promise.all([
+          User.findOne(
+            { gameId: userName },
+            { wallet: 1, "gameLock.m9bet.lock": 1, _id: 1 }
+          ).lean(),
+          SportM9BetModal.exists({ betId }),
+        ]);
+
+        if (!user) {
+          return sendXMLResponse(res, -4, "Invalid username");
+        }
+
+        if (user.gameLock?.m9bet?.lock) {
+          return sendXMLResponse(res, -99, "Player account banned");
+        }
+
+        if (existingBet) {
+          return sendXMLResponse(res, 0, "", roundToTwoDecimals(user.wallet));
+        }
+
+        const updatedUser = await User.findOneAndUpdate(
+          {
+            gameId: userName,
+            wallet: { $gte: roundedAmount },
+          },
+          { $inc: { wallet: -roundedAmount } },
+          { new: true, projection: { wallet: 1 } }
+        ).lean();
+
+        if (!updatedUser) {
+          return sendXMLResponse(
+            res,
+            -98,
+            "Insufficient Balance",
+            roundToTwoDecimals(user.wallet)
+          );
+        }
+
+        await SportM9BetModal.create({
+          username: userName,
+          betId,
+          bet: true,
+          settle: false,
+          betamount: roundedAmount,
+        });
+
+        return sendXMLResponse(
+          res,
+          0,
+          "",
+          roundToTwoDecimals(updatedUser.wallet)
+        );
+      }
+
+      // ===== INVALID ACTION =====
+      default:
+        return sendXMLResponse(res, -100, "Invalid action");
     }
-
-    return res.status(200).json({
-      balance: balanceInCents,
-      currency: "HKD",
-      time: generateUnixTimestamp(),
-    });
   } catch (error) {
-    console.error("WE CASINO error in validate check:", error);
-    return res.status(500).json({ error: "Internal Server Error" });
+    console.error("M9BET API error:", error.message);
+    return sendXMLResponse(res, -1, "Internal Server Error");
   }
 });
+
+if (process.env.NODE_ENV !== "development") {
+  cron.schedule("*/5 * * * *", async () => {
+    console.log(
+      `\n[${new Date().toISOString()}] Running M9BET result processor...`
+    );
+    const result = await fetchAndProcessResult();
+
+    if (!result.success) {
+      console.error("M9BET processor failed:", result.error);
+    }
+  });
+}
 
 module.exports = router;
