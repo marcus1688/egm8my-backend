@@ -146,10 +146,58 @@ async function depositM9BetUser(user) {
   }
 }
 
+async function markFetchedGroup(fetchIds) {
+  try {
+    if (!fetchIds || fetchIds.length === 0) {
+      console.log("No fetch IDs to mark");
+      return { success: true };
+    }
+
+    // Convert array to comma-separated string
+    const fetchIdsString = Array.isArray(fetchIds)
+      ? fetchIds.join(",")
+      : fetchIds;
+    const params = new URLSearchParams({
+      action: "mark_fetched",
+      secret: m9betSecret,
+      agent: m9betAccount,
+      fetch_ids: fetchIdsString,
+    });
+
+    console.log(`Marking ${fetchIds.length} tickets as fetched...`);
+
+    const response = await axios.post(
+      `${m9betAPIURL}/apijs.aspx?${params.toString()}`,
+      {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
+      }
+    );
+    if (response.data.errcode !== 0) {
+      console.error("M9BET mark fetched error:", response.data.errtext);
+      return {
+        success: false,
+        error: response.data.errtext,
+      };
+    }
+
+    console.log(`✅ Successfully marked ${fetchIds.length} tickets as fetched`);
+    return { success: true };
+  } catch (error) {
+    console.error("M9BET mark fetched error:", error.message);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
+
 async function fetchAndProcessResult() {
   try {
     const params = new URLSearchParams({
-      action: "fetch_result2",
+      action: "fetch_result",
       secret: m9betSecret,
       agent: m9betAccount,
     });
@@ -174,7 +222,6 @@ async function fetchAndProcessResult() {
     }
 
     const tickets = response.data.result?.ticket || [];
-
     if (!tickets.length) {
       console.log("No tickets to process");
       return {
@@ -190,10 +237,11 @@ async function fetchAndProcessResult() {
     let processedCount = 0;
     let skippedCount = 0;
     const errors = [];
+    const processedFetchIds = []; // Track successfully processed fetch IDs
 
     // Process each ticket
     for (const ticket of tickets) {
-      const { ventransid, res, w, u, id } = ticket;
+      const { ventransid, res, w, u, id, fid } = ticket;
 
       // STEP 1: Skip if match is pending (res === 'P')
       if (res === "P") {
@@ -212,6 +260,8 @@ async function fetchAndProcessResult() {
         if (!existingBet) {
           console.log(`⚠️  Bet not found or already settled: ${ventransid}`);
           skippedCount++;
+          // Still mark as fetched even if already settled
+          if (fid) processedFetchIds.push(fid);
           continue;
         }
 
@@ -230,9 +280,10 @@ async function fetchAndProcessResult() {
           continue;
         }
 
-        const winAmount = roundToTwoDecimals(Math.abs(w || 0));
+        // STEP 4: Calculate win amount (w can be positive or negative)
+        const winAmount = roundToTwoDecimals(Math.abs(w) || 0);
 
-        // STEP 4: Update user balance and bet record in parallel
+        // STEP 5: Update user balance and bet record in parallel
         const [updatedUser, updatedBet] = await Promise.all([
           // Update user balance
           User.findOneAndUpdate(
@@ -256,10 +307,15 @@ async function fetchAndProcessResult() {
         ]);
 
         console.log(
-          `✅ Processed ${ventransid}: User ${u}, Win: ${winAmount}, Result: ${res}, New Balance: ${roundToTwoDecimals(
+          `✅ Processed ${ventransid}: User ${u}, Amount: ${winAmount} ${
+            winAmount > 0 ? "(WIN)" : winAmount < 0 ? "(LOSS)" : "(DRAW)"
+          }, Result: ${res}, New Balance: ${roundToTwoDecimals(
             updatedUser.wallet
           )}`
         );
+
+        // Add to processed fetch IDs
+        if (fid) processedFetchIds.push(fid);
         processedCount++;
       } catch (error) {
         console.error(
@@ -278,11 +334,24 @@ async function fetchAndProcessResult() {
       `\n=== Processing Summary ===\n✅ Processed: ${processedCount}\n⏳ Skipped: ${skippedCount}\n❌ Errors: ${errors.length}\n========================\n`
     );
 
+    // STEP 6: Mark all processed tickets as fetched
+    if (processedFetchIds.length > 0) {
+      console.log(
+        `\nMarking ${processedFetchIds.length} tickets as fetched...`
+      );
+      const markResult = await markFetchedGroup(processedFetchIds);
+
+      if (!markResult.success) {
+        console.error("Failed to mark tickets as fetched:", markResult.error);
+      }
+    }
+
     return {
       success: true,
       processed: processedCount,
       skipped: skippedCount,
       errors: errors.length > 0 ? errors : undefined,
+      markedFetched: processedFetchIds.length,
       maintenance: false,
     };
   } catch (error) {
@@ -294,7 +363,6 @@ async function fetchAndProcessResult() {
     };
   }
 }
-
 router.post("/api/m9bet/launchGame", authenticateToken, async (req, res) => {
   try {
     const { gameLang, clientPlatform } = req.body;
@@ -728,13 +796,14 @@ router.get("/api/m9bet", async (req, res) => {
 
 if (process.env.NODE_ENV !== "development") {
   cron.schedule("*/5 * * * *", async () => {
-    console.log(
-      `\n[${new Date().toISOString()}] Running M9BET result processor...`
-    );
     const result = await fetchAndProcessResult();
 
     if (!result.success) {
       console.error("M9BET processor failed:", result.error);
+    } else {
+      console.log(
+        `✅ Completed: ${result.processed} processed, ${result.skipped} skipped, ${result.markedFetched} marked as fetched`
+      );
     }
   });
 }
