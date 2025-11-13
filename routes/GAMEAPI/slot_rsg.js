@@ -1445,4 +1445,112 @@ router.post("/api/rsg/CheckTransaction", async (req, res) => {
     );
   }
 });
+
+router.post("/api/rsg/getGameMinReport", async (req, res) => {
+  try {
+    const gameType = 2;
+
+    const now = moment.utc().add(8, "hours");
+    const end = now.clone().subtract(70, "minutes");
+    const start = end.clone().subtract(14, "minutes");
+
+    const formattedTimeStart = start.format("YYYY-MM-DD HH:mm");
+    const formattedTimeEnd = end.format("YYYY-MM-DD HH:mm");
+
+    const timestamp = Math.floor(Date.now() / 1000);
+
+    const payload = {
+      SystemCode: rsgSystemCode,
+      WebId: "EGM8MY",
+      GameType: 2,
+      TimeStart: formattedTimeStart,
+      TimeEnd: formattedTimeEnd,
+    };
+
+    const jsonData = JSON.stringify(payload);
+    const encryptedData = encryptDES(jsonData, rsgDesKey, rsgDesIV);
+    const signature = generateMD5Signature(
+      rsgAccount,
+      rsgSecret,
+      timestamp,
+      encryptedData
+    );
+
+    console.log("RSG Get Game Report Request:", {
+      gameType,
+      timeStart: formattedTimeStart,
+      timeEnd: formattedTimeEnd,
+    });
+
+    // Make API request
+    const response = await axios.post(
+      `${rsgAPIURL}/Report/GetGameMinReport`,
+      `Msg=${encryptedData}`,
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-API-ClientID": rsgAccount,
+          "X-API-Signature": signature,
+          "X-API-Timestamp": timestamp.toString(),
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
+      }
+    );
+
+    // Decrypt response
+    const decryptedResponse = decryptDES(response.data, rsgDesKey, rsgDesIV);
+    const responseData = JSON.parse(decryptedResponse);
+
+    console.log("RSG Get Game Report Response:", responseData);
+
+    // Handle errors
+    if (responseData.ErrorCode !== 0) {
+      let errorMessage = {
+        en: "Failed to retrieve game report",
+        zh: "获取游戏报告失败",
+      };
+
+      if (responseData.ErrorCode === 3011) {
+        errorMessage = {
+          en: "Permission denied for system",
+          zh: "系统权限不足",
+        };
+      } else if (responseData.ErrorCode === 3015) {
+        errorMessage = {
+          en: "Time is not in the allowed range",
+          zh: "时间不在允许的范围内",
+        };
+      }
+
+      return res.status(200).json({
+        success: false,
+        message: errorMessage,
+        error: responseData.ErrorMessage,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        responseData,
+      },
+      message: {
+        en: "Game report retrieved successfully",
+        zh: "游戏报告检索成功",
+      },
+    });
+  } catch (error) {
+    console.error("RSG Get Game Report error:", error);
+    return res.status(500).json({
+      success: false,
+      message: {
+        en: "Failed to retrieve game report. Please try again.",
+        zh: "获取游戏报告失败，请重试。",
+      },
+      error: error.message,
+    });
+  }
+});
+
 module.exports = router;
