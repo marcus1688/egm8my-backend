@@ -175,9 +175,17 @@ router.get("/api/client/getallpromotion", async (req, res) => {
   try {
     const promotions = await promotion
       .find({ status: true })
-      .populate("categories")
-      .sort({ createdAt: -1 });
-    res.status(200).json({ success: true, promotions });
+      .populate("categories");
+
+    const sortedPromotions = promotions.sort((a, b) => {
+      const orderA = a.order || 0;
+      const orderB = b.order || 0;
+      if (orderA === 0 && orderB !== 0) return 1;
+      if (orderA !== 0 && orderB === 0) return -1;
+      return orderA - orderB;
+    });
+
+    res.status(200).json({ success: true, promotions: sortedPromotions });
   } catch (error) {
     console.log(error);
     res.status(200).send({ success: false, message: "Internal server error" });
@@ -187,10 +195,20 @@ router.get("/api/client/getallpromotion", async (req, res) => {
 // User Get Deposit Promotion
 router.get("/api/getdepositpromotion", async (req, res) => {
   try {
-    const promotions = await promotion
-      .find({ isDeposit: true }, "_id maintitle maintitleEN bonuspercentage")
-      .sort({ createdAt: 1 });
-    res.status(200).json({ success: true, data: promotions });
+    const promotions = await promotion.find(
+      { isDeposit: true },
+      "_id maintitle maintitleEN bonuspercentage order"
+    );
+
+    const sortedPromotions = promotions.sort((a, b) => {
+      const orderA = a.order || 0;
+      const orderB = b.order || 0;
+      if (orderA === 0 && orderB !== 0) return 1;
+      if (orderA !== 0 && orderB === 0) return -1;
+      return orderA - orderB;
+    });
+
+    res.status(200).json({ success: true, data: sortedPromotions });
   } catch (error) {
     console.error(error);
     res.status(200).send({ message: "Internal server error" });
@@ -202,9 +220,18 @@ router.get("/api/getexactpromotion", async (req, res) => {
   try {
     const promotions = await promotion.find(
       { claimtype: "Exact", status: true },
-      "_id maintitle maintitleEN bonusexact"
+      "_id maintitle maintitleEN bonusexact order"
     );
-    res.status(200).json({ authorized: true, promotions });
+
+    const sortedPromotions = promotions.sort((a, b) => {
+      const orderA = a.order || 0;
+      const orderB = b.order || 0;
+      if (orderA === 0 && orderB !== 0) return 1;
+      if (orderA !== 0 && orderB === 0) return -1;
+      return orderA - orderB;
+    });
+
+    res.status(200).json({ authorized: true, promotions: sortedPromotions });
   } catch (error) {
     console.error(error);
     res.status(200).send({ message: "Internal server error" });
