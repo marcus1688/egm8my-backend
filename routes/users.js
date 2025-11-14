@@ -1077,7 +1077,7 @@ router.post("/api/google-login", loginLimiter, async (req, res) => {
     });
     if (!user) {
       const baseUsername = email.split("@")[0];
-      const randomSuffix = Math.floor(Math.random() * 10000);
+      const randomSuffix = Math.floor(Math.random() * 100);
       const username = (baseUsername + randomSuffix).toLowerCase();
       const allUsersWithSameIp = await User.find({
         $or: [{ lastLoginIp: clientIp }, { registerIp: clientIp }],
