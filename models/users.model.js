@@ -106,9 +106,17 @@ const dailyGameAmountsSchema = new mongoose.Schema(
 const userSchema = new mongoose.Schema(
   {
     gameId: String,
-    email: String,
+    email: {
+      type: String,
+      sparse: true,
+    },
     isPhoneVerified: { type: Boolean, default: false },
     isEmailVerified: { type: Boolean, default: false },
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
     verificationToken: String,
     verificationTokenExpires: { type: Date },
     fullname: { type: String, required: true },

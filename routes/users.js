@@ -23,6 +23,8 @@ const { RebateLog } = require("../models/rebate.model");
 const LiveTransaction = require("../models/transaction.model");
 const UserWalletCashOut = require("../models/userwalletcashout.model");
 const jwt = require("jsonwebtoken");
+const { OAuth2Client } = require("google-auth-library");
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const {
   generateToken,
   generateGameToken,
@@ -1056,6 +1058,301 @@ router.post("/api/register", async (req, res) => {
 //   }
 // });
 
+router.post("/api/google-login", loginLimiter, async (req, res) => {
+  const { credential, referralCode } = req.body;
+  let clientIp = req.headers["x-forwarded-for"] || req.ip;
+  clientIp = clientIp.split(",")[0].trim();
+  const geo = geoip.lookup(clientIp);
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    const googleId = payload["sub"];
+    const email = payload["email"];
+    const name = payload["name"];
+    let user = await User.findOne({
+      $or: [{ googleId: googleId }, { email: email }],
+    });
+    if (!user) {
+      const baseUsername = email.split("@")[0];
+      const randomSuffix = Math.floor(Math.random() * 10000);
+      const username = (baseUsername + randomSuffix).toLowerCase();
+      const allUsersWithSameIp = await User.find({
+        $or: [{ lastLoginIp: clientIp }, { registerIp: clientIp }],
+      });
+      const isDuplicateIP = allUsersWithSameIp.length > 0;
+      if (isDuplicateIP) {
+        const userIdsToUpdate = allUsersWithSameIp.map((u) => u._id);
+        if (userIdsToUpdate.length > 0) {
+          const bulkUpdateResult = await User.updateMany(
+            { _id: { $in: userIdsToUpdate } },
+            { $set: { duplicateIP: true } }
+          );
+        }
+      }
+
+      const newReferralCode = await generateUniqueReferralCode();
+      const referralLink = generateReferralLink(newReferralCode);
+      const referralQrCode = await generateQRWithLogo(referralLink);
+      let referralBy = null;
+      if (referralCode) {
+        const referrer = await User.findOne({ referralCode: referralCode });
+        if (referrer) {
+          referralBy = {
+            user_id: referrer._id,
+            username: referrer.username,
+          };
+        }
+      }
+
+      user = new User({
+        username: username,
+        email: email,
+        fullname: name,
+        googleId: googleId,
+        status: true,
+        registerIp: clientIp,
+        lastLoginIp: clientIp,
+        lastLogin: new Date(),
+        password: await bcrypt.hash(Math.random().toString(36), 10),
+        referralLink,
+        referralCode: newReferralCode,
+        referralQrCode,
+        referralBy,
+        duplicateIP: isDuplicateIP,
+        viplevel: "Bronze",
+        gameId: await generateUniqueGameId(),
+      });
+
+      await user.save();
+
+      if (referralBy) {
+        await User.findByIdAndUpdate(referralBy.user_id, {
+          $push: {
+            referrals: {
+              user_id: user._id,
+              username: user.username,
+            },
+          },
+        });
+      }
+
+      await userLogAttempt(
+        user.username,
+        user.fullname,
+        user.phonenumber,
+        req.get("User-Agent"),
+        clientIp,
+        geo ? geo.country : "Unknown",
+        geo ? geo.city : "Unknown",
+        "Google Login - New User Created"
+      );
+    } else {
+      if (!user.googleId) {
+        user.googleId = googleId;
+      }
+      user.lastLogin = new Date();
+      user.lastLoginIp = clientIp;
+      await user.save();
+    }
+
+    if (user.status === false) {
+      await userLogAttempt(
+        user.username,
+        user.fullname,
+        user.phonenumber,
+        req.get("User-Agent"),
+        clientIp,
+        geo ? geo.country : "Unknown",
+        geo ? geo.city : "Unknown",
+        "Invalid Google Login: Account Is Inactive"
+      );
+      return res.status(200).json({
+        success: false,
+        status: "inactive",
+        message: {
+          en: "Your account is currently inactive",
+          zh: "您的账号当前未激活",
+          ms: "Akaun anda kini tidak aktif",
+        },
+      });
+    }
+
+    const allUsersWithSameIp = await User.find({
+      _id: { $ne: user._id },
+      $or: [{ lastLoginIp: clientIp }, { registerIp: clientIp }],
+    });
+    const isDuplicateIP = allUsersWithSameIp.length > 0;
+    if (isDuplicateIP) {
+      const userIdsToUpdate = [
+        ...allUsersWithSameIp.map((u) => u._id),
+        user._id,
+      ];
+      await User.updateMany(
+        { _id: { $in: userIdsToUpdate } },
+        { $set: { duplicateIP: true } }
+      );
+    }
+    const { token, refreshToken, newGameToken } = await handleLoginSuccess(
+      user._id
+    );
+    await userLogAttempt(
+      user.username,
+      user.fullname,
+      user.phonenumber,
+      req.get("User-Agent"),
+      clientIp,
+      geo ? geo.country : "Unknown",
+      geo ? geo.city : "Unknown",
+      isDuplicateIP
+        ? "Google Login Success - Duplicate IP Detected"
+        : "Google Login Success"
+    );
+
+    res.status(200).json({
+      success: true,
+      token,
+      refreshToken,
+      newGameToken,
+      message: {
+        en: "Login successful",
+        zh: "登录成功",
+        ms: "Log masuk berjaya",
+      },
+    });
+  } catch (error) {
+    console.error("Google login error:", error);
+    res.status(500).json({
+      success: false,
+      message: {
+        en: "Google login failed. Please try again",
+        zh: "Google登录失败，请重试",
+        ms: "Log masuk Google gagal. Sila cuba lagi",
+      },
+    });
+  }
+});
+
+router.post("/api/complete-profile", authenticateToken, async (req, res) => {
+  const { fullname, phonenumber, dob, referralCode } = req.body;
+  const userId = req.user.userId;
+  try {
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "User not found",
+          zh: "用户未找到",
+          ms: "Pengguna tidak dijumpai",
+        },
+      });
+    }
+    if (!phonenumber) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "Phone number is required",
+          zh: "电话号码是必填项",
+          ms: "Nombor telefon diperlukan",
+        },
+      });
+    }
+    const phoneToCheck = String(phonenumber);
+    const alternativePhone = phoneToCheck.startsWith("60")
+      ? "0" + phoneToCheck.substring(2)
+      : phoneToCheck;
+    const existingPhoneNumber = await User.findOne({
+      _id: { $ne: userId },
+      $or: [{ phonenumber: phoneToCheck }, { phonenumber: alternativePhone }],
+    });
+    if (existingPhoneNumber) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "Phone number is already registered",
+          zh: "手机号码已被注册",
+          ms: "Nombor telefon sudah didaftarkan",
+        },
+      });
+    }
+    const convertToStorageFormat = (phoneNumber) => {
+      if (phoneNumber && phoneNumber.startsWith("60")) {
+        return "0" + phoneNumber.substring(2);
+      }
+      return phoneNumber;
+    };
+    const phoneForStorage = convertToStorageFormat(phonenumber);
+    let referralBy = user.referralBy;
+    if (referralCode && !user.referralBy) {
+      const referrer = await User.findOne({ referralCode: referralCode });
+      if (referrer) {
+        referralBy = {
+          user_id: referrer._id,
+          username: referrer.username,
+        };
+        await User.findByIdAndUpdate(referrer._id, {
+          $push: {
+            referrals: {
+              user_id: user._id,
+              username: user.username,
+            },
+          },
+        });
+      }
+    }
+    const updateData = {
+      phonenumber: phoneForStorage,
+    };
+    if (fullname && fullname.trim()) {
+      const normalizedFullname = fullname.trim().toLowerCase();
+      const existingFullname = await User.findOne({
+        _id: { $ne: userId },
+        fullname: new RegExp(`^${normalizedFullname}$`, "i"),
+      });
+
+      if (existingFullname) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Full name is already registered",
+            zh: "全名已被注册",
+            ms: "Nama penuh sudah didaftarkan",
+          },
+        });
+      }
+      updateData.fullname = normalizedFullname;
+    }
+    if (dob) {
+      updateData.dob = dob;
+    }
+    if (referralBy) {
+      updateData.referralBy = referralBy;
+    }
+    await User.findByIdAndUpdate(userId, updateData);
+    res.status(200).json({
+      success: true,
+      message: {
+        en: "Profile updated successfully",
+        zh: "资料更新成功",
+        ms: "Profil berjaya dikemas kini",
+      },
+    });
+  } catch (error) {
+    console.error("Complete profile error:", error);
+    res.status(200).json({
+      success: false,
+      message: {
+        en: "Failed to update profile",
+        zh: "更新资料失败",
+        ms: "Gagal mengemaskini profil",
+      },
+    });
+  }
+});
+
 // User Login
 router.post("/api/login", loginLimiter, async (req, res) => {
   let { username, password } = req.body;
@@ -1339,7 +1636,7 @@ router.get("/api/userdata", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const user = await User.findById(userId).select(
-      "fullname username bankAccounts totaldeposit email lastRebateClaim lastCommissionClaim telegramId facebookId lastLogin phonenumber luckySpinClaim  wallet createdAt dob withdrawlock rebate email isPhoneVerified isEmailVerified monthlyBonusCountdownTime monthlyLoyaltyCountdownTime weeklySignInTime totaldeposit viplevel cryptoWallet luckySpinCount luckySpinAmount referralLink referralCode referralQrCode positionTaking totalturnover firstDepositDate"
+      "fullname username bankAccounts totaldeposit email lastRebateClaim lastCommissionClaim telegramId facebookId lastLogin phonenumber luckySpinClaim  wallet createdAt dob withdrawlock rebate email isPhoneVerified isEmailVerified monthlyBonusCountdownTime monthlyLoyaltyCountdownTime weeklySignInTime totaldeposit viplevel cryptoWallet luckySpinCount luckySpinAmount referralLink referralCode referralQrCode referralBy positionTaking totalturnover firstDepositDate googleId"
     );
     if (!user) {
       return res.status(200).json({ message: "用户未找到" });

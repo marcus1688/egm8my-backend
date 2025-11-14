@@ -37,6 +37,7 @@
     "express-mongo-sanitize": "^2.2.0",
     "express-rate-limit": "^7.4.0",
     "geoip-lite": "^1.4.10",
+    "google-auth-library": "^10.5.0",
     "helmet": "^8.1.0",
     "http-proxy-middleware": "^3.0.0",
     "https-proxy-agent": "^7.0.4",
