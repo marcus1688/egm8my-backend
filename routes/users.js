@@ -1077,7 +1077,7 @@ router.post("/api/google-login", loginLimiter, async (req, res) => {
     });
     if (!user) {
       const baseUsername = email.split("@")[0];
-      let username = baseUsername.toLowerCase();
+      let username = baseUsername.toLowerCase().replace(/[^a-z0-9]/g, "");
 
       if (username.length > 10) {
         username = username.substring(0, 10);
