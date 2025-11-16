@@ -1,9 +1,11 @@
 const express = require("express");
 const router = express.Router();
 const PaymentGateway = require("../models/paymentgateway.model");
+const PaymentGatewayTransactionLog = require("../models/paymentgatewayTransactionLog.model");
 const { authenticateAdminToken } = require("../auth/adminAuth");
 const multer = require("multer");
 const upload = multer({ storage: multer.memoryStorage() });
+const moment = require("moment");
 const {
   S3Client,
   PutObjectCommand,
@@ -434,6 +436,41 @@ router.patch(
           zh: "服务器内部错误",
         },
       });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/paymentgatewaytransactionlog",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const dateFilter = {};
+      if (startDate && endDate) {
+        dateFilter.createdAt = {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        };
+      }
+      const banktransactionlog = await PaymentGatewayTransactionLog.find({
+        ...dateFilter,
+      }).sort({
+        createdAt: -1,
+      });
+      res.status(200).json({
+        success: true,
+        message: "Bank transaction log retrieved successfully",
+        data: banktransactionlog,
+      });
+    } catch (error) {
+      console.error(
+        "Error occurred while retrieving bank transaction log:",
+        error
+      );
+      res
+        .status(200)
+        .json({ message: "Internal server error", error: error.message });
     }
   }
 );
