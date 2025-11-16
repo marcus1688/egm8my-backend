@@ -117,6 +117,7 @@ const userSchema = new mongoose.Schema(
       unique: true,
       sparse: true,
     },
+    telegramId: { type: String, unique: true, sparse: true },
     verificationToken: String,
     verificationTokenExpires: { type: Date },
     fullname: { type: String, required: true },

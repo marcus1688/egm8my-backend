@@ -1058,6 +1058,7 @@ router.post("/api/register", async (req, res) => {
 //   }
 // });
 
+// Google Login
 router.post("/api/google-login", loginLimiter, async (req, res) => {
   const { credential, referralCode } = req.body;
   let clientIp = req.headers["x-forwarded-for"] || req.ip;
@@ -1242,6 +1243,231 @@ router.post("/api/google-login", loginLimiter, async (req, res) => {
   }
 });
 
+// Telegram Login
+router.post("/api/telegram-login", loginLimiter, async (req, res) => {
+  const {
+    id,
+    first_name,
+    last_name,
+    username,
+    photo_url,
+    auth_date,
+    hash,
+    referralCode,
+  } = req.body;
+  let clientIp = req.headers["x-forwarded-for"] || req.ip;
+  clientIp = clientIp.split(",")[0].trim();
+  const geo = geoip.lookup(clientIp);
+  try {
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const secretKey = crypto.createHash("sha256").update(botToken).digest();
+    const dataCheckString = Object.keys(req.body)
+      .filter((key) => key !== "hash" && key !== "referralCode")
+      .sort()
+      .map((key) => `${key}=${req.body[key]}`)
+      .join("\n");
+    const computedHash = crypto
+      .createHmac("sha256", secretKey)
+      .update(dataCheckString)
+      .digest("hex");
+    if (computedHash !== hash) {
+      return res.status(401).json({
+        success: false,
+        message: {
+          en: "Invalid authentication data",
+          zh: "无效的认证数据",
+          ms: "Data pengesahan tidak sah",
+        },
+      });
+    }
+    const authDate = parseInt(auth_date);
+    const currentTime = Math.floor(Date.now() / 1000);
+    if (currentTime - authDate > 86400) {
+      return res.status(401).json({
+        success: false,
+        message: {
+          en: "Authentication expired",
+          zh: "认证已过期",
+          ms: "Pengesahan tamat tempoh",
+        },
+      });
+    }
+    let user = await User.findOne({
+      $or: [{ telegramId: id.toString() }],
+    });
+    if (!user) {
+      let baseUsername = username || `tg${id}`;
+      let finalUsername = baseUsername.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+      if (finalUsername.length > 10) {
+        finalUsername = finalUsername.substring(0, 10);
+      }
+      if (finalUsername.length < 5) {
+        const randomSuffix = Math.floor(Math.random() * 100);
+        finalUsername =
+          finalUsername + randomSuffix.toString().padStart(2, "0");
+      }
+
+      const allUsersWithSameIp = await User.find({
+        $or: [{ lastLoginIp: clientIp }, { registerIp: clientIp }],
+      });
+      const isDuplicateIP = allUsersWithSameIp.length > 0;
+      if (isDuplicateIP) {
+        const userIdsToUpdate = allUsersWithSameIp.map((u) => u._id);
+        if (userIdsToUpdate.length > 0) {
+          await User.updateMany(
+            { _id: { $in: userIdsToUpdate } },
+            { $set: { duplicateIP: true } }
+          );
+        }
+      }
+
+      const newReferralCode = await generateUniqueReferralCode();
+      const referralLink = generateReferralLink(newReferralCode);
+      const referralQrCode = await generateQRWithLogo(referralLink);
+      let referralBy = null;
+      if (referralCode) {
+        const referrer = await User.findOne({ referralCode: referralCode });
+        if (referrer) {
+          referralBy = {
+            user_id: referrer._id,
+            username: referrer.username,
+          };
+        }
+      }
+
+      user = new User({
+        username: finalUsername,
+        fullname: `${first_name} ${last_name || ""}`.trim(),
+        telegramId: id.toString(),
+        status: true,
+        registerIp: clientIp,
+        lastLoginIp: clientIp,
+        lastLogin: new Date(),
+        password: await bcrypt.hash(Math.random().toString(36), 10),
+        referralLink,
+        referralCode: newReferralCode,
+        referralQrCode,
+        referralBy,
+        duplicateIP: isDuplicateIP,
+        viplevel: "Bronze",
+        gameId: await generateUniqueGameId(),
+      });
+
+      await user.save();
+
+      if (referralBy) {
+        await User.findByIdAndUpdate(referralBy.user_id, {
+          $push: {
+            referrals: {
+              user_id: user._id,
+              username: user.username,
+            },
+          },
+        });
+      }
+
+      await userLogAttempt(
+        user.username,
+        user.fullname,
+        user.phonenumber,
+        req.get("User-Agent"),
+        clientIp,
+        geo ? geo.country : "Unknown",
+        geo ? geo.city : "Unknown",
+        "Telegram Login - New User Created"
+      );
+    } else {
+      if (!user.telegramId) {
+        user.telegramId = id.toString();
+        user.telegramUsername = username;
+        user.telegramPhotoUrl = photo_url;
+      }
+      user.lastLogin = new Date();
+      user.lastLoginIp = clientIp;
+      await user.save();
+    }
+
+    if (user.status === false) {
+      await userLogAttempt(
+        user.username,
+        user.fullname,
+        user.phonenumber,
+        req.get("User-Agent"),
+        clientIp,
+        geo ? geo.country : "Unknown",
+        geo ? geo.city : "Unknown",
+        "Invalid Telegram Login: Account Is Inactive"
+      );
+      return res.status(200).json({
+        success: false,
+        status: "inactive",
+        message: {
+          en: "Your account is currently inactive",
+          zh: "您的账号当前未激活",
+          ms: "Akaun anda kini tidak aktif",
+        },
+      });
+    }
+
+    const allUsersWithSameIp = await User.find({
+      _id: { $ne: user._id },
+      $or: [{ lastLoginIp: clientIp }, { registerIp: clientIp }],
+    });
+    const isDuplicateIP = allUsersWithSameIp.length > 0;
+    if (isDuplicateIP) {
+      const userIdsToUpdate = [
+        ...allUsersWithSameIp.map((u) => u._id),
+        user._id,
+      ];
+      await User.updateMany(
+        { _id: { $in: userIdsToUpdate } },
+        { $set: { duplicateIP: true } }
+      );
+    }
+
+    const { token, refreshToken, newGameToken } = await handleLoginSuccess(
+      user._id
+    );
+
+    await userLogAttempt(
+      user.username,
+      user.fullname,
+      user.phonenumber,
+      req.get("User-Agent"),
+      clientIp,
+      geo ? geo.country : "Unknown",
+      geo ? geo.city : "Unknown",
+      isDuplicateIP
+        ? "Telegram Login Success - Duplicate IP Detected"
+        : "Telegram Login Success"
+    );
+
+    res.status(200).json({
+      success: true,
+      token,
+      refreshToken,
+      newGameToken,
+      message: {
+        en: "Login successful",
+        zh: "登录成功",
+        ms: "Log masuk berjaya",
+      },
+    });
+  } catch (error) {
+    console.error("Telegram login error:", error);
+    res.status(500).json({
+      success: false,
+      message: {
+        en: "Telegram login failed. Please try again",
+        zh: "Telegram登录失败，请重试",
+        ms: "Log masuk Telegram gagal. Sila cuba lagi",
+      },
+    });
+  }
+});
+
+// Complete Profile after using google login and telegram login
 router.post("/api/complete-profile", authenticateToken, async (req, res) => {
   const { fullname, phonenumber, dob, referralCode } = req.body;
   const userId = req.user.userId;
