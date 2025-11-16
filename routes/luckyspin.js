@@ -9,6 +9,9 @@ const { User } = require("../models/users.model");
 const { updateKioskBalance } = require("../services/kioskBalanceService");
 const kioskbalance = require("../models/kioskbalance.model");
 const moment = require("moment");
+const { checkSportPendingMatch } = require("../helpers/turnoverHelper");
+const { v4: uuidv4 } = require("uuid");
+const UserWalletLog = require("../models/userwalletlog.model");
 
 // Start Spin
 router.post("/api/luckySpinStartGame", authenticateToken, async (req, res) => {
@@ -25,16 +28,19 @@ router.post("/api/luckySpinStartGame", authenticateToken, async (req, res) => {
         },
       });
     }
-    if (user.luckySpinAmount > 0) {
+    if (user.luckySpinPoints < 100) {
       return res.status(200).json({
         success: false,
         message: {
-          en: "You have already claimed spin",
-          zh: "您已经领取了幸运转盘机会",
-          ms: "Anda telah menuntut putaran",
+          en: "You need at least 100 points to spin",
+          zh: "您需要至少100积分才能转动转盘",
+          ms: "Anda memerlukan sekurang-kurangnya 100 mata untuk memutar",
         },
       });
     }
+
+    const pointsBeforeSpin = user.luckySpinPoints;
+
     const defaultPrizes = await LuckySpin.find();
     let allProbabilitySlots = [];
     defaultPrizes.forEach((prize) => {
@@ -51,21 +57,56 @@ router.post("/api/luckySpinStartGame", authenticateToken, async (req, res) => {
     }
     const randomIndex = Math.floor(Math.random() * allProbabilitySlots.length);
     const selectedPrize = allProbabilitySlots[randomIndex];
+    const pointsAfterSpin = pointsBeforeSpin - 100;
+    const transactionId = uuidv4();
+    user.wallet += selectedPrize.value;
+    user.luckySpinPoints -= 100;
     const spinLog = new LuckySpinLog({
       playerusername: user.username,
       playerfullname: user.fullname,
       winning: selectedPrize.value,
-      beforefreespin: 1,
-      afterfreespin: 0,
+      beforefreespin: pointsBeforeSpin,
+      afterfreespin: pointsAfterSpin,
     });
-    await Promise.all([
-      User.findByIdAndUpdate(userId, {
-        $set: {
-          luckySpinAmount: selectedPrize.value,
-        },
-      }),
-      spinLog.save(),
-    ]);
+    if (selectedPrize.value > 0) {
+      const hasSportPendingMatch = await checkSportPendingMatch(user.gameId);
+      const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
+      const NewBonusTransaction = new Bonus({
+        transactionId: transactionId,
+        userId: user._id,
+        username: user.username,
+        fullname: user.fullname,
+        transactionType: "bonus",
+        processBy: "System",
+        amount: selectedPrize.value,
+        walletamount: user.wallet,
+        status: "approved",
+        method: "auto",
+        remark: `Lucky Spin - ${selectedPrize.name}`,
+        promotionname: "幸运转盘",
+        promotionnameEN: "Lucky Spin",
+        promotionId: null,
+        processtime: "00:00:00",
+        isNewCycle: isNewCycle,
+      });
+      const walletLog = new UserWalletLog({
+        userId: user._id,
+        transactionid: transactionId,
+        transactiontime: new Date(),
+        transactiontype: "lucky spin",
+        amount: selectedPrize.value,
+        status: "approved",
+        promotionnameEN: `Lucky Spin - ${selectedPrize.name}`,
+      });
+      await Promise.all([
+        user.save(),
+        spinLog.save(),
+        NewBonusTransaction.save(),
+        walletLog.save(),
+      ]);
+    } else {
+      await Promise.all([user.save(), spinLog.save()]);
+    }
     res.status(200).json({
       success: true,
       prize: selectedPrize,
@@ -114,6 +155,49 @@ router.get("/api/UserLuckySpinLog", async (req, res) => {
     res.json({ success: true, data: processedData });
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+// Get My Lucky Spin Log (User's own records)
+router.get("/api/MyLuckySpinLog", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: {
+          en: "User not found",
+          zh: "找不到用户",
+          ms: "Pengguna tidak dijumpai",
+        },
+      });
+    }
+    const mySpinLogs = await LuckySpinLog.find({
+      playerusername: user.username,
+    })
+      .select("winning createdAt")
+      .sort({ createdAt: -1 })
+      .limit(50);
+    const processedData = mySpinLogs.map((log) => ({
+      amount: parseFloat(log.winning),
+      createdAt: log.createdAt,
+    }));
+
+    res.json({
+      success: true,
+      data: processedData,
+    });
+  } catch (error) {
+    console.error("Error fetching my lucky spin logs:", error);
+    res.status(500).json({
+      success: false,
+      message: {
+        en: "Failed to fetch spin records",
+        zh: "获取转盘记录失败",
+        ms: "Gagal mendapatkan rekod pusingan",
+      },
+    });
   }
 });
 
@@ -242,6 +326,36 @@ router.put(
           en: "Internal server error",
           zh: "服务器内部错误",
         },
+      });
+    }
+  }
+);
+
+// Admin Update User Lucky Spin Points
+router.put(
+  "/admin/api/updateUserLuckySpinPoints/:userId",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { points } = req.body;
+      const updatedUser = await User.findByIdAndUpdate(userId, {
+        luckySpinPoints: points,
+      });
+      if (!updatedUser) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+      res.json({
+        success: true,
+      });
+    } catch (error) {
+      console.error("Error updating lucky spin points:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error",
       });
     }
   }

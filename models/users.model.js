@@ -340,6 +340,10 @@ const userSchema = new mongoose.Schema(
       // kiss918: { type: gameStatusSchema, default: () => ({}) },
     },
     lastForcedLogout: { type: Date, default: null },
+    luckySpinPoints: {
+      type: Number,
+      default: 0,
+    },
     luckySpinCount: {
       type: Number,
       default: 0,
