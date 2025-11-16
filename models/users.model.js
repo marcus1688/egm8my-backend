@@ -194,10 +194,6 @@ const userSchema = new mongoose.Schema(
       default: "Bronze",
       required: true,
     },
-    telegramId: {
-      type: String,
-      default: null,
-    },
     facebookId: {
       type: String,
       default: null,
