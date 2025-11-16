@@ -1469,7 +1469,7 @@ router.post("/api/telegram-login", loginLimiter, async (req, res) => {
 
 // Complete Profile after using google login and telegram login
 router.post("/api/complete-profile", authenticateToken, async (req, res) => {
-  const { fullname, phonenumber, dob, referralCode } = req.body;
+  const { fullname, phonenumber, email, dob, referralCode } = req.body;
   const userId = req.user.userId;
   try {
     const user = await User.findById(userId);
@@ -1483,6 +1483,37 @@ router.post("/api/complete-profile", authenticateToken, async (req, res) => {
         },
       });
     }
+
+    if (!user.email && email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Invalid email format",
+            zh: "电子邮件格式无效",
+            ms: "Format e-mel tidak sah",
+          },
+        });
+      }
+
+      const existingEmail = await User.findOne({
+        _id: { $ne: userId },
+        email: email.toLowerCase(),
+      });
+
+      if (existingEmail) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Email is already registered",
+            zh: "电子邮件已被注册",
+            ms: "E-mel sudah didaftarkan",
+          },
+        });
+      }
+    }
+
     if (!phonenumber) {
       return res.status(200).json({
         success: false,
@@ -1563,6 +1594,9 @@ router.post("/api/complete-profile", authenticateToken, async (req, res) => {
     }
     if (referralBy) {
       updateData.referralBy = referralBy;
+    }
+    if (!user.email && email) {
+      updateData.email = email.toLowerCase();
     }
     await User.findByIdAndUpdate(userId, updateData);
     res.status(200).json({
