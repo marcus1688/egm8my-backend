@@ -27,6 +27,8 @@ const paymentGatewaySchema = new mongoose.Schema(
     reportAPI: String,
     minDeposit: Number,
     maxDeposit: Number,
+    minWithdraw: Number,
+    maxWithdraw: Number,
     remark: String,
     status: Boolean,
     order: {
