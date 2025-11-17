@@ -20,6 +20,15 @@ const checkinSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    pendingRewards: [
+      {
+        date: Date,
+        rewardType: String,
+        amount: Number,
+        distributed: Boolean,
+        scheduledDistribution: Date,
+      },
+    ],
     monthlyCheckIns: {
       type: Object,
       default: () => ({}),

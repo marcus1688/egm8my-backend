@@ -150,6 +150,8 @@ server.headersTimeout = 86000;
 global.AGENT_COMMISSION_PROMOTION_ID = "68fabc976cfe394ec64f37e2";
 global.REBATE_PROMOTION_ID = "68fb42b060c7d4ae7ab6aac9";
 global.LUCKY_SPIN_PROMOTION_ID = "691ad66687e4b0f46eaf1d3d";
+global.DAILY_CHECK_IN_PROMOTION_ID = "691b040987e4b0f46eaf1e28";
+
 
 const allowedOrigins = [
   "https://mysteryclub88.com",
