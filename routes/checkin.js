@@ -14,96 +14,83 @@ const cron = require("node-cron");
 
 const getMalaysiaTime = () => moment().tz("Asia/Kuala_Lumpur");
 
-// Helper function to check if user completed a full week (Monday-Sunday)
-const checkWeeklyCompletion = (monthlyCheckIns) => {
-  const malaysiaTime = getMalaysiaTime();
-  const past7Days = [];
-
-  // 获取过去7天的所有签到记录
-  for (let i = 6; i >= 0; i--) {
-    const date = malaysiaTime.clone().subtract(i, "days");
+const checkWeeklyCompletion = (monthlyCheckIns, checkInDate) => {
+  const referenceDate = checkInDate
+    ? moment.tz(checkInDate, "Asia/Kuala_Lumpur")
+    : getMalaysiaTime();
+  const startOfWeek = referenceDate.clone().startOf("week").add(1, "day");
+  const monday =
+    referenceDate.day() === 0
+      ? startOfWeek.clone().subtract(7, "days")
+      : startOfWeek;
+  const weekDays = [];
+  for (let i = 0; i < 7; i++) {
+    const date = monday.clone().add(i, "days");
     const month = date.month();
     const day = date.date();
-
     const monthCheckIns = monthlyCheckIns[month] || [];
     if (monthCheckIns.includes(day)) {
-      past7Days.push(date);
+      weekDays.push(date);
     }
   }
 
-  // 必须有连续7天的签到
-  if (past7Days.length !== 7) return false;
-
-  // 检查是否是连续的7天
-  for (let i = 1; i < past7Days.length; i++) {
-    const diff = past7Days[i].diff(past7Days[i - 1], "days");
-    if (diff !== 1) return false; // 不连续
+  if (weekDays.length !== 7) {
+    return false;
   }
 
-  // 检查第一天是 Monday (1)，最后一天是 Sunday (0)
-  return past7Days[0].day() === 1 && past7Days[6].day() === 0;
+  const firstDay = weekDays[0].day();
+  const lastDay = weekDays[6].day();
+
+  return firstDay === 1 && lastDay === 0;
 };
 
-// Helper function to check if user completed entire month
-const checkMonthlyCompletion = (monthlyCheckIns, month, year) => {
+const checkMonthlyCompletion = (monthlyCheckIns, checkInDate) => {
+  const referenceDate = getMalaysiaTime();
+  const month = referenceDate.month();
+  const year = referenceDate.year();
   const checkIns = monthlyCheckIns[month] || [];
   const daysInMonth = moment
     .tz(`${year}-${month + 1}`, "YYYY-MM", "Asia/Kuala_Lumpur")
     .daysInMonth();
-
   return checkIns.length === daysInMonth;
 };
 
-// Helper function to get user's daily turnover
 const getUserDailyTurnover = async (userId) => {
   const malaysiaTime = getMalaysiaTime();
   const startOfDay = malaysiaTime.clone().startOf("day").toDate();
   const endOfDay = malaysiaTime.clone().endOf("day").toDate();
-
   const user = await User.findById(userId);
   if (!user) return 0;
-
-  // Calculate today's turnover from user's turnover history or transaction logs
-  // You'll need to implement this based on your turnover tracking system
-  // This is a placeholder - adjust according to your actual implementation
-  const todayTurnover = user.todayTurnover || 100; // Assuming you track daily turnover
-
+  const todayTurnover = user.todayTurnover || 100;
   return todayTurnover;
 };
 
-// Function to distribute pending rewards
 const distributeCheckinRewards = async () => {
   try {
     const malaysiaTime = getMalaysiaTime();
     console.log(
       `Starting check-in reward distribution at: ${malaysiaTime.toISOString()}`
     );
-
     const allCheckins = await Checkin.find({
       "pendingRewards.distributed": false,
       "pendingRewards.scheduledDistribution": {
         $lte: malaysiaTime.toDate(),
       },
     });
-
     const [vipSettings, promotion] = await Promise.all([
       vip.findOne({}),
       Promotion.findById(global.DAILY_CHECK_IN_PROMOTION_ID),
     ]);
-
     if (!vipSettings) {
       console.error("VIP settings not found");
       return;
     }
-
     if (!promotion) {
       console.error("Daily check-in promotion not found");
       return;
     }
-
     let distributedCount = 0;
     let errorCount = 0;
-
     for (const checkin of allCheckins) {
       try {
         const user = await User.findById(checkin.userId);
@@ -111,29 +98,22 @@ const distributeCheckinRewards = async () => {
           console.error(`User not found for checkin: ${checkin.userId}`);
           continue;
         }
-
-        // Get user's VIP level rewards
         const userVipLevel = vipSettings.vipLevels.find(
           (level) => level.name === user.viplevel
         );
-
         if (!userVipLevel) {
           console.error(
             `VIP level not found for user: ${user.username} (${user.viplevel})`
           );
           continue;
         }
-
         for (const reward of checkin.pendingRewards) {
           if (reward.distributed) continue;
           if (moment(reward.scheduledDistribution).isAfter(malaysiaTime))
             continue;
-
           let rewardAmount = 0;
           let rewardNameEN = "";
           let rewardNameCN = "";
-
-          // Get reward based on type
           if (reward.rewardType === "daily") {
             rewardAmount = parseFloat(
               userVipLevel.benefits.get("Daily Rewards") || 0
@@ -153,7 +133,6 @@ const distributeCheckinRewards = async () => {
             rewardNameEN = "Monthly Check-In Reward";
             rewardNameCN = "每月签到奖励";
           }
-
           if (rewardAmount <= 0) {
             reward.distributed = true;
             console.log(
@@ -161,8 +140,6 @@ const distributeCheckinRewards = async () => {
             );
             continue;
           }
-
-          // Create bonus transaction
           const transactionId = uuidv4();
           const bonus = new Bonus({
             transactionId: transactionId,
@@ -181,11 +158,7 @@ const distributeCheckinRewards = async () => {
             promotionId: global.DAILY_CHECK_IN_PROMOTION_ID,
             processtime: "00:00:00",
           });
-
-          // Update user wallet
           user.wallet += rewardAmount;
-
-          // Create wallet log
           const walletLog = new UserWalletLog({
             userId: user._id,
             transactionid: transactionId,
@@ -196,16 +169,13 @@ const distributeCheckinRewards = async () => {
             promotionnameEN: rewardNameEN,
             promotionnameCN: rewardNameCN,
           });
-
           await Promise.all([bonus.save(), user.save(), walletLog.save()]);
-
           reward.distributed = true;
           distributedCount++;
           console.log(
             `Distributed ${rewardAmount} to ${user.username} (${reward.rewardType})`
           );
         }
-
         checkin.markModified("pendingRewards");
         await checkin.save();
       } catch (userError) {
@@ -216,7 +186,6 @@ const distributeCheckinRewards = async () => {
         );
       }
     }
-
     console.log(
       `Check-in reward distribution completed at: ${getMalaysiaTime().toISOString()}. Distributed: ${distributedCount}, Errors: ${errorCount}`
     );
@@ -225,7 +194,6 @@ const distributeCheckinRewards = async () => {
   }
 };
 
-// Helper function to get next run time
 const getNextRunTime = (hour, minute) => {
   const now = getMalaysiaTime();
   let nextRun = getMalaysiaTime().set({
@@ -234,11 +202,9 @@ const getNextRunTime = (hour, minute) => {
     second: 0,
     millisecond: 0,
   });
-
   if (nextRun.isBefore(now)) {
     nextRun.add(1, "day");
   }
-
   return nextRun.format("YYYY-MM-DD HH:mm:ss");
 };
 
@@ -273,28 +239,22 @@ if (process.env.NODE_ENV !== "development") {
 }
 
 // Check-in endpoint
-
 router.post("/api/checkin", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const malaysiaTime = getMalaysiaTime();
     const malaysiaMidnight = malaysiaTime.clone().startOf("day");
-
     let [checkin, user, vipSettings] = await Promise.all([
       Checkin.findOne({ userId }),
       User.findById(userId),
       vip.findOne({}),
     ]);
-
     if (!checkin) {
       checkin = new Checkin({ userId });
     }
-
-    // Check if already checked in today
     const lastCheckInDate = checkin.lastCheckIn
       ? moment(checkin.lastCheckIn).tz("Asia/Kuala_Lumpur")
       : null;
-
     if (
       lastCheckInDate &&
       lastCheckInDate.isSameOrAfter(malaysiaMidnight, "day")
@@ -308,8 +268,6 @@ router.post("/api/checkin", authenticateToken, async (req, res) => {
         },
       });
     }
-
-    // Check if user has made first deposit
     if (!user.firstDepositDate) {
       return res.status(200).json({
         success: false,
@@ -320,8 +278,6 @@ router.post("/api/checkin", authenticateToken, async (req, res) => {
         },
       });
     }
-
-    // Check if user has 100 turnover today
     const todayTurnover = await getUserDailyTurnover(userId);
     if (todayTurnover < 100) {
       return res.status(200).json({
@@ -339,21 +295,14 @@ router.post("/api/checkin", authenticateToken, async (req, res) => {
         },
       });
     }
-
-    // Calculate streak
     const diffDays = lastCheckInDate
       ? malaysiaTime.diff(lastCheckInDate.clone().startOf("day"), "days")
       : null;
-
     if (!lastCheckInDate || diffDays > 1) {
-      // Streak broken or first check-in
       checkin.currentStreak = 1;
     } else if (diffDays === 1) {
-      // Consecutive day
       checkin.currentStreak += 1;
     }
-
-    // Update monthly check-ins
     const month = malaysiaTime.month();
     const day = malaysiaTime.date();
     const year = malaysiaTime.year();
@@ -369,7 +318,6 @@ router.post("/api/checkin", authenticateToken, async (req, res) => {
       checkin.monthlyCheckIns[month].sort((a, b) => a - b);
     }
 
-    // Check for weekly and monthly completion
     const isWeeklyComplete = checkWeeklyCompletion(checkin.monthlyCheckIns);
     const isMonthlyComplete = checkMonthlyCompletion(
       checkin.monthlyCheckIns,
@@ -377,7 +325,6 @@ router.post("/api/checkin", authenticateToken, async (req, res) => {
       year
     );
 
-    // Get user's VIP level rewards
     let rewardAmount = 0;
     let rewardType = "daily";
 
@@ -406,7 +353,6 @@ router.post("/api/checkin", authenticateToken, async (req, res) => {
       }
     }
 
-    // Create pending reward (to be distributed at 1 AM next day)
     const pendingReward = {
       date: malaysiaTime.toDate(),
       rewardType: rewardType,
@@ -425,7 +371,6 @@ router.post("/api/checkin", authenticateToken, async (req, res) => {
     }
     checkin.pendingRewards.push(pendingReward);
 
-    // Update check-in data
     checkin.username = user.username;
     checkin.lastCheckIn = malaysiaTime.toDate();
     checkin.totalCheckins += 1;
@@ -554,4 +499,342 @@ router.post(
   }
 );
 
+// Test Route: Check In
+router.post(
+  "/api/checkin/test/simulate-daily",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { userId, date } = req.body; // userId 和 date 都从 body 获取
+
+      if (!userId) {
+        return res.status(400).json({
+          success: false,
+          message: "userId is required in request body",
+        });
+      }
+
+      const malaysiaTime = date
+        ? moment.tz(date, "Asia/Kuala_Lumpur")
+        : getMalaysiaTime();
+
+      const malaysiaMidnight = malaysiaTime.clone().startOf("day");
+
+      let [checkin, user, vipSettings] = await Promise.all([
+        Checkin.findOne({ userId }),
+        User.findById(userId),
+        vip.findOne({}),
+      ]);
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      if (!checkin) {
+        checkin = new Checkin({ userId });
+      }
+
+      // 跳过所有验证，直接签到
+      console.log(
+        `[TEST] Simulating check-in for ${
+          user.username
+        } on ${malaysiaTime.format("YYYY-MM-DD")}`
+      );
+
+      // Calculate streak
+      const lastCheckInDate = checkin.lastCheckIn
+        ? moment(checkin.lastCheckIn).tz("Asia/Kuala_Lumpur")
+        : null;
+
+      const diffDays = lastCheckInDate
+        ? malaysiaTime.diff(lastCheckInDate.clone().startOf("day"), "days")
+        : null;
+
+      if (!lastCheckInDate || diffDays > 1) {
+        checkin.currentStreak = 1;
+      } else if (diffDays === 1) {
+        checkin.currentStreak += 1;
+      }
+
+      // Update monthly check-ins
+      const month = malaysiaTime.month();
+      const day = malaysiaTime.date();
+      const year = malaysiaTime.year();
+
+      if (!checkin.monthlyCheckIns) {
+        checkin.monthlyCheckIns = {};
+      }
+      if (!checkin.monthlyCheckIns[month]) {
+        checkin.monthlyCheckIns[month] = [];
+      }
+      if (!checkin.monthlyCheckIns[month].includes(day)) {
+        checkin.monthlyCheckIns[month].push(day);
+        checkin.monthlyCheckIns[month].sort((a, b) => a - b);
+      }
+
+      // Check for weekly and monthly completion
+      const isWeeklyComplete = checkWeeklyCompletion(
+        checkin.monthlyCheckIns,
+        malaysiaTime
+      );
+      const isMonthlyComplete = checkMonthlyCompletion(
+        checkin.monthlyCheckIns,
+        month,
+        year
+      );
+
+      // Get user's VIP level rewards
+      let rewardAmount = 0;
+      let rewardType = "daily";
+
+      if (vipSettings) {
+        const userVipLevel = vipSettings.vipLevels.find(
+          (level) => level.name === user.viplevel
+        );
+
+        if (userVipLevel) {
+          if (isMonthlyComplete) {
+            rewardAmount = parseFloat(
+              userVipLevel.benefits.get("Monthly Rewards") || 0
+            );
+            rewardType = "monthly";
+          } else if (isWeeklyComplete) {
+            rewardAmount = parseFloat(
+              userVipLevel.benefits.get("Weekly Rewards") || 0
+            );
+            rewardType = "weekly";
+          } else {
+            rewardAmount = parseFloat(
+              userVipLevel.benefits.get("Daily Rewards") || 0
+            );
+            rewardType = "daily";
+          }
+        }
+      }
+
+      // Create pending reward
+      const pendingReward = {
+        date: malaysiaTime.toDate(),
+        rewardType: rewardType,
+        amount: rewardAmount,
+        distributed: false,
+        scheduledDistribution: malaysiaTime
+          .clone()
+          .add(1, "day")
+          .startOf("day")
+          .add(1, "hour")
+          .toDate(),
+      };
+
+      if (!checkin.pendingRewards) {
+        checkin.pendingRewards = [];
+      }
+      checkin.pendingRewards.push(pendingReward);
+
+      // Update check-in data with custom date
+      checkin.username = user.username;
+      checkin.lastCheckIn = malaysiaTime.toDate();
+      checkin.totalCheckins += 1;
+      checkin.markModified("monthlyCheckIns");
+      checkin.markModified("pendingRewards");
+      await checkin.save();
+
+      res.status(200).json({
+        success: true,
+        message: `[TEST] Check-in simulated for ${malaysiaTime.format(
+          "YYYY-MM-DD"
+        )}`,
+        checkInData: {
+          date: malaysiaTime.format("YYYY-MM-DD"),
+          currentStreak: checkin.currentStreak,
+          lastCheckIn: checkin.lastCheckIn,
+          monthlyCheckIns: checkin.monthlyCheckIns,
+          rewardType: rewardType,
+          rewardAmount: rewardAmount,
+        },
+        isWeeklyComplete,
+        isMonthlyComplete,
+      });
+    } catch (error) {
+      console.error("[TEST] Simulate check-in error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to simulate check-in",
+        error: error.message,
+      });
+    }
+  }
+);
+
+// Test Route: Distribute Rewards
+router.post(
+  "/api/checkin/test/distribute-rewards",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      console.log("[TEST] Manually triggering reward distribution...");
+
+      const malaysiaTime = getMalaysiaTime();
+      const allCheckins = await Checkin.find({
+        "pendingRewards.distributed": false,
+      });
+
+      const [vipSettings, promotion] = await Promise.all([
+        vip.findOne({}),
+        Promotion.findById(global.DAILY_CHECK_IN_PROMOTION_ID),
+      ]);
+
+      if (!vipSettings) {
+        return res.status(400).json({
+          success: false,
+          message: "VIP settings not found",
+        });
+      }
+
+      if (!promotion) {
+        return res.status(400).json({
+          success: false,
+          message: "Daily check-in promotion not found",
+        });
+      }
+
+      let distributedCount = 0;
+      let skippedCount = 0;
+      let errorCount = 0;
+      const distributionDetails = [];
+
+      for (const checkin of allCheckins) {
+        try {
+          const user = await User.findById(checkin.userId);
+          if (!user) {
+            console.error(`[TEST] User not found: ${checkin.userId}`);
+            errorCount++;
+            continue;
+          }
+
+          const userVipLevel = vipSettings.vipLevels.find(
+            (level) => level.name === user.viplevel
+          );
+
+          if (!userVipLevel) {
+            console.error(`[TEST] VIP level not found: ${user.username}`);
+            errorCount++;
+            continue;
+          }
+
+          for (const reward of checkin.pendingRewards) {
+            if (reward.distributed) continue;
+
+            // 测试模式：忽略 scheduledDistribution 时间检查
+            let rewardAmount = reward.amount || 0;
+            let rewardNameEN = "";
+            let rewardNameCN = "";
+
+            if (reward.rewardType === "daily") {
+              rewardNameEN = "Daily Check-In Reward";
+              rewardNameCN = "每日签到奖励";
+            } else if (reward.rewardType === "weekly") {
+              rewardNameEN = "Weekly Check-In Reward";
+              rewardNameCN = "每周签到奖励";
+            } else if (reward.rewardType === "monthly") {
+              rewardNameEN = "Monthly Check-In Reward";
+              rewardNameCN = "每月签到奖励";
+            }
+
+            if (rewardAmount <= 0) {
+              reward.distributed = true;
+              skippedCount++;
+              console.log(
+                `[TEST] Skipped (no amount): ${user.username} - ${reward.rewardType}`
+              );
+              continue;
+            }
+
+            // Create bonus transaction
+            const transactionId = uuidv4();
+            const bonus = new Bonus({
+              transactionId: transactionId,
+              userId: user._id,
+              username: user.username,
+              fullname: user.fullname,
+              transactionType: "bonus",
+              processBy: "System-Test",
+              amount: rewardAmount,
+              walletamount: user.wallet + rewardAmount,
+              status: "approved",
+              method: "auto",
+              remark: `[TEST] ${rewardNameEN}`,
+              promotionname: promotion.maintitle || "每日签到",
+              promotionnameEN: promotion.maintitleEN || "Daily Check-In",
+              promotionId: global.DAILY_CHECK_IN_PROMOTION_ID,
+              processtime: "00:00:00",
+            });
+
+            // Update user wallet
+            user.wallet += rewardAmount;
+
+            // Create wallet log
+            const walletLog = new UserWalletLog({
+              userId: user._id,
+              transactionid: transactionId,
+              transactiontime: new Date(),
+              transactiontype: "bonus",
+              amount: rewardAmount,
+              status: "approved",
+              promotionnameEN: rewardNameEN,
+              promotionnameCN: rewardNameCN,
+            });
+
+            await Promise.all([bonus.save(), user.save(), walletLog.save()]);
+
+            reward.distributed = true;
+            distributedCount++;
+
+            distributionDetails.push({
+              username: user.username,
+              rewardType: reward.rewardType,
+              amount: rewardAmount,
+              transactionId: transactionId,
+            });
+
+            console.log(
+              `[TEST] Distributed ${rewardAmount} to ${user.username} (${reward.rewardType})`
+            );
+          }
+
+          checkin.markModified("pendingRewards");
+          await checkin.save();
+        } catch (userError) {
+          errorCount++;
+          console.error(
+            `[TEST] Error processing: ${checkin.userId}`,
+            userError
+          );
+        }
+      }
+
+      res.status(200).json({
+        success: true,
+        message: "[TEST] Reward distribution completed",
+        summary: {
+          distributed: distributedCount,
+          skipped: skippedCount,
+          errors: errorCount,
+          totalCheckins: allCheckins.length,
+        },
+        details: distributionDetails,
+      });
+    } catch (error) {
+      console.error("[TEST] Distribution error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to distribute rewards",
+        error: error.message,
+      });
+    }
+  }
+);
 module.exports = router;
