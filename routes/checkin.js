@@ -11,6 +11,8 @@ const UserWalletLog = require("../models/userwalletlog.model");
 const Promotion = require("../models/promotion.model");
 const { v4: uuidv4 } = require("uuid");
 const cron = require("node-cron");
+const { updateKioskBalance } = require("../services/kioskBalanceService");
+const kioskbalance = require("../models/kioskbalance.model");
 
 const getMalaysiaTime = () => moment().tz("Asia/Kuala_Lumpur");
 
@@ -139,6 +141,27 @@ const distributeCheckinRewards = async () => {
               `No reward amount for ${user.username} - ${reward.rewardType}`
             );
             continue;
+          }
+          const kioskSettings = await kioskbalance.findOne({});
+          if (kioskSettings && kioskSettings.status) {
+            const kioskResult = await updateKioskBalance(
+              "subtract",
+              rewardAmount,
+              {
+                username: user.username,
+                transactionType: "check-in reward",
+                remark: `${rewardNameEN}: ${reward.rewardType}`,
+                processBy: "System",
+              }
+            );
+
+            if (!kioskResult.success) {
+              console.error(
+                `Failed to update kiosk balance for ${user.username}: ${kioskResult.message}`
+              );
+              errorCount++;
+              continue;
+            }
           }
           const transactionId = uuidv4();
           const bonus = new Bonus({
