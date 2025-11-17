@@ -194,6 +194,9 @@ const userSchema = new mongoose.Schema(
       default: "Bronze",
       required: true,
     },
+    lowestviplevel: {
+      type: String,
+    },
     facebookId: {
       type: String,
       default: null,

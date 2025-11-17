@@ -785,6 +785,7 @@ router.post("/api/withdraw", authenticateToken, async (req, res) => {
     const userVipLevel = user.viplevel;
     const vipSettings = await vip.findOne();
     let withdrawCountLimit = 3;
+    let dailyBankWithdrawLimit = 0;
 
     if (!vipSettings) {
       return res.status(200).json({
@@ -802,9 +803,22 @@ router.post("/api/withdraw", authenticateToken, async (req, res) => {
       const vipLevelData = vipSettings.vipLevels.find(
         (level) => level.name === userVipLevel.toString()
       );
-      if (vipLevelData && vipLevelData.benefits.has("Withdraw Limit")) {
-        const countLimit = vipLevelData.benefits.get("Withdraw Limit");
-        withdrawCountLimit = parseInt(countLimit) || 3;
+      if (vipLevelData) {
+        if (vipLevelData.benefits.has("Withdraw Limit")) {
+          const countLimit = vipLevelData.benefits.get("Withdraw Limit");
+          withdrawCountLimit = parseInt(countLimit) || 3;
+        }
+        if (vipLevelData.benefits.has("Daily Bank Withdraw Limit")) {
+          const limitValue = vipLevelData.benefits.get(
+            "Daily Bank Withdraw Limit"
+          );
+          if (
+            limitValue &&
+            limitValue.toString().toLowerCase() !== "unlimited"
+          ) {
+            dailyBankWithdrawLimit = parseFloat(limitValue) || 0;
+          }
+        }
       }
     }
     const malaysiaTimezone = "Asia/Kuala_Lumpur";
@@ -828,6 +842,37 @@ router.post("/api/withdraw", authenticateToken, async (req, res) => {
           ms: `Had pengeluaran harian dicapai. Tahap VIP anda membenarkan maksimum ${withdrawCountLimit} pengeluaran sehari, anda telah membuat ${todayWithdrawalCount} pengeluaran hari ini.`,
         },
       });
+    }
+
+    if (dailyBankWithdrawLimit > 0) {
+      const todayTotalWithdrawn = todayWithdrawals.reduce(
+        (sum, withdrawal) => sum + (parseFloat(withdrawal.amount) || 0),
+        0
+      );
+
+      if (todayTotalWithdrawn + withdrawAmount > dailyBankWithdrawLimit) {
+        const remaining = dailyBankWithdrawLimit - todayTotalWithdrawn;
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: `Daily withdrawal amount limit exceeded. Your VIP level allows max RM${dailyBankWithdrawLimit.toFixed(
+              2
+            )} per day. You've withdrawn RM${todayTotalWithdrawn.toFixed(
+              2
+            )} today, remaining: RM${remaining.toFixed(2)}`,
+            zh: `超过每日提款金额限制。您的VIP等级每日最多允许提款RM${dailyBankWithdrawLimit.toFixed(
+              2
+            )}。您今日已提款RM${todayTotalWithdrawn.toFixed(
+              2
+            )}，剩余: RM${remaining.toFixed(2)}`,
+            ms: `Had jumlah pengeluaran harian melebihi. Tahap VIP anda membenarkan maksimum RM${dailyBankWithdrawLimit.toFixed(
+              2
+            )} sehari. Anda telah mengeluarkan RM${todayTotalWithdrawn.toFixed(
+              2
+            )} hari ini, baki: RM${remaining.toFixed(2)}`,
+          },
+        });
+      }
     }
 
     const userBank = user.bankAccounts.find(

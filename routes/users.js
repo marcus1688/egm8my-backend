@@ -2253,23 +2253,45 @@ async function checkAndUpdateVIPLevel(userId) {
     }
     if (newLevel && newLevel !== user.viplevel) {
       const oldLevel = user.viplevel;
+      if (user.lowestviplevel) {
+        const newLevelIndex = sortedVipLevels.findIndex(
+          (level) => level.name === newLevel
+        );
+        const lowestLevelIndex = sortedVipLevels.findIndex(
+          (level) => level.name === user.lowestviplevel
+        );
+        if (lowestLevelIndex !== -1 && newLevelIndex > lowestLevelIndex) {
+          // console.log(
+          //   `Cannot downgrade user ${user.username} to ${newLevel} because lowest VIP level is ${user.lowestviplevel}`
+          // );
+          return {
+            success: false,
+            message: "Cannot downgrade below lowest VIP level",
+            currentLevel: user.viplevel,
+            lowestLevel: user.lowestviplevel,
+            attemptedLevel: newLevel,
+          };
+        }
+      }
+
       user.viplevel = newLevel;
       await user.save();
+
       console.log(
         `User ${user.username} VIP level updated from ${oldLevel} to ${newLevel}`
       );
       try {
         // 假设您有一个VIPChangeLog模型来记录VIP变更
         /*
-        await new VIPChangeLog({
-          userId: user._id,
-          username: user.username,
-          oldLevel,
-          newLevel,
-          reason: "Total deposit threshold reached",
-          totalDeposit: user.totaldeposit
-        }).save();
-        */
+    await new VIPChangeLog({
+      userId: user._id,
+      username: user.username,
+      oldLevel,
+      newLevel,
+      reason: "Total deposit threshold reached",
+      totalDeposit: user.totaldeposit
+    }).save();
+    */
       } catch (logError) {
         console.error("Error logging VIP change:", logError);
       }
@@ -4393,6 +4415,20 @@ router.put(
         processedFullname = fullname.trim().replace(/\s+/g, " ").toLowerCase();
       }
 
+      const currentUser = await User.findById(userId);
+      if (!currentUser) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "User not found",
+            zh: "找不到用户",
+          },
+        });
+      }
+
+      const shouldUpdateLowestVip =
+        viplevel && viplevel !== currentUser.viplevel;
+
       const updatedUser = await User.findByIdAndUpdate(
         userId,
         {
@@ -4402,6 +4438,7 @@ router.put(
             phonenumber: Number(phonenumber),
             dob,
             viplevel,
+            ...(shouldUpdateLowestVip && { lowestviplevel: viplevel }),
             luckySpinCount,
             totalturnover,
             positionTaking,
