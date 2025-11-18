@@ -878,7 +878,7 @@ router.post("/api/joker/bet", async (req, res) => {
       });
     }
 
-    await SlotJokerModal.create({
+    SlotJokerModal.create({
       username: username,
       betId: id,
       roundId: roundid,
@@ -993,26 +993,28 @@ router.post("/api/joker/settle-bet", async (req, res) => {
       });
     }
 
-    const updatedUserBalance = await User.findOneAndUpdate(
-      { gameId: username },
-      { $inc: { wallet: roundToTwoDecimals(amount) } },
-      { new: true, projection: { wallet: 1 } }
-    );
+    const [updatedUserBalance] = await Promise.all([
+      User.findOneAndUpdate(
+        { gameId: username },
+        { $inc: { wallet: roundToTwoDecimals(amount) } },
+        { new: true, projection: { wallet: 1 } }
+      ),
 
-    const updatePromises = bets.map((bet, i) =>
-      SlotJokerModal.findOneAndUpdate(
-        { _id: bet._id },
-        {
-          $set: {
-            settle: true,
-            settleamount: i === 0 ? roundToTwoDecimals(amount) : 0,
-            settleId: id,
+      SlotJokerModal.bulkWrite(
+        bets.map((bet, i) => ({
+          updateOne: {
+            filter: { _id: bet._id },
+            update: {
+              $set: {
+                settle: true,
+                settleamount: i === 0 ? roundToTwoDecimals(amount) : 0,
+                settleId: id,
+              },
+            },
           },
-        }
-      )
-    );
-
-    await Promise.all(updatePromises);
+        }))
+      ),
+    ]);
 
     return res.status(200).json({
       Balance: roundToTwoDecimals(updatedUserBalance?.wallet || 0),
