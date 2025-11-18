@@ -927,6 +927,28 @@ router.post(
               continue;
             }
 
+            const kioskSettings = await kioskbalance.findOne({});
+            if (kioskSettings && kioskSettings.status) {
+              const kioskResult = await updateKioskBalance(
+                "subtract",
+                rewardAmount,
+                {
+                  username: user.username,
+                  transactionType: "check-in reward",
+                  remark: `[TEST] ${rewardNameEN}: ${reward.rewardType}`,
+                  processBy: "System-Test",
+                }
+              );
+
+              if (!kioskResult.success) {
+                console.error(
+                  `[TEST] Failed to update kiosk balance for ${user.username}: ${kioskResult.message}`
+                );
+                errorCount++;
+                continue;
+              }
+            }
+
             // Create bonus transaction
             const transactionId = uuidv4();
             const bonus = new Bonus({
