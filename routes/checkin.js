@@ -475,6 +475,88 @@ router.post("/api/checkin", authenticateToken, async (req, res) => {
   }
 });
 
+// Check In Reminder
+router.get("/api/checkin/reminder", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const malaysiaTime = getMalaysiaTime();
+    const malaysiaMidnight = malaysiaTime.clone().startOf("day");
+    const [user, checkin] = await Promise.all([
+      User.findById(userId),
+      Checkin.findOne({ userId }),
+    ]);
+    if (!user) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "User not found",
+          zh: "找不到用户",
+          ms: "Pengguna tidak dijumpai",
+        },
+      });
+    }
+    const lastCheckInDate = checkin?.lastCheckIn
+      ? moment(checkin.lastCheckIn).tz("Asia/Kuala_Lumpur")
+      : null;
+
+    const alreadyCheckedIn =
+      lastCheckInDate && lastCheckInDate.isSameOrAfter(malaysiaMidnight, "day");
+
+    if (alreadyCheckedIn) {
+      return res.status(200).json({
+        success: true,
+        reminder: false,
+        message: {
+          en: "You have already checked in today",
+          zh: "您今天已经签到过了",
+          ms: "Anda telah mendaftar masuk hari ini",
+        },
+      });
+    }
+
+    const todayTurnover = await getUserDailyTurnover(userId);
+
+    if (todayTurnover >= 100) {
+      return res.status(200).json({
+        success: true,
+        reminder: true,
+        turnover: todayTurnover,
+        message: {
+          en: "You have enough turnover to check in!",
+          zh: "您的流水已达标，可以签到了！",
+          ms: "Turnover anda mencukupi untuk daftar masuk!",
+        },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      reminder: false,
+      turnover: todayTurnover,
+      required: 100,
+      message: {
+        en: `You need at least 100 turnover to check in. Current: ${todayTurnover.toFixed(
+          2
+        )}`,
+        zh: `您需要至少100流水才能签到。当前：${todayTurnover.toFixed(2)}`,
+        ms: `Anda memerlukan sekurang-kurangnya 100 turnover untuk daftar masuk. Semasa: ${todayTurnover.toFixed(
+          2
+        )}`,
+      },
+    });
+  } catch (error) {
+    console.error("Check-in reminder error:", error);
+    res.status(500).json({
+      success: false,
+      message: {
+        en: "Failed to check reminder status",
+        zh: "检查提醒状态失败",
+        ms: "Gagal memeriksa status peringatan",
+      },
+    });
+  }
+});
+
 // Get check-in status
 router.get("/api/checkin/status", authenticateToken, async (req, res) => {
   try {
