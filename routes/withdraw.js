@@ -888,9 +888,11 @@ router.post("/api/withdraw", authenticateToken, async (req, res) => {
         },
       });
     }
-
-    user.wallet -= withdrawAmount;
-    await user.save();
+    const updatedUser = await User.findByIdAndUpdate(
+      user._id,
+      { $inc: { wallet: -withdrawAmount } },
+      { new: true }
+    );
     let lastDepositName = null;
     try {
       const lastApprovedDeposit = await Deposit.findOne({
@@ -1124,8 +1126,11 @@ router.post("/admin/api/withdraw", authenticateAdminToken, async (req, res) => {
     }
     const transactionId = uuidv4();
 
-    user.wallet -= amount;
-    await user.save();
+    const updatedUser = await User.findByIdAndUpdate(
+      user._id,
+      { $inc: { wallet: -amount } },
+      { new: true }
+    );
 
     let lastDepositName = null;
     try {
