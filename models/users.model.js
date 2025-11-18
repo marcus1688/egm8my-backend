@@ -334,6 +334,8 @@ const userSchema = new mongoose.Schema(
       rsgfish: { type: gameLockSchema, default: () => ({}) },
       acewinslot: { type: gameLockSchema, default: () => ({}) },
       acewinfish: { type: gameLockSchema, default: () => ({}) },
+      spadegamingslot: { type: gameLockSchema, default: () => ({}) },
+      spadegamingfish: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       alipay: { type: gameStatusSchema, default: () => ({}) },

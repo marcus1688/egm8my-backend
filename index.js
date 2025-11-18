@@ -89,6 +89,7 @@ const slotVpowerRouter = require("./routes/GAMEAPI/slot_vpower");
 const slotRich88Router = require("./routes/GAMEAPI/slot_rich88");
 const slotRSGRouter = require("./routes/GAMEAPI/slot_rsg");
 const slotAceWinRouter = require("./routes/GAMEAPI/slot_acewin");
+const slotSpadeGamingRouter = require("./routes/GAMEAPI/slot_spadegaming");
 
 const sportSBOBETRouter = require("./routes/GAMEAPI/sport_sbobet");
 const sportM9BetRouter = require("./routes/GAMEAPI/sports_m9bet");
@@ -879,6 +880,7 @@ app.use(slotVpowerRouter);
 app.use(slotRich88Router);
 app.use(slotRSGRouter);
 app.use(slotAceWinRouter);
+app.use(slotSpadeGamingRouter);
 
 app.use(sportSBOBETRouter);
 app.use(sportM9BetRouter);

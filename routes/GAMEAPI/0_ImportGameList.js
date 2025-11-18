@@ -40,6 +40,8 @@ const GameVPowerGameModal = require("../../models/slot_vpowerDatabase.model");
 const GameRich88GameModal = require("../../models/slot_rich88Database.model");
 const GameRSGGameModal = require("../../models/slot_rsgDatabase.model");
 const GameAceWinGameModal = require("../../models/slot_acewinDatabase.model");
+const GameSpadeGamingGameModal = require("../../models/slot_spadegamingDatabase.model");
+
 const { S3Client, ListObjectsV2Command } = require("@aws-sdk/client-s3");
 const multer = require("multer");
 
@@ -85,7 +87,10 @@ function parseRTP(rtpRaw) {
 
 router.post("/api/playtech/import-games", async (req, res) => {
   try {
-    const importFilePath = path.join(__dirname, "../../public/rich88.json");
+    const importFilePath = path.join(
+      __dirname,
+      "../../public/spadegaming.json"
+    );
     console.log(importFilePath);
 
     // Check if file exists
@@ -111,9 +116,9 @@ router.post("/api/playtech/import-games", async (req, res) => {
 
     console.log("pass");
     console.log(`Found ${gameList.length} games to import`);
-    await GameRich88GameModal.deleteMany();
+    await GameSpadeGamingGameModal.deleteMany();
     // Insert into MongoDB
-    await GameRich88GameModal.insertMany(gameList);
+    await GameSpadeGamingGameModal.insertMany(gameList);
 
     return res.status(200).json({
       success: true,
@@ -768,7 +773,7 @@ router.post("/api/jili/getgamelistMissing", async (req, res) => {
 
 router.post("/api/playtech/export-games", async (req, res) => {
   try {
-    const allGames = await GamePlayAceGameModal.find().lean(); // lean() for plain JS objects
+    const allGames = await GameAceWinGameModal.find().lean(); // lean() for plain JS objects
 
     if (!allGames || allGames.length === 0) {
       return res.status(404).json({
@@ -778,7 +783,7 @@ router.post("/api/playtech/export-games", async (req, res) => {
     }
 
     // Create a temporary file
-    const exportFilePath = path.join(__dirname, "../../exports/playace.json");
+    const exportFilePath = path.join(__dirname, "../../exports/acew.json");
 
     // Ensure export directory exists
     const exportDir = path.dirname(exportFilePath);
