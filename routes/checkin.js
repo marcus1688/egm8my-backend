@@ -350,6 +350,9 @@ router.post("/api/checkin", authenticateToken, async (req, res) => {
 
     let rewardAmount = 0;
     let rewardType = "daily";
+    let dailyRewardAmount = 0;
+    let weeklyRewardAmount = 0;
+    let monthlyRewardAmount = 0;
 
     if (vipSettings) {
       const userVipLevel = vipSettings.vipLevels.find(
@@ -357,42 +360,62 @@ router.post("/api/checkin", authenticateToken, async (req, res) => {
       );
 
       if (userVipLevel) {
-        if (isMonthlyComplete) {
-          rewardAmount = parseFloat(
-            userVipLevel.benefits.get("Monthly Rewards") || 0
-          );
-          rewardType = "monthly";
-        } else if (isWeeklyComplete) {
-          rewardAmount = parseFloat(
+        dailyRewardAmount = parseFloat(
+          userVipLevel.benefits.get("Daily Rewards") || 0
+        );
+        if (isWeeklyComplete) {
+          weeklyRewardAmount = parseFloat(
             userVipLevel.benefits.get("Weekly Rewards") || 0
           );
-          rewardType = "weekly";
-        } else {
-          rewardAmount = parseFloat(
-            userVipLevel.benefits.get("Daily Rewards") || 0
+        }
+        if (isMonthlyComplete) {
+          monthlyRewardAmount = parseFloat(
+            userVipLevel.benefits.get("Monthly Rewards") || 0
           );
-          rewardType = "daily";
         }
       }
     }
 
-    const pendingReward = {
-      date: malaysiaTime.toDate(),
-      rewardType: rewardType,
-      amount: rewardAmount,
-      distributed: false,
-      scheduledDistribution: malaysiaTime
-        .clone()
-        .add(1, "day")
-        .startOf("day")
-        .add(1, "hour")
-        .toDate(),
-    };
+    const tomorrowDistribution = malaysiaTime
+      .clone()
+      .add(1, "day")
+      .startOf("day")
+      .add(1, "hour")
+      .toDate();
 
     if (!checkin.pendingRewards) {
       checkin.pendingRewards = [];
     }
-    checkin.pendingRewards.push(pendingReward);
+
+    if (dailyRewardAmount > 0) {
+      checkin.pendingRewards.push({
+        date: malaysiaTime.toDate(),
+        rewardType: "daily",
+        amount: dailyRewardAmount,
+        distributed: false,
+        scheduledDistribution: tomorrowDistribution,
+      });
+    }
+
+    if (weeklyRewardAmount > 0) {
+      checkin.pendingRewards.push({
+        date: malaysiaTime.toDate(),
+        rewardType: "weekly",
+        amount: weeklyRewardAmount,
+        distributed: false,
+        scheduledDistribution: tomorrowDistribution,
+      });
+    }
+
+    if (monthlyRewardAmount > 0) {
+      checkin.pendingRewards.push({
+        date: malaysiaTime.toDate(),
+        rewardType: "monthly",
+        amount: monthlyRewardAmount,
+        distributed: false,
+        scheduledDistribution: tomorrowDistribution,
+      });
+    }
 
     checkin.username = user.username;
     checkin.lastCheckIn = malaysiaTime.toDate();
@@ -612,6 +635,9 @@ router.post(
       // Get user's VIP level rewards
       let rewardAmount = 0;
       let rewardType = "daily";
+      let dailyRewardAmount = 0;
+      let weeklyRewardAmount = 0;
+      let monthlyRewardAmount = 0;
 
       if (vipSettings) {
         const userVipLevel = vipSettings.vipLevels.find(
@@ -619,45 +645,65 @@ router.post(
         );
 
         if (userVipLevel) {
-          if (isMonthlyComplete) {
-            rewardAmount = parseFloat(
-              userVipLevel.benefits.get("Monthly Rewards") || 0
-            );
-            rewardType = "monthly";
-          } else if (isWeeklyComplete) {
-            rewardAmount = parseFloat(
+          dailyRewardAmount = parseFloat(
+            userVipLevel.benefits.get("Daily Rewards") || 0
+          );
+
+          if (isWeeklyComplete) {
+            weeklyRewardAmount = parseFloat(
               userVipLevel.benefits.get("Weekly Rewards") || 0
             );
-            rewardType = "weekly";
-          } else {
-            rewardAmount = parseFloat(
-              userVipLevel.benefits.get("Daily Rewards") || 0
+          }
+
+          if (isMonthlyComplete) {
+            monthlyRewardAmount = parseFloat(
+              userVipLevel.benefits.get("Monthly Rewards") || 0
             );
-            rewardType = "daily";
           }
         }
       }
 
-      // Create pending reward
-      const pendingReward = {
-        date: malaysiaTime.toDate(),
-        rewardType: rewardType,
-        amount: rewardAmount,
-        distributed: false,
-        scheduledDistribution: malaysiaTime
-          .clone()
-          .add(1, "day")
-          .startOf("day")
-          .add(1, "hour")
-          .toDate(),
-      };
+      const tomorrowDistribution = malaysiaTime
+        .clone()
+        .add(1, "day")
+        .startOf("day")
+        .add(1, "hour")
+        .toDate();
 
       if (!checkin.pendingRewards) {
         checkin.pendingRewards = [];
       }
-      checkin.pendingRewards.push(pendingReward);
 
-      // Update check-in data with custom date
+      if (dailyRewardAmount > 0) {
+        checkin.pendingRewards.push({
+          date: malaysiaTime.toDate(),
+          rewardType: "daily",
+          amount: dailyRewardAmount,
+          distributed: false,
+          scheduledDistribution: tomorrowDistribution,
+        });
+      }
+
+      if (weeklyRewardAmount > 0) {
+        checkin.pendingRewards.push({
+          date: malaysiaTime.toDate(),
+          rewardType: "weekly",
+          amount: weeklyRewardAmount,
+          distributed: false,
+          scheduledDistribution: tomorrowDistribution,
+        });
+      }
+
+      if (monthlyRewardAmount > 0) {
+        checkin.pendingRewards.push({
+          date: malaysiaTime.toDate(),
+          rewardType: "monthly",
+          amount: monthlyRewardAmount,
+          distributed: false,
+          scheduledDistribution: tomorrowDistribution,
+        });
+      }
+
       checkin.username = user.username;
       checkin.lastCheckIn = malaysiaTime.toDate();
       checkin.totalCheckins += 1;
