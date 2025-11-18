@@ -11,6 +11,11 @@ const mailSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    missionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Mission",
+      default: null,
+    },
     titleEN: {
       type: String,
     },
