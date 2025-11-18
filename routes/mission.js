@@ -9,6 +9,7 @@ const moment = require("moment-timezone");
 const { v4: uuidv4 } = require("uuid");
 const mongoose = require("mongoose");
 const axios = require("axios");
+const { Mail } = require("../models/mail.model");
 
 const getMalaysiaTime = () => moment().tz("Asia/Kuala_Lumpur");
 
@@ -271,6 +272,131 @@ router.post("/api/user/missions/claim", authenticateToken, async (req, res) => {
         en: "Failed to claim mission reward",
         zh: "领取任务奖励失败",
         ms: "Gagal menuntut ganjaran misi",
+      },
+    });
+  }
+});
+
+// User Mission Reminder
+router.get("/api/missions/reminder", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const today = moment().tz("Asia/Kuala_Lumpur").startOf("day");
+    const todayEnd = moment().tz("Asia/Kuala_Lumpur").endOf("day");
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "User not found",
+          zh: "找不到用户",
+          ms: "Pengguna tidak dijumpai",
+        },
+      });
+    }
+    const todayStats = await getTodayUserStats(userId, today, todayEnd);
+    const missions = await Mission.find({ isActive: true });
+    const claimedToday = await MissionClaimLog.find({
+      userId: userId,
+      claimDate: {
+        $gte: today.toDate(),
+        $lte: todayEnd.toDate(),
+      },
+    });
+    const claimedMissionIds = claimedToday.map((log) =>
+      log.missionId.toString()
+    );
+    const unclaimedMissions = [];
+    for (const mission of missions) {
+      if (claimedMissionIds.includes(mission._id.toString())) {
+        continue;
+      }
+      let currentProgress = 0;
+      switch (mission.missionType) {
+        case "totalTurnover":
+          currentProgress = todayStats.totalTurnover;
+          break;
+        case "withdrawCount":
+          currentProgress = todayStats.withdrawCount;
+          break;
+        case "depositCount":
+          currentProgress = todayStats.depositCount;
+          break;
+      }
+      if (currentProgress >= mission.targetValue) {
+        unclaimedMissions.push({
+          missionId: mission._id,
+          title: mission.title,
+          titleCN: mission.titleCN,
+          titleMS: mission.titleMS,
+          rewardPoints: mission.rewardPoints,
+          missionType: mission.missionType,
+        });
+      }
+    }
+    if (unclaimedMissions.length > 0) {
+      for (const mission of unclaimedMissions) {
+        const todayMailSent = await Mail.findOne({
+          recipientId: userId,
+          missionId: mission.missionId,
+          createdAt: {
+            $gte: today.toDate(),
+            $lte: todayEnd.toDate(),
+          },
+        });
+
+        if (!todayMailSent) {
+          await Mail.create({
+            recipientId: userId,
+            username: user.username,
+            missionId: mission.missionId,
+            titleEN: `Mission Completed: ${mission.title}`,
+            titleCN: `任务已完成：${mission.titleCN}`,
+            titleMS: `Misi Selesai: ${mission.titleMS}`,
+            contentEN: `Congratulations! You have completed the mission "${mission.title}".\n\nReward: ${mission.rewardPoints} Lucky Spin Points\n\nClaim your reward now!`,
+            contentCN: `恭喜！您已完成任务"${mission.titleCN}"。\n\n奖励：${mission.rewardPoints} 幸运转盘积分\n\n立即领取您的奖励！`,
+            contentMS: `Tahniah! Anda telah menyelesaikan misi "${mission.titleMS}".\n\nGanjaran: ${mission.rewardPoints} Lucky Spin Points\n\nTuntut ganjaran anda sekarang!`,
+            isRead: false,
+          });
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        reminder: true,
+        unclaimedCount: unclaimedMissions.length,
+        totalRewards: unclaimedMissions.reduce(
+          (sum, m) => sum + m.rewardPoints,
+          0
+        ),
+        missions: unclaimedMissions,
+        message: {
+          en: `You have ${unclaimedMissions.length} mission${
+            unclaimedMissions.length > 1 ? "s" : ""
+          } ready to claim!`,
+          zh: `您有 ${unclaimedMissions.length} 个任务可以领取！`,
+          ms: `Anda mempunyai ${unclaimedMissions.length} misi untuk dituntut!`,
+        },
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      reminder: false,
+      unclaimedCount: 0,
+      message: {
+        en: "No missions ready to claim",
+        zh: "暂无可领取的任务",
+        ms: "Tiada misi untuk dituntut",
+      },
+    });
+  } catch (error) {
+    console.error("Mission reminder error:", error);
+    res.status(500).json({
+      success: false,
+      message: {
+        en: "Failed to check mission reminder",
+        zh: "检查任务提醒失败",
+        ms: "Gagal memeriksa peringatan misi",
       },
     });
   }
