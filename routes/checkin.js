@@ -74,7 +74,7 @@ const getUserDailyTurnover = async (userId, targetDate = null) => {
     const user = await User.findById(userId);
     if (!user) return 0;
     const response = await axios.get(
-      `${process.env.API_URL}/api/all/${userId}/dailygamedata`,
+      `${process.env.API_URL}api/all/${userId}/dailygamedata`,
       {
         params: {
           startDate: startOfDay,
