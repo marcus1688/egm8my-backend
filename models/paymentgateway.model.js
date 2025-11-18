@@ -19,23 +19,37 @@ const bankSchema = new mongoose.Schema({
   },
 });
 
+const availableBankCodeSchema = new mongoose.Schema({
+  bankname: {
+    type: String,
+    required: true,
+  },
+  bankcode: {
+    type: String,
+    required: true,
+  },
+  active: {
+    type: Boolean,
+    default: true,
+  },
+});
+
 const paymentGatewaySchema = new mongoose.Schema(
   {
     name: String,
     logo: String,
     paymentAPI: String,
+    withdrawAPI: String,
     reportAPI: String,
     minDeposit: Number,
     maxDeposit: Number,
     minWithdraw: Number,
     maxWithdraw: Number,
+    balance: Number,
     remark: String,
     status: Boolean,
-    order: {
-      type: Number,
-      default: 0,
-    },
     banks: [bankSchema],
+    availableBankCodes: [availableBankCodeSchema],
   },
   {
     timestamps: {
