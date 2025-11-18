@@ -39,6 +39,8 @@ const modulePermissions = {
       { value: "leaderboard", label: "Leaderboard" },
       { value: "livetransaction", label: "Live Transaction" },
       { value: "luckydraw", label: "Lucky Draw" },
+      { value: "promocode", label: "Promo Code" },
+      { value: "promocodereport", label: "Promo Code Report" },
     ],
   },
   agent: {

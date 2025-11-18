@@ -15,6 +15,11 @@ const promoCodeClaimSchema = new mongoose.Schema(
     },
     code: { type: String, required: true },
     amount: { type: Number, required: true },
+    rewardType: {
+      type: String,
+      enum: ["wallet", "luckySpinPoints"],
+      default: "wallet",
+    },
   },
   { timestamps: true }
 );

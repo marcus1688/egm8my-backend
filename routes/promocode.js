@@ -89,7 +89,14 @@ router.post("/api/promocodes/claim", authenticateToken, async (req, res) => {
     }
 
     const transactionId = uuidv4();
-    const newWalletAmount = user.wallet + promoCode.amount;
+    let newWalletAmount = user.wallet;
+    let newLuckySpinPoints = user.luckySpinPoints || 0;
+
+    if (promoCode.rewardType === "luckySpinPoints") {
+      newLuckySpinPoints += promoCode.amount;
+    } else {
+      newWalletAmount += promoCode.amount;
+    }
 
     const claim = new PromoClaim({
       userId: req.user.userId,
@@ -97,6 +104,7 @@ router.post("/api/promocodes/claim", authenticateToken, async (req, res) => {
       promoCodeId: promoCode._id,
       code: promoCode.code,
       amount: promoCode.amount,
+      rewardType: promoCode.rewardType,
       transactionId: transactionId,
     });
 
@@ -111,7 +119,9 @@ router.post("/api/promocodes/claim", authenticateToken, async (req, res) => {
       walletamount: newWalletAmount,
       status: "approved",
       method: "auto",
-      remark: `Promo Code: ${promoCode.code}`,
+      remark: `Promo Code: ${promoCode.code}${
+        promoCode.rewardType === "luckySpinPoints" ? " (Lucky Spin Points)" : ""
+      }`,
       promotionname: promotion?.maintitle || "优惠码",
       promotionnameEN: promotion?.maintitleEN || "Promo Code",
       promotionId: global.PROMO_CODE_PROMOTION_ID,
@@ -134,50 +144,68 @@ router.post("/api/promocodes/claim", authenticateToken, async (req, res) => {
       promoCode.isActive = false;
     }
 
-    const kioskSettings = await kioskbalance.findOne({});
-    if (kioskSettings && kioskSettings.status) {
-      const kioskResult = await updateKioskBalance(
-        "subtract",
-        promoCode.amount,
-        {
-          username: user.username,
-          transactionType: "promo code claim",
-          remark: `Promo code claim: ${promoCode.code}`,
-          processBy: "System",
+    if (promoCode.rewardType === "wallet") {
+      const kioskSettings = await kioskbalance.findOne({});
+      if (kioskSettings && kioskSettings.status) {
+        const kioskResult = await updateKioskBalance(
+          "subtract",
+          promoCode.amount,
+          {
+            username: user.username,
+            transactionType: "promo code claim",
+            remark: `Promo code claim: ${promoCode.code}`,
+            processBy: "System",
+          }
+        );
+        if (!kioskResult.success) {
+          return res.status(200).json({
+            success: false,
+            message: {
+              en: "Failed to update kiosk balance",
+              zh: "更新Kiosk余额失败",
+              ms: "Gagal mengemas kini baki kiosk",
+            },
+          });
         }
-      );
-      if (!kioskResult.success) {
-        return res.status(200).json({
-          success: false,
-          message: {
-            en: "Failed to update kiosk balance",
-            zh: "更新Kiosk余额失败",
-            ms: "Gagal mengemas kini baki kiosk",
-          },
-        });
       }
     }
+
+    const updateData =
+      promoCode.rewardType === "luckySpinPoints"
+        ? { $inc: { luckySpinPoints: promoCode.amount } }
+        : { $inc: { wallet: promoCode.amount } };
 
     await Promise.all([
       claim.save(),
       bonus.save(),
       walletLog.save(),
       promoCode.save(),
-      User.findByIdAndUpdate(req.user.userId, {
-        $inc: { wallet: promoCode.amount },
-      }),
+      User.findByIdAndUpdate(req.user.userId, updateData),
     ]);
 
     res.status(200).json({
       success: true,
       data: {
         amount: promoCode.amount,
-        newBalance: newWalletAmount,
+        rewardType: promoCode.rewardType,
+        newBalance:
+          promoCode.rewardType === "wallet"
+            ? newWalletAmount
+            : newLuckySpinPoints,
       },
       message: {
-        en: `Successfully claimed $${promoCode.amount} credits!`,
-        zh: `成功领取 $${promoCode.amount}！`,
-        ms: `Berjaya menuntut $${promoCode.amount} kredit!`,
+        en:
+          promoCode.rewardType === "luckySpinPoints"
+            ? `Successfully claimed ${promoCode.amount} Lucky Spin Points!`
+            : `Successfully claimed $${promoCode.amount} credits!`,
+        zh:
+          promoCode.rewardType === "luckySpinPoints"
+            ? `成功领取 ${promoCode.amount} 幸运转盘积分！`
+            : `成功领取 $${promoCode.amount}！`,
+        ms:
+          promoCode.rewardType === "luckySpinPoints"
+            ? `Berjaya menuntut ${promoCode.amount} Lucky Spin Points!`
+            : `Berjaya menuntut $${promoCode.amount} kredit!`,
       },
     });
   } catch (error) {
@@ -216,6 +244,7 @@ router.post(
         code,
         amount: req.body.amount,
         claimLimit: req.body.claimLimit,
+        rewardType: req.body.rewardType || "wallet",
       });
       await promoCode.save();
       res.status(200).json({
@@ -285,7 +314,7 @@ router.put(
       const { amount, claimLimit } = req.body;
       const promoCode = await PromoCode.findByIdAndUpdate(
         req.params.id,
-        { amount, claimLimit },
+        { amount, claimLimit, rewardType },
         { new: true }
       );
       if (!promoCode) {

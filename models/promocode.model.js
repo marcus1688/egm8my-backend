@@ -7,6 +7,11 @@ const promoCodeSchema = new mongoose.Schema(
     claimLimit: { type: Number, required: true },
     claimedCount: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true },
+    rewardType: {
+      type: String,
+      enum: ["wallet", "luckySpinPoints"],
+      default: "wallet",
+    },
   },
   { timestamps: true }
 );
