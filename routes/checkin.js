@@ -13,6 +13,7 @@ const { v4: uuidv4 } = require("uuid");
 const cron = require("node-cron");
 const { updateKioskBalance } = require("../services/kioskBalanceService");
 const kioskbalance = require("../models/kioskbalance.model");
+const axios = require("axios");
 
 const getMalaysiaTime = () => moment().tz("Asia/Kuala_Lumpur");
 
@@ -57,16 +58,38 @@ const checkMonthlyCompletion = (monthlyCheckIns, checkInDate) => {
   return checkIns.length === daysInMonth;
 };
 
-const getUserDailyTurnover = async (userId) => {
-  const malaysiaTime = getMalaysiaTime();
-  const startOfDay = malaysiaTime.clone().startOf("day").toDate();
-  const endOfDay = malaysiaTime.clone().endOf("day").toDate();
-  const user = await User.findById(userId);
-  if (!user) return 0;
-  const todayTurnover = user.todayTurnover || 100;
-  return todayTurnover;
+const getUserDailyTurnover = async (userId, targetDate = null) => {
+  try {
+    const malaysiaTime = targetDate
+      ? moment.tz(targetDate, "Asia/Kuala_Lumpur")
+      : getMalaysiaTime();
+    const startOfDay = malaysiaTime
+      .clone()
+      .startOf("day")
+      .format("YYYY-MM-DD HH:mm:ss");
+    const endOfDay = malaysiaTime
+      .clone()
+      .endOf("day")
+      .format("YYYY-MM-DD HH:mm:ss");
+    const user = await User.findById(userId);
+    if (!user) return 0;
+    const response = await axios.get(
+      `${process.env.API_URL}/api/all/${userId}/dailygamedata`,
+      {
+        params: {
+          startDate: startOfDay,
+        },
+      }
+    );
+    if (response.data.success) {
+      return response.data.summary.totalTurnover || 0;
+    }
+    return 0;
+  } catch (error) {
+    console.error("Error fetching daily turnover:", error);
+    return 0;
+  }
 };
-
 const distributeCheckinRewards = async () => {
   try {
     const malaysiaTime = getMalaysiaTime();
