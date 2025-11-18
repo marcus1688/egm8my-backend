@@ -329,7 +329,11 @@ router.post(
           });
         }
       }
-      user.wallet += rebateLog.totalRebate;
+      const updatedUser = await User.findByIdAndUpdate(
+        user._id,
+        { $inc: { wallet: rebateLog.totalRebate } },
+        { new: true }
+      );
       await user.save();
       const dataDate = moment(rebateLog.rebateissuesdate)
         .tz("Asia/Kuala_Lumpur")
@@ -543,7 +547,11 @@ async function calculateWinLoseRebate(
               }
             }
             stats.totalRebate = parseFloat(stats.totalRebate.toFixed(2));
-            user.wallet += stats.totalRebate;
+            const updatedUser = await User.findByIdAndUpdate(
+              user._id,
+              { $inc: { wallet: stats.totalRebate } },
+              { new: true }
+            );
             await user.save();
             const userTransactionId = uuidv4();
             const hasSportPendingMatch = await checkSportPendingMatch(

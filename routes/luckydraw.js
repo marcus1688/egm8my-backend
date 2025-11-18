@@ -215,9 +215,7 @@ router.post("/api/luckydraw9grid/spin", authenticateToken, async (req, res) => {
 
     await Promise.all([
       User.findByIdAndUpdate(userId, {
-        $set: {
-          wallet: newWalletBalance,
-        },
+        $inc: { wallet: selectedPrize.value },
       }),
       drawLog.save(),
       bonusTransaction.save(),

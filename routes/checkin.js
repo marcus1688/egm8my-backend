@@ -90,6 +90,7 @@ const getUserDailyTurnover = async (userId, targetDate = null) => {
     return 0;
   }
 };
+
 const distributeCheckinRewards = async () => {
   try {
     const malaysiaTime = getMalaysiaTime();
@@ -204,7 +205,11 @@ const distributeCheckinRewards = async () => {
             promotionId: global.DAILY_CHECK_IN_PROMOTION_ID,
             processtime: "00:00:00",
           });
-          user.wallet += rewardAmount;
+          const updatedUser = await User.findByIdAndUpdate(
+            user._id,
+            { $inc: { wallet: rewardAmount } },
+            { new: true }
+          );
           const walletLog = new UserWalletLog({
             userId: user._id,
             transactionid: transactionId,
@@ -970,7 +975,11 @@ router.post(
             });
 
             // Update user wallet
-            user.wallet += rewardAmount;
+            const updatedUser = await User.findByIdAndUpdate(
+              user._id,
+              { $inc: { wallet: rewardAmount } },
+              { new: true }
+            );
 
             // Create wallet log
             const walletLog = new UserWalletLog({

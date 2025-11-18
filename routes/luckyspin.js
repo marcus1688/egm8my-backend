@@ -94,8 +94,16 @@ router.post("/api/luckySpinStartGame", authenticateToken, async (req, res) => {
     const pointsAfterSpin = pointsBeforeSpin - pointsPerSpin;
     const transactionId = uuidv4();
 
-    user.wallet += selectedPrize.value;
-    user.luckySpinPoints -= pointsPerSpin;
+    const updatedUser = await User.findByIdAndUpdate(
+      user._id,
+      {
+        $inc: {
+          wallet: selectedPrize.value,
+          luckySpinPoints: -pointsPerSpin,
+        },
+      },
+      { new: true }
+    );
 
     const spinLog = new LuckySpinLog({
       playerusername: user.username,

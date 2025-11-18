@@ -2575,12 +2575,6 @@ router.post(
 
       await updateUserGameLocks(user._id);
 
-      const spinSetting = await LuckySpinSetting.findOne();
-      let spinCount = 0;
-      if (spinSetting) {
-        spinCount = Math.floor(deposit.amount / spinSetting.depositAmount);
-      }
-
       const updateFields = {
         $inc: {
           totaldeposit: deposit.amount,
@@ -3208,8 +3202,11 @@ router.post(
 
       const formattedProcessTime = calculateProcessingTime(withdraw.createdAt);
 
-      user.wallet += withdraw.amount;
-      await user.save();
+      const updatedUser = await User.findByIdAndUpdate(
+        user._id,
+        { $inc: { wallet: withdraw.amount } },
+        { new: true }
+      );
 
       withdraw.status = "rejected";
       withdraw.processBy = adminuser.username;
@@ -3443,27 +3440,16 @@ router.post(
         deposit.newDeposit = false;
       }
 
-      const spinSetting = await LuckySpinSetting.findOne();
-      if (spinSetting) {
-        const spinCount = Math.floor(
-          deposit.amount / spinSetting.depositAmount
-        );
-        if (user.luckySpinCount < spinCount) {
-          return res.status(200).json({
-            success: false,
-            message: {
-              en: "User does not have enough Lucky Spins to revert",
-              zh: "用户没有足够的幸运转盘次数可撤销",
-            },
-          });
-        }
-        user.luckySpinCount -= spinCount;
-      }
-
-      user.wallet -= deposit.amount;
-      user.totaldeposit -= deposit.amount;
-      await user.save();
-
+      const updatedUser = await User.findByIdAndUpdate(
+        user._id,
+        {
+          $inc: {
+            wallet: -deposit.amount,
+            totaldeposit: -deposit.amount,
+          },
+        },
+        { new: true }
+      );
       await checkAndUpdateVIPLevel(user._id);
 
       if (deposit.method !== "auto" && bank) {
@@ -3658,13 +3644,27 @@ router.post(
         }
       }
 
-      user.wallet += withdraw.amount;
-      user.totalwithdraw -= withdraw.amount;
-      await user.save();
+      const updatedUser = await User.findByIdAndUpdate(
+        user._id,
+        {
+          $inc: {
+            wallet: withdraw.amount,
+            totalwithdraw: -withdraw.amount,
+          },
+        },
+        { new: true }
+      );
 
-      bank.currentbalance += withdraw.amount;
-      bank.totalWithdrawals -= withdraw.amount;
-      await bank.save();
+      const updatedBank = await BankList.findByIdAndUpdate(
+        withdraw.withdrawbankid,
+        {
+          $inc: {
+            currentbalance: withdraw.amount,
+            totalWithdrawals: -withdraw.amount,
+          },
+        },
+        { new: true }
+      );
 
       withdraw.reverted = true;
       withdraw.status = "reverted";
@@ -3813,15 +3813,25 @@ router.post(
         }
       }
 
-      user.wallet -= bonus.amount;
-      user.totalbonus -= bonus.amount;
+      const updateData = {
+        $inc: {
+          wallet: -bonus.amount,
+          totalbonus: -bonus.amount,
+        },
+      };
       if (bonus.isLuckySpin) {
-        user.luckySpinClaim = false;
+        updateData.$set = { luckySpinClaim: false };
       }
       if (bonus.isCheckinBonus) {
-        user.lastcheckinbonus = null;
+        updateData.$set = {
+          ...updateData.$set,
+          lastcheckinbonus: null,
+        };
       }
-      await user.save();
+
+      const updatedUser = await User.findByIdAndUpdate(user._id, updateData, {
+        new: true,
+      });
 
       bonus.reverted = true;
       bonus.status = "reverted";
@@ -4996,9 +5006,23 @@ router.patch(
             });
           }
         }
-        user.wallet -= amount;
+
+        const updatedUser = await User.findByIdAndUpdate(
+          userId,
+          { $inc: { wallet: -amount } },
+          { new: true }
+        );
+
+        if (!updatedUser) {
+          return res.status(200).json({
+            success: false,
+            message: {
+              en: "Failed to update user balance",
+              zh: "更新用户余额失败",
+            },
+          });
+        }
       }
-      await user.save();
 
       const newCashOut = new UserWalletCashOut({
         transactionId: uuidv4(),
