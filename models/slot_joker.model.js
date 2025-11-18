@@ -24,7 +24,9 @@ const slotjokerschema = new mongoose.Schema(
     tournamentId: {
       type: String,
     },
-
+    void: {
+      type: Boolean,
+    },
     cancelTournamentId: {
       type: String,
     },
