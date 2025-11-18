@@ -8,10 +8,73 @@ const { authenticateAdminToken } = require("../auth/adminAuth");
 const moment = require("moment-timezone");
 const { v4: uuidv4 } = require("uuid");
 const mongoose = require("mongoose");
+const axios = require("axios");
 
-// ==================== USER ROUTES ====================
+const getMalaysiaTime = () => moment().tz("Asia/Kuala_Lumpur");
 
-// Get User Missions Progress
+async function calculateTodayTurnover(userId, today, todayEnd) {
+  try {
+    const malaysiaTime = getMalaysiaTime();
+    const startOfDay = malaysiaTime
+      .clone()
+      .startOf("day")
+      .format("YYYY-MM-DD HH:mm:ss");
+    const endOfDay = malaysiaTime
+      .clone()
+      .endOf("day")
+      .format("YYYY-MM-DD HH:mm:ss");
+
+    const user = await User.findById(userId);
+    if (!user) return 0;
+
+    const response = await axios.get(
+      `${process.env.API_URL}api/all/${userId}/dailygamedata`,
+      {
+        params: {
+          startDate: startOfDay,
+        },
+      }
+    );
+
+    if (response.data.success) {
+      return response.data.summary.totalTurnover || 0;
+    }
+
+    return 0;
+  } catch (error) {
+    console.error("Error fetching today's turnover:", error);
+    return 0;
+  }
+}
+
+async function getTodayUserStats(userId, today, todayEnd) {
+  const Withdraw = require("../models/withdraw.model");
+  const Deposit = require("../models/deposit.model");
+  const totalTurnover = await calculateTodayTurnover(userId, today, todayEnd);
+  const withdrawCount = await Withdraw.countDocuments({
+    userId: userId,
+    status: "approved",
+    createdAt: {
+      $gte: today.toDate(),
+      $lte: todayEnd.toDate(),
+    },
+  });
+  const depositCount = await Deposit.countDocuments({
+    userId: userId,
+    status: "approved",
+    createdAt: {
+      $gte: today.toDate(),
+      $lte: todayEnd.toDate(),
+    },
+  });
+  return {
+    totalTurnover: totalTurnover || 0,
+    withdrawCount: withdrawCount || 0,
+    depositCount: depositCount || 0,
+  };
+}
+
+// User Get Mission Progress
 router.get(
   "/api/user/missions/progress",
   authenticateToken,
@@ -20,16 +83,15 @@ router.get(
       const userId = req.user.userId;
       const today = moment().tz("Asia/Kuala_Lumpur").startOf("day");
       const todayEnd = moment().tz("Asia/Kuala_Lumpur").endOf("day");
-
-      // 1. Get today's statistics
       const todayStats = await getTodayUserStats(userId, today, todayEnd);
-
-      // 2. Get all active missions
-      const missions = await Mission.find({ isActive: true }).sort({
-        sortOrder: 1,
+      const missions = await Mission.find({ isActive: true });
+      const sortedMissions = missions.sort((a, b) => {
+        const orderA = a.sortOrder || 0;
+        const orderB = b.sortOrder || 0;
+        if (orderA === 0 && orderB !== 0) return 1;
+        if (orderA !== 0 && orderB === 0) return -1;
+        return orderA - orderB;
       });
-
-      // 3. Get missions claimed today
       const claimedToday = await MissionClaimLog.find({
         userId: userId,
         claimDate: {
@@ -42,8 +104,7 @@ router.get(
         log.missionId.toString()
       );
 
-      // 4. Calculate progress for each mission
-      const missionsWithProgress = missions.map((mission) => {
+      const missionsWithProgress = sortedMissions.map((mission) => {
         let currentProgress = 0;
 
         switch (mission.missionType) {
@@ -99,12 +160,11 @@ router.get(
   }
 );
 
-// Claim Mission Reward
+// User Claim Mission Reward
 router.post("/api/user/missions/claim", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const { missionId } = req.body;
-
     const user = await User.findById(userId);
     if (!user) {
       return res.status(200).json({
@@ -116,7 +176,6 @@ router.post("/api/user/missions/claim", authenticateToken, async (req, res) => {
         },
       });
     }
-
     const mission = await Mission.findById(missionId);
     if (!mission || !mission.isActive) {
       return res.status(200).json({
@@ -128,11 +187,8 @@ router.post("/api/user/missions/claim", authenticateToken, async (req, res) => {
         },
       });
     }
-
-    // Check if already claimed today
     const today = moment().tz("Asia/Kuala_Lumpur").startOf("day");
     const todayEnd = moment().tz("Asia/Kuala_Lumpur").endOf("day");
-
     const alreadyClaimed = await MissionClaimLog.findOne({
       userId: userId,
       missionId: missionId,
@@ -141,7 +197,6 @@ router.post("/api/user/missions/claim", authenticateToken, async (req, res) => {
         $lte: todayEnd.toDate(),
       },
     });
-
     if (alreadyClaimed) {
       return res.status(200).json({
         success: false,
@@ -152,11 +207,8 @@ router.post("/api/user/missions/claim", authenticateToken, async (req, res) => {
         },
       });
     }
-
-    // Verify mission completion
     const todayStats = await getTodayUserStats(userId, today, todayEnd);
     let currentProgress = 0;
-
     switch (mission.missionType) {
       case "totalTurnover":
         currentProgress = todayStats.totalTurnover;
@@ -168,7 +220,6 @@ router.post("/api/user/missions/claim", authenticateToken, async (req, res) => {
         currentProgress = todayStats.depositCount;
         break;
     }
-
     if (currentProgress < mission.targetValue) {
       return res.status(200).json({
         success: false,
@@ -179,11 +230,7 @@ router.post("/api/user/missions/claim", authenticateToken, async (req, res) => {
         },
       });
     }
-
-    // Generate transaction ID
     const transactionId = uuidv4();
-
-    // Create claim log
     const claimLog = new MissionClaimLog({
       userId: user._id,
       username: user.username,
@@ -198,15 +245,12 @@ router.post("/api/user/missions/claim", authenticateToken, async (req, res) => {
       claimDate: new Date(),
       transactionId: transactionId,
     });
-
-    // Update user's luckySpinPoints
     await Promise.all([
       claimLog.save(),
       User.findByIdAndUpdate(userId, {
         $inc: { luckySpinPoints: mission.rewardPoints },
       }),
     ]);
-
     res.status(200).json({
       success: true,
       data: {
@@ -261,15 +305,20 @@ router.get(
   }
 );
 
-// ==================== ADMIN ROUTES ====================
-
 // Admin Get All Missions
 router.get("/admin/api/missions", authenticateAdminToken, async (req, res) => {
   try {
-    const missions = await Mission.find().sort({ sortOrder: 1, createdAt: -1 });
+    const missions = await Mission.find();
+    const sortedMissions = missions.sort((a, b) => {
+      const orderA = a.sortOrder || 0;
+      const orderB = b.sortOrder || 0;
+      if (orderA === 0 && orderB !== 0) return 1;
+      if (orderA !== 0 && orderB === 0) return -1;
+      return orderA - orderB;
+    });
     res.json({
       success: true,
-      data: missions,
+      data: sortedMissions,
     });
   } catch (error) {
     console.error("Get missions error:", error);
@@ -308,9 +357,7 @@ router.post("/admin/api/missions", authenticateAdminToken, async (req, res) => {
       rewardPoints,
       sortOrder: sortOrder || 0,
     });
-
     await mission.save();
-
     res.status(200).json({
       success: true,
       message: {
@@ -350,7 +397,6 @@ router.put(
         rewardPoints,
         sortOrder,
       } = req.body;
-
       const mission = await Mission.findByIdAndUpdate(
         req.params.id,
         {
@@ -366,7 +412,6 @@ router.put(
         },
         { new: true }
       );
-
       if (!mission) {
         return res.status(200).json({
           success: false,
@@ -377,7 +422,6 @@ router.put(
           },
         });
       }
-
       res.status(200).json({
         success: true,
         message: {
@@ -418,10 +462,8 @@ router.patch(
           },
         });
       }
-
       mission.isActive = !mission.isActive;
       await mission.save();
-
       res.status(200).json({
         success: true,
         message: {
@@ -462,7 +504,6 @@ router.delete(
           },
         });
       }
-
       res.status(200).json({
         success: true,
         message: {
@@ -493,18 +534,15 @@ router.get(
     try {
       const { startDate, endDate } = req.query;
       const dateFilter = {};
-
       if (startDate && endDate) {
         dateFilter.claimDate = {
           $gte: moment(new Date(startDate)).utc().toDate(),
           $lte: moment(new Date(endDate)).utc().toDate(),
         };
       }
-
       const claimLogs = await MissionClaimLog.find({
         ...dateFilter,
       }).sort({ createdAt: -1 });
-
       res.json({
         success: true,
         data: claimLogs,
@@ -518,45 +556,5 @@ router.get(
     }
   }
 );
-
-// ==================== HELPER FUNCTIONS ====================
-
-// Calculate today's user statistics
-async function getTodayUserStats(userId, today, todayEnd) {
-  // Import your models here
-  const Withdraw = require("../models/withdraw.model");
-  const Deposit = require("../models/deposit.model");
-  // Add your game transaction model if you have one
-  // const GameTransaction = require("../models/gametransaction.model");
-
-  // Calculate today's total turnover
-  const totalTurnover = await calculateTodayTurnover(userId, today, todayEnd);
-
-  // Calculate today's withdraw count
-  const withdrawCount = await Withdraw.countDocuments({
-    userId: userId,
-    status: "approved",
-    createdAt: {
-      $gte: today.toDate(),
-      $lte: todayEnd.toDate(),
-    },
-  });
-
-  // Calculate today's deposit count
-  const depositCount = await Deposit.countDocuments({
-    userId: userId,
-    status: "approved",
-    createdAt: {
-      $gte: today.toDate(),
-      $lte: todayEnd.toDate(),
-    },
-  });
-
-  return {
-    totalTurnover: totalTurnover || 0,
-    withdrawCount: withdrawCount || 0,
-    depositCount: depositCount || 0,
-  };
-}
 
 module.exports = router;
