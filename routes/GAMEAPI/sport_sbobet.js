@@ -851,7 +851,21 @@ router.post("/api/sbobet/cancel", validateSBOBETRequest, async (req, res) => {
       });
     }
 
-    if (alreadyCancelled) {
+    // if (alreadyCancelled) {
+    //   return res.status(200).json({
+    //     AccountName: Username,
+    //     ErrorCode: 2002,
+    //     ErrorMessage: "Bet Already Canceled",
+    //     Balance: roundToTwoDecimals(currentUser.wallet),
+    //   });
+    // }
+
+    const cancelResult = await SportSBOBETModal.updateMany(
+      { ...betFilter, cancel: false },
+      { $set: { cancel: true } }
+    );
+
+    if (cancelResult.modifiedCount === 0) {
       return res.status(200).json({
         AccountName: Username,
         ErrorCode: 2002,
@@ -879,7 +893,6 @@ router.post("/api/sbobet/cancel", validateSBOBETRequest, async (req, res) => {
         { $inc: { wallet: roundToTwoDecimals(totalRefund) } },
         { new: true, projection: { wallet: 1, _id: 0 } }
       ).lean(),
-      SportSBOBETModal.updateMany(betFilter, { $set: { cancel: true } }),
     ]);
 
     return res.status(200).json({
