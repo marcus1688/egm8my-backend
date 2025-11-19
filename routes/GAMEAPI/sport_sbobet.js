@@ -335,6 +335,7 @@ router.post("/api/sbobet/getbalance", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 3,
         ErrorMessage: "Username empty",
+        Balance: 0,
       });
     }
 
@@ -342,6 +343,7 @@ router.post("/api/sbobet/getbalance", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 4,
         ErrorMessage: "CompanyKey Error",
+        Balance: 0,
       });
     }
 
@@ -391,6 +393,7 @@ router.post("/api/sbobet/deduct", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 3,
         ErrorMessage: "Username empty",
+        Balance: 0,
       });
     }
 
@@ -398,6 +401,7 @@ router.post("/api/sbobet/deduct", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 4,
         ErrorMessage: "CompanyKey Error",
+        Balance: 0,
       });
     }
 
@@ -422,6 +426,7 @@ router.post("/api/sbobet/deduct", async (req, res) => {
         return res.status(200).json({
           ErrorCode: 1,
           ErrorMessage: "Member not exist",
+          Balance: 0,
         });
       }
       const deductCount = existingBets.length;
@@ -441,6 +446,7 @@ router.post("/api/sbobet/deduct", async (req, res) => {
           return res.status(200).json({
             ErrorCode: 5004,
             ErrorMessage: "2nd Deduct amount must be greater than 1st Deduct",
+            Balance: roundToTwoDecimals(currentUser.wallet),
           });
         }
 
@@ -533,6 +539,7 @@ router.post("/api/sbobet/deduct", async (req, res) => {
         return res.status(200).json({
           ErrorCode: 1,
           ErrorMessage: "Member not exist",
+          Balance: 0,
         });
       }
 
@@ -558,6 +565,7 @@ router.post("/api/sbobet/deduct", async (req, res) => {
         return res.status(200).json({
           ErrorCode: 5,
           ErrorMessage: "Not enough balance",
+          Balance: roundToTwoDecimals(currentUser.wallet),
         });
       }
 
@@ -593,6 +601,7 @@ router.post("/api/sbobet/deduct", async (req, res) => {
         return res.status(200).json({
           ErrorCode: 1,
           ErrorMessage: "Member not exist",
+          Balance: 0,
         });
       }
 
@@ -664,6 +673,7 @@ router.post("/api/sbobet/settle", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 3,
         ErrorMessage: "Username empty",
+        Balance: 0,
       });
     }
 
@@ -671,6 +681,7 @@ router.post("/api/sbobet/settle", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 4,
         ErrorMessage: "CompanyKey Error",
+        Balance: 0,
       });
     }
 
@@ -688,6 +699,7 @@ router.post("/api/sbobet/settle", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 1,
         ErrorMessage: "Member not exist",
+        Balance: 0,
       });
     }
 
@@ -763,6 +775,7 @@ router.post("/api/sbobet/rollback", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 3,
         ErrorMessage: "Username empty",
+        Balance: 0,
       });
     }
 
@@ -770,6 +783,7 @@ router.post("/api/sbobet/rollback", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 4,
         ErrorMessage: "CompanyKey Error",
+        Balance: 0,
       });
     }
 
@@ -787,6 +801,7 @@ router.post("/api/sbobet/rollback", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 1,
         ErrorMessage: "Member not exist",
+        Balance: 0,
       });
     }
 
@@ -858,6 +873,7 @@ router.post("/api/sbobet/cancel", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 3,
         ErrorMessage: "Username empty",
+        Balance: 0,
       });
     }
 
@@ -865,6 +881,7 @@ router.post("/api/sbobet/cancel", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 4,
         ErrorMessage: "CompanyKey Error",
+        Balance: 0,
       });
     }
 
@@ -887,6 +904,7 @@ router.post("/api/sbobet/cancel", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 1,
         ErrorMessage: "Member not exist",
+        Balance: 0,
       });
     }
 
@@ -958,6 +976,7 @@ router.post("/api/sbobet/bonus", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 3,
         ErrorMessage: "Username empty",
+        Balance: 0,
       });
     }
 
@@ -965,6 +984,7 @@ router.post("/api/sbobet/bonus", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 4,
         ErrorMessage: "CompanyKey Error",
+        Balance: 0,
       });
     }
 
@@ -977,6 +997,7 @@ router.post("/api/sbobet/bonus", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 1,
         ErrorMessage: "Member not exist",
+        Balance: 0,
       });
     }
 
