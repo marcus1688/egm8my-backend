@@ -17,97 +17,103 @@ const GameWalletLog = require("../../models/gamewalletlog.model");
 
 require("dotenv").config();
 
-router.patch("/admin/api/updateseamlessstatus/:userId", async (req, res) => {
-  try {
-    const { gamename } = req.body;
-
-    const userId = req.params.userId;
-
-    const user = await User.findById(userId);
-
-    if (!user.gameLock.hasOwnProperty(gamename)) {
-      console.log("Error updating seamless game status:", gamename, "gamename");
-      return res.status(200).json({
-        success: false,
-        message: {
-          en: "Internal Server Error. Please contact IT support for further assistance.",
-          zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
-          ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
-        },
-      });
-    }
-
-    user.gameLock[gamename].lock = !user.gameLock[gamename].lock;
-
-    await user.save();
-
-    return res.status(200).json({
-      success: true,
-      message: {
-        en: `Game lock status for ${gamename} updated successfully.`,
-        zh: `${gamename} 的游戏锁定状态更新成功。`,
-        ms: `Status kunci permainan untuk ${gamename} berjaya dikemas kini.`,
-      },
-      gameLock: user.gameLock[gamename],
-    });
-  } catch (error) {
-    console.error("Error updating seamless game status:", error.message);
-    return res.status(200).json({
-      success: false,
-      message: {
-        en: "Internal Server Error. Please contact IT support for further assistance.",
-        zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
-        ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
-      },
-    });
-  }
-});
-
 router.post(
-  "/admin/api/epicwin/seamlessstatus/:userId",
+  "/admin/api/:gameName/transferstatus/:transferType/:userId",
   authenticateAdminToken,
   async (req, res) => {
     try {
-      const userId = req.params.userId;
+      const { userId, gameName, transferType } = req.params;
 
-      const user = await User.findById(userId);
-
-      if (!user.gameLock.hasOwnProperty("epicwin")) {
-        console.log("Error updating seamless game status:", "EPICWIN");
-        return res.status(200).json({
+      if (
+        transferType !== "transferinstatus" &&
+        transferType !== "transferoutstatus"
+      ) {
+        return res.status(400).json({
           success: false,
           message: {
-            en: "Internal Server Error. Please contact IT support for further assistance.",
-            zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
-            ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
+            en: "Invalid transfer type. Must be 'transferinstatus' or 'transferoutstatus'.",
+            zh: "无效的转账类型。必须是'转入状态'或'转出状态'。",
+            ms: "Jenis pemindahan tidak sah. Mesti 'transferinstatus' atau 'transferoutstatus'.",
+            zh_hk: "無效嘅轉賬類型。必須係'轉入狀態'或'轉出狀態'。",
+            id: "Jenis transfer tidak valid. Harus 'transferinstatus' atau 'transferoutstatus'.",
           },
         });
       }
 
-      user.gameLock["epicwin"].lock = !user.gameLock["epicwin"].lock;
+      const user = await User.findById(userId, { gameStatus: 1 });
 
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: {
+            en: "User not found. Please contact IT support for further assistance.",
+            zh: "用户未找到。请联系IT客服以获取进一步帮助。",
+            ms: "Pengguna tidak ditemui. Sila hubungi sokongan IT untuk bantuan lanjut.",
+            zh_hk: "搵唔到用戶。請聯絡IT客服以獲取進一步幫助。",
+            id: "Pengguna tidak ditemukan. Silakan hubungi dukungan IT untuk bantuan lebih lanjut.",
+          },
+        });
+      }
+
+      if (!user.gameStatus?.hasOwnProperty(gameName)) {
+        console.error(`Game status not found for: ${gameName.toUpperCase()}`);
+        return res.status(404).json({
+          success: false,
+          message: {
+            en: `Game status for ${gameName.toUpperCase()} not found. Please ensure the game provider is properly configured.`,
+            zh: `未找到 ${gameName.toUpperCase()} 的游戏状态。请确保游戏提供商已正确配置。`,
+            ms: `Status permainan untuk ${gameName.toUpperCase()} tidak ditemui. Sila pastikan penyedia permainan telah dikonfigurasi dengan betul.`,
+            zh_hk: `搵唔到 ${gameName.toUpperCase()} 嘅遊戲狀態。請確保遊戲提供商已正確配置。`,
+            id: `Status permainan untuk ${gameName.toUpperCase()} tidak ditemukan. Pastikan penyedia game sudah dikonfigurasi dengan benar.`,
+          },
+        });
+      }
+
+      const statusField =
+        transferType === "transferinstatus"
+          ? "transferInStatus"
+          : "transferOutStatus";
+
+      user.gameStatus[gameName][statusField] =
+        !user.gameStatus[gameName][statusField];
       await user.save();
+
+      const displayName = gameName.toUpperCase();
+      const statusType =
+        transferType === "transferinstatus" ? "transferIn" : "transferOut";
 
       return res.status(200).json({
         success: true,
         message: {
-          en: `Game lock status for EPICWIN updated successfully.`,
-          zh: `EPICWIN 的游戏锁定状态更新成功。`,
-          ms: `Status kunci permainan untuk EPICWIN berjaya dikemas kini.`,
+          en: `Game ${statusType} status for ${displayName} updated successfully.`,
+          zh: `${displayName} 的${
+            statusType === "transferIn" ? "转入" : "转出"
+          }状态更新成功。`,
+          ms: `Status pemindahan ${
+            statusType === "transferIn" ? "masuk" : "keluar"
+          } permainan untuk ${displayName} berjaya dikemas kini.`,
+          zh_hk: `${displayName} 嘅${
+            statusType === "transferIn" ? "轉入" : "轉出"
+          }狀態更新成功。`,
+          id: `Status ${
+            statusType === "transferIn" ? "transfer masuk" : "transfer keluar"
+          } permainan untuk ${displayName} berhasil diperbarui.`,
         },
-        gameLock: user.gameLock["epicwin"],
+        gameStatus: user.gameStatus[gameName],
       });
     } catch (error) {
       console.error(
-        "Error updating EPICWIN seamless game status:",
+        `Error updating ${req.params.gameName} transfer status:`,
         error.message
       );
-      return res.status(200).json({
+      return res.status(500).json({
         success: false,
         message: {
           en: "Internal Server Error. Please contact IT support for further assistance.",
           zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
           ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
+          zh_hk: "內部服務器錯誤。請聯絡IT客服以獲取進一步幫助。",
+          id: "Kesalahan Server Internal. Silakan hubungi dukungan IT untuk bantuan lebih lanjut.",
         },
       });
     }
@@ -115,452 +121,69 @@ router.post(
 );
 
 router.post(
-  "/admin/api/fachai/seamlessstatus/:userId",
+  "/admin/api/:gameName/seamlessstatus/:userId",
   authenticateAdminToken,
   async (req, res) => {
     try {
-      const userId = req.params.userId;
+      const { userId, gameName } = req.params;
+      const user = await User.findById(userId, { gameLock: 1 });
 
-      const user = await User.findById(userId);
-
-      if (!user.gameLock.hasOwnProperty("fachai")) {
-        console.log("Error updating seamless game status:", "FACHAI");
-        return res.status(200).json({
+      if (!user) {
+        return res.status(404).json({
           success: false,
           message: {
-            en: "Internal Server Error. Please contact IT support for further assistance.",
-            zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
-            ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
+            en: "User not found. Please contact IT support for further assistance.",
+            zh: "用户未找到。请联系IT客服以获取进一步帮助。",
+            ms: "Pengguna tidak ditemui. Sila hubungi sokongan IT untuk bantuan lanjut.",
+            zh_hk: "搵唔到用戶。請聯絡IT客服以獲取進一步幫助。",
+            id: "Pengguna tidak ditemukan. Silakan hubungi dukungan IT untuk bantuan lebih lanjut.",
           },
         });
       }
 
-      user.gameLock["fachai"].lock = !user.gameLock["fachai"].lock;
+      if (!user.gameLock?.hasOwnProperty(gameName)) {
+        console.error(`Game lock not found for: ${gameName.toUpperCase()}`);
+        return res.status(404).json({
+          success: false,
+          message: {
+            en: `Game lock for ${gameName.toUpperCase()} not found. Please ensure the game provider is properly configured.`,
+            zh: `未找到 ${gameName.toUpperCase()} 的游戏锁。请确保游戏提供商已正确配置。`,
+            ms: `Kunci permainan untuk ${gameName.toUpperCase()} tidak ditemui. Sila pastikan penyedia permainan telah dikonfigurasi dengan betul.`,
+            zh_hk: `搵唔到 ${gameName.toUpperCase()} 嘅遊戲鎖。請確保遊戲提供商已正確配置。`,
+            id: `Kunci permainan untuk ${gameName.toUpperCase()} tidak ditemukan. Pastikan penyedia game sudah dikonfigurasi dengan benar.`,
+          },
+        });
+      }
 
+      user.gameLock[gameName].lock = !user.gameLock[gameName].lock;
       await user.save();
+
+      const displayName = gameName.toUpperCase();
 
       return res.status(200).json({
         success: true,
         message: {
-          en: `Game lock status for FACHAI updated successfully.`,
-          zh: `FACHAI 的游戏锁定状态更新成功。`,
-          ms: `Status kunci permainan untuk FACHAI berjaya dikemas kini.`,
+          en: `Game lock status for ${displayName} updated successfully.`,
+          zh: `${displayName} 的游戏锁定状态更新成功。`,
+          ms: `Status kunci permainan untuk ${displayName} berjaya dikemas kini.`,
+          zh_hk: `${displayName} 嘅遊戲鎖定狀態更新成功。`,
+          id: `Status kunci permainan untuk ${displayName} berhasil diperbarui.`,
         },
-        gameLock: user.gameLock["fachai"],
+        gameLock: user.gameLock[gameName],
       });
     } catch (error) {
       console.error(
-        "Error updating FACHAI seamless game status:",
+        `Error updating ${req.params.gameName} seamless game status:`,
         error.message
       );
-      return res.status(200).json({
+      return res.status(500).json({
         success: false,
         message: {
           en: "Internal Server Error. Please contact IT support for further assistance.",
           zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
           ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
-        },
-      });
-    }
-  }
-);
-
-router.post(
-  "/admin/api/playace/seamlessstatus/:userId",
-  authenticateAdminToken,
-  async (req, res) => {
-    try {
-      const userId = req.params.userId;
-
-      const user = await User.findById(userId);
-
-      if (!user.gameLock.hasOwnProperty("playace")) {
-        console.log("Error updating seamless game status:", "PLAYACE");
-        return res.status(200).json({
-          success: false,
-          message: {
-            en: "Internal Server Error. Please contact IT support for further assistance.",
-            zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
-            ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
-          },
-        });
-      }
-
-      user.gameLock["playace"].lock = !user.gameLock["playace"].lock;
-
-      await user.save();
-
-      return res.status(200).json({
-        success: true,
-        message: {
-          en: `Game lock status for PLAYACE updated successfully.`,
-          zh: `PLAYACE 的游戏锁定状态更新成功。`,
-          ms: `Status kunci permainan untuk PLAYACE berjaya dikemas kini.`,
-        },
-        gameLock: user.gameLock["playace"],
-      });
-    } catch (error) {
-      console.error(
-        "Error updating PLAYACE seamless game status:",
-        error.message
-      );
-      return res.status(200).json({
-        success: false,
-        message: {
-          en: "Internal Server Error. Please contact IT support for further assistance.",
-          zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
-          ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
-        },
-      });
-    }
-  }
-);
-
-router.post(
-  "/admin/api/jili/seamlessstatus/:userId",
-  authenticateAdminToken,
-  async (req, res) => {
-    try {
-      const userId = req.params.userId;
-
-      const user = await User.findById(userId);
-
-      if (!user.gameLock.hasOwnProperty("jili")) {
-        console.log("Error updating seamless game status:", "JILI");
-        return res.status(200).json({
-          success: false,
-          message: {
-            en: "Internal Server Error. Please contact IT support for further assistance.",
-            zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
-            ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
-          },
-        });
-      }
-
-      user.gameLock["jili"].lock = !user.gameLock["jili"].lock;
-
-      await user.save();
-
-      return res.status(200).json({
-        success: true,
-        message: {
-          en: `Game lock status for JILI updated successfully.`,
-          zh: `JILI 的游戏锁定状态更新成功。`,
-          ms: `Status kunci permainan untuk JILI berjaya dikemas kini.`,
-        },
-        gameLock: user.gameLock["jili"],
-      });
-    } catch (error) {
-      console.error("Error updating JILI seamless game status:", error.message);
-      return res.status(200).json({
-        success: false,
-        message: {
-          en: "Internal Server Error. Please contact IT support for further assistance.",
-          zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
-          ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
-        },
-      });
-    }
-  }
-);
-
-router.post(
-  "/admin/api/yesgetrich/seamlessstatus/:userId",
-  authenticateAdminToken,
-  async (req, res) => {
-    try {
-      const userId = req.params.userId;
-
-      const user = await User.findById(userId);
-
-      if (!user.gameLock.hasOwnProperty("yesgetrich")) {
-        console.log("Error updating seamless game status:", "YGR");
-        return res.status(200).json({
-          success: false,
-          message: {
-            en: "Internal Server Error. Please contact IT support for further assistance.",
-            zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
-            ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
-          },
-        });
-      }
-
-      user.gameLock["yesgetrich"].lock = !user.gameLock["yesgetrich"].lock;
-
-      await user.save();
-
-      return res.status(200).json({
-        success: true,
-        message: {
-          en: `Game lock status for YGR updated successfully.`,
-          zh: `YGR 的游戏锁定状态更新成功。`,
-          ms: `Status kunci permainan untuk YGR berjaya dikemas kini.`,
-        },
-        gameLock: user.gameLock["yesgetrich"],
-      });
-    } catch (error) {
-      console.error("Error updating YGR seamless game status:", error.message);
-      return res.status(200).json({
-        success: false,
-        message: {
-          en: "Internal Server Error. Please contact IT support for further assistance.",
-          zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
-          ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
-        },
-      });
-    }
-  }
-);
-
-router.post(
-  "/admin/api/joker/seamlessstatus/:userId",
-  authenticateAdminToken,
-  async (req, res) => {
-    try {
-      const userId = req.params.userId;
-
-      const user = await User.findById(userId);
-
-      if (!user.gameLock.hasOwnProperty("joker")) {
-        console.log("Error updating seamless game status:", "JOKER");
-        return res.status(200).json({
-          success: false,
-          message: {
-            en: "Internal Server Error. Please contact IT support for further assistance.",
-            zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
-            ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
-          },
-        });
-      }
-
-      user.gameLock["joker"].lock = !user.gameLock["joker"].lock;
-
-      await user.save();
-
-      return res.status(200).json({
-        success: true,
-        message: {
-          en: `Game lock status for JOKER updated successfully.`,
-          zh: `JOKER 的游戏锁定状态更新成功。`,
-          ms: `Status kunci permainan untuk JOKER berjaya dikemas kini.`,
-        },
-        gameLock: user.gameLock["joker"],
-      });
-    } catch (error) {
-      console.error(
-        "Error updating JOKER seamless game status:",
-        error.message
-      );
-      return res.status(200).json({
-        success: false,
-        message: {
-          en: "Internal Server Error. Please contact IT support for further assistance.",
-          zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
-          ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
-        },
-      });
-    }
-  }
-);
-
-router.post(
-  "/admin/api/microgaming/seamlessstatus/:userId",
-  authenticateAdminToken,
-  async (req, res) => {
-    try {
-      const userId = req.params.userId;
-
-      const user = await User.findById(userId);
-
-      if (!user.gameLock.hasOwnProperty("microgaming")) {
-        console.log("Error updating seamless game status:", "MICRO GAMING");
-        return res.status(200).json({
-          success: false,
-          message: {
-            en: "Internal Server Error. Please contact IT support for further assistance.",
-            zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
-            ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
-          },
-        });
-      }
-
-      user.gameLock["microgaming"].lock = !user.gameLock["microgaming"].lock;
-
-      await user.save();
-
-      return res.status(200).json({
-        success: true,
-        message: {
-          en: `Game lock status for MICRO GAMING updated successfully.`,
-          zh: `MICRO GAMING 的游戏锁定状态更新成功。`,
-          ms: `Status kunci permainan untuk MICRO GAMING berjaya dikemas kini.`,
-        },
-        gameLock: user.gameLock["microgaming"],
-      });
-    } catch (error) {
-      console.error(
-        "Error updating MICRO GAMING seamless game status:",
-        error.message
-      );
-      return res.status(200).json({
-        success: false,
-        message: {
-          en: "Internal Server Error. Please contact IT support for further assistance.",
-          zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
-          ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
-        },
-      });
-    }
-  }
-);
-
-router.post(
-  "/admin/api/funky/seamlessstatus/:userId",
-  authenticateAdminToken,
-  async (req, res) => {
-    try {
-      const userId = req.params.userId;
-
-      const user = await User.findById(userId);
-
-      if (!user.gameLock.hasOwnProperty("funky")) {
-        console.log("Error updating seamless game status:", "FUNKY");
-        return res.status(200).json({
-          success: false,
-          message: {
-            en: "Internal Server Error. Please contact IT support for further assistance.",
-            zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
-            ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
-          },
-        });
-      }
-
-      user.gameLock["funky"].lock = !user.gameLock["funky"].lock;
-
-      await user.save();
-
-      return res.status(200).json({
-        success: true,
-        message: {
-          en: `Game lock status for FUNKY updated successfully.`,
-          zh: `FUNKY 的游戏锁定状态更新成功。`,
-          ms: `Status kunci permainan untuk FUNKY berjaya dikemas kini.`,
-        },
-        gameLock: user.gameLock["funky"],
-      });
-    } catch (error) {
-      console.error(
-        "Error updating FUNKY seamless game status:",
-        error.message
-      );
-      return res.status(200).json({
-        success: false,
-        message: {
-          en: "Internal Server Error. Please contact IT support for further assistance.",
-          zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
-          ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
-        },
-      });
-    }
-  }
-);
-
-router.post(
-  "/admin/api/tfgaming/seamlessstatus/:userId",
-  authenticateAdminToken,
-  async (req, res) => {
-    try {
-      const userId = req.params.userId;
-
-      const user = await User.findById(userId);
-
-      if (!user.gameLock.hasOwnProperty("tfgaming")) {
-        console.log("Error updating seamless game status:", "TF Gaming");
-        return res.status(200).json({
-          success: false,
-          message: {
-            en: "Internal Server Error. Please contact IT support for further assistance.",
-            zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
-            ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
-          },
-        });
-      }
-
-      user.gameLock["tfgaming"].lock = !user.gameLock["tfgaming"].lock;
-
-      await user.save();
-
-      return res.status(200).json({
-        success: true,
-        message: {
-          en: `Game lock status for TF Gaming updated successfully.`,
-          zh: `TF Gaming 的游戏锁定状态更新成功。`,
-          ms: `Status kunci permainan untuk TF Gaming berjaya dikemas kini.`,
-        },
-        gameLock: user.gameLock["tfgaming"],
-      });
-    } catch (error) {
-      console.error(
-        "Error updating TF Gaming seamless game status:",
-        error.message
-      );
-      return res.status(200).json({
-        success: false,
-        message: {
-          en: "Internal Server Error. Please contact IT support for further assistance.",
-          zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
-          ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
-        },
-      });
-    }
-  }
-);
-
-router.post(
-  "/admin/api/sagaming/seamlessstatus/:userId",
-  authenticateAdminToken,
-  async (req, res) => {
-    try {
-      const userId = req.params.userId;
-
-      const user = await User.findById(userId);
-
-      if (!user.gameLock.hasOwnProperty("sagaming")) {
-        console.log("Error updating seamless game status:", "SA GAMING");
-        return res.status(200).json({
-          success: false,
-          message: {
-            en: "Internal Server Error. Please contact IT support for further assistance.",
-            zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
-            ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
-          },
-        });
-      }
-
-      user.gameLock["sagaming"].lock = !user.gameLock["sagaming"].lock;
-
-      await user.save();
-
-      return res.status(200).json({
-        success: true,
-        message: {
-          en: `Game lock status for SA GAMING updated successfully.`,
-          zh: `SA GAMING 的游戏锁定状态更新成功。`,
-          ms: `Status kunci permainan untuk SA GAMING berjaya dikemas kini.`,
-        },
-        gameLock: user.gameLock["sagaming"],
-      });
-    } catch (error) {
-      console.error(
-        "Error updating SA GAMING seamless game status:",
-        error.message
-      );
-      return res.status(200).json({
-        success: false,
-        message: {
-          en: "Internal Server Error. Please contact IT support for further assistance.",
-          zh: "内部服务器错误。请联系IT客服以获取进一步帮助。",
-          ms: "Ralat Pelayan Dalaman. Sila hubungi sokongan IT untuk bantuan lanjut.",
+          zh_hk: "內部服務器錯誤。請聯絡IT客服以獲取進一步幫助。",
+          id: "Kesalahan Server Internal. Silakan hubungi dukungan IT untuk bantuan lebih lanjut.",
         },
       });
     }
