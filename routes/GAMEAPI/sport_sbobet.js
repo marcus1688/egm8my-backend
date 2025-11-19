@@ -327,138 +327,162 @@ router.post("/api/sbobet/launchGame", authenticateToken, async (req, res) => {
   }
 });
 
-router.post("/api/sbobet/getbalance", async (req, res) => {
-  try {
-    const { CompanyKey, Username } = req.body;
+const validateSBOBETRequest = (req, res, next) => {
+  const { CompanyKey, Username } = req.body;
 
-    if (!Username) {
-      return res.status(200).json({
-        ErrorCode: 3,
-        ErrorMessage: "Username empty",
-        Balance: 0,
-      });
-    }
-
-    if (CompanyKey !== sbobetSecret) {
-      return res.status(200).json({
-        ErrorCode: 4,
-        ErrorMessage: "CompanyKey Error",
-        Balance: 0,
-      });
-    }
-
-    const currentUser = await User.findOne(
-      { gameId: Username },
-      { wallet: 1 }
-    ).lean();
-
-    if (!currentUser) {
-      return res.status(200).json({
-        ErrorCode: 1,
-        ErrorMessage: "Member not exist",
-        Balance: 0,
-      });
-    }
-
+  if (!Username) {
     return res.status(200).json({
-      AccountName: Username,
-      Balance: roundToTwoDecimals(currentUser.wallet),
-      ErrorCode: 0,
-      ErrorMessage: "No Error",
-    });
-  } catch (error) {
-    console.error(
-      "SBOBET: Error in game provider calling get balance api:",
-      error.message
-    );
-    return res.status(200).json({
-      ErrorCode: 7,
-      ErrorMessage: "Internal Error",
+      ErrorCode: 3,
+      ErrorMessage: "Username empty",
+      Balance: 0,
     });
   }
-});
 
-router.post("/api/sbobet/deduct", async (req, res) => {
-  try {
-    const {
-      Amount,
-      TransferCode,
-      TransactionId,
-      CompanyKey,
-      ProductType,
-      Username,
-    } = req.body;
+  if (CompanyKey !== sbobetSecret) {
+    return res.status(200).json({
+      ErrorCode: 4,
+      ErrorMessage: "CompanyKey Error",
+      Balance: 0,
+    });
+  }
 
-    if (!Username) {
-      return res.status(200).json({
-        ErrorCode: 3,
-        ErrorMessage: "Username empty",
-        Balance: 0,
-      });
-    }
+  next();
+};
 
-    if (CompanyKey !== sbobetSecret) {
-      return res.status(200).json({
-        ErrorCode: 4,
-        ErrorMessage: "CompanyKey Error",
-        Balance: 0,
-      });
-    }
+router.post(
+  "/api/sbobet/getbalance",
+  validateSBOBETRequest,
+  async (req, res) => {
+    try {
+      const { Username } = req.body;
 
-    const betAmount = roundToTwoDecimals(Amount);
+      const currentUser = await User.findOne(
+        { gameId: Username },
+        { wallet: 1, _id: 0 }
+      ).lean();
 
-    if (ProductType === 3 || ProductType === 7) {
-      const [currentUser, existingBets] = await Promise.all([
-        User.findOne(
-          { gameId: Username },
-          { wallet: 1, "gameLock.sbobet.lock": 1, _id: 0 }
-        ).lean(),
-        SportSBOBETModal.find(
-          { betId: TransferCode, username: Username },
-          { betamount: 1, _id: 0 }
-        )
-          .sort({ createdAt: -1 })
-          .limit(2)
-          .lean(),
-      ]);
-
-      if (!currentUser || currentUser.gameLock?.sbobet?.lock) {
+      if (!currentUser) {
         return res.status(200).json({
           ErrorCode: 1,
           ErrorMessage: "Member not exist",
           Balance: 0,
         });
       }
-      const deductCount = existingBets.length;
 
-      if (deductCount >= 2) {
-        return res.status(200).json({
-          ErrorCode: 5003,
-          ErrorMessage: "Bet With Same RefNo Exists",
-          Balance: roundToTwoDecimals(currentUser.wallet),
-        });
-      }
+      return res.status(200).json({
+        AccountName: Username,
+        Balance: roundToTwoDecimals(currentUser.wallet),
+        ErrorCode: 0,
+        ErrorMessage: "No Error",
+      });
+    } catch (error) {
+      console.error("SBOBET: Error in getbalance:", error.message);
+      return res.status(200).json({
+        ErrorCode: 7,
+        ErrorMessage: "Internal Error",
+      });
+    }
+  }
+);
 
-      if (deductCount === 1) {
-        const firstBetAmount = existingBets[0].betamount || 0;
+router.post("/api/sbobet/deduct", validateSBOBETRequest, async (req, res) => {
+  try {
+    const { Amount, TransferCode, TransactionId, ProductType, Username } =
+      req.body;
+    const betAmount = roundToTwoDecimals(Amount);
 
-        if (betAmount <= firstBetAmount) {
+    switch (ProductType) {
+      case 3:
+      case 7: {
+        // Sports betting with potential raise
+        const [currentUser, existingBets] = await Promise.all([
+          User.findOne(
+            { gameId: Username },
+            { wallet: 1, "gameLock.sbobet.lock": 1, _id: 0 }
+          ).lean(),
+          SportSBOBETModal.find(
+            { betId: TransferCode, username: Username },
+            { betamount: 1, _id: 0 }
+          )
+            .sort({ createdAt: -1 })
+            .limit(2)
+            .lean(),
+        ]);
+
+        if (!currentUser || currentUser.gameLock?.sbobet?.lock) {
           return res.status(200).json({
-            ErrorCode: 7,
-            ErrorMessage: "2nd Deduct amount must be greater than 1st Deduct",
+            ErrorCode: 1,
+            ErrorMessage: "Member not exist",
+            Balance: 0,
+          });
+        }
+
+        const deductCount = existingBets.length;
+
+        if (deductCount >= 2) {
+          return res.status(200).json({
+            ErrorCode: 5003,
+            ErrorMessage: "Bet With Same RefNo Exists",
             Balance: roundToTwoDecimals(currentUser.wallet),
           });
         }
 
-        const amountDifference = betAmount - firstBetAmount;
+        if (deductCount === 1) {
+          const firstBetAmount = existingBets[0].betamount || 0;
 
+          if (betAmount <= firstBetAmount) {
+            return res.status(200).json({
+              ErrorCode: 7,
+              ErrorMessage: "2nd Deduct amount must be greater than 1st Deduct",
+              Balance: roundToTwoDecimals(currentUser.wallet),
+            });
+          }
+
+          const amountDifference = roundToTwoDecimals(
+            betAmount - firstBetAmount
+          );
+
+          const updatedUserBalance = await User.findOneAndUpdate(
+            {
+              gameId: Username,
+              wallet: { $gte: amountDifference },
+            },
+            { $inc: { wallet: -amountDifference } },
+            { new: true, projection: { wallet: 1, _id: 0 } }
+          ).lean();
+
+          if (!updatedUserBalance) {
+            return res.status(200).json({
+              ErrorCode: 5,
+              ErrorMessage: "Not enough balance",
+              Balance: roundToTwoDecimals(currentUser.wallet),
+            });
+          }
+
+          await SportSBOBETModal.create({
+            betId: TransferCode,
+            username: Username,
+            producttype: ProductType,
+            tranId: TransactionId,
+            betamount: betAmount,
+            raiseamount: amountDifference,
+            bet: true,
+          });
+
+          return res.status(200).json({
+            AccountName: Username,
+            Balance: roundToTwoDecimals(updatedUserBalance.wallet),
+            ErrorCode: 0,
+            ErrorMessage: "No Error",
+            BetAmount: betAmount,
+          });
+        }
+
+        // First bet (deductCount === 0)
         const updatedUserBalance = await User.findOneAndUpdate(
-          {
-            gameId: Username,
-            wallet: { $gte: roundToTwoDecimals(amountDifference) },
-          },
-          { $inc: { wallet: -roundToTwoDecimals(amountDifference) } },
-          { new: true, projection: { wallet: 1 } }
+          { gameId: Username, wallet: { $gte: betAmount } },
+          { $inc: { wallet: -betAmount } },
+          { new: true, projection: { wallet: 1, _id: 0 } }
         ).lean();
 
         if (!updatedUserBalance) {
@@ -475,7 +499,6 @@ router.post("/api/sbobet/deduct", async (req, res) => {
           producttype: ProductType,
           tranId: TransactionId,
           betamount: betAmount,
-          raiseamount: amountDifference,
           bet: true,
         });
 
@@ -484,179 +507,135 @@ router.post("/api/sbobet/deduct", async (req, res) => {
           Balance: roundToTwoDecimals(updatedUserBalance.wallet),
           ErrorCode: 0,
           ErrorMessage: "No Error",
-          BetAmount: Amount,
+          BetAmount: betAmount,
         });
       }
 
-      const [updatedUserBalance, createdBet] = await Promise.all([
-        User.findOneAndUpdate(
+      case 9: {
+        // Seamless - check with TransactionId
+        const [currentUser, existingBet] = await Promise.all([
+          User.findOne(
+            { gameId: Username },
+            { wallet: 1, "gameLock.sbobet.lock": 1, _id: 0 }
+          ).lean(),
+          SportSBOBETModal.exists({
+            betId: TransferCode,
+            tranId: TransactionId,
+            username: Username,
+          }),
+        ]);
+
+        if (!currentUser || currentUser.gameLock?.sbobet?.lock) {
+          return res.status(200).json({
+            ErrorCode: 1,
+            ErrorMessage: "Member not exist",
+            Balance: 0,
+          });
+        }
+
+        if (existingBet) {
+          return res.status(200).json({
+            ErrorCode: 5003,
+            ErrorMessage: "Bet With Same RefNo Exists",
+            Balance: roundToTwoDecimals(currentUser.wallet),
+          });
+        }
+
+        const updatedUserBalance = await User.findOneAndUpdate(
           { gameId: Username, wallet: { $gte: betAmount } },
           { $inc: { wallet: -betAmount } },
           { new: true, projection: { wallet: 1, _id: 0 } }
-        ).lean(),
+        ).lean();
 
-        SportSBOBETModal.create({
+        if (!updatedUserBalance) {
+          return res.status(200).json({
+            ErrorCode: 5,
+            ErrorMessage: "Not enough balance",
+            Balance: roundToTwoDecimals(currentUser.wallet),
+          });
+        }
+
+        await SportSBOBETModal.create({
           betId: TransferCode,
           username: Username,
           producttype: ProductType,
           tranId: TransactionId,
           betamount: betAmount,
           bet: true,
-        }),
-      ]);
+        });
 
-      if (!updatedUserBalance) {
-        SportSBOBETModal.findByIdAndDelete(createdBet._id).catch(() => {});
-
-        console.log("PlaceBet not enough balance");
         return res.status(200).json({
-          ErrorCode: 5,
-          ErrorMessage: "Not enough balance",
-          Balance: roundToTwoDecimals(currentUser.wallet),
+          AccountName: Username,
+          Balance: roundToTwoDecimals(updatedUserBalance.wallet),
+          ErrorCode: 0,
+          ErrorMessage: "No Error",
+          BetAmount: betAmount,
         });
       }
 
-      return res.status(200).json({
-        AccountName: Username,
-        Balance: roundToTwoDecimals(updatedUserBalance.wallet),
-        ErrorCode: 0,
-        ErrorMessage: "No Error",
-        BetAmount: betAmount,
-      });
-    } else if (ProductType === 9) {
-      const [currentUser, existingBet] = await Promise.all([
-        User.findOne(
-          { gameId: Username },
-          { _id: 1, wallet: 1, "gameLock.sbobet.lock": 1 }
-        ).lean(),
-        SportSBOBETModal.exists({
-          betId: TransferCode,
-          tranId: TransactionId,
-          username: Username,
-        }),
-      ]);
+      default: {
+        // Other product types (Casino, RNG, etc.)
+        const [currentUser, existingBet] = await Promise.all([
+          User.findOne(
+            { gameId: Username },
+            { wallet: 1, "gameLock.sbobet.lock": 1, _id: 0 }
+          ).lean(),
+          SportSBOBETModal.exists({
+            betId: TransferCode,
+            username: Username,
+          }),
+        ]);
 
-      if (!currentUser || currentUser.gameLock?.sbobet?.lock) {
-        return res.status(200).json({
-          ErrorCode: 1,
-          ErrorMessage: "Member not exist",
-          Balance: 0,
-        });
-      }
+        if (!currentUser || currentUser.gameLock?.sbobet?.lock) {
+          return res.status(200).json({
+            ErrorCode: 1,
+            ErrorMessage: "Member not exist",
+            Balance: 0,
+          });
+        }
 
-      if (existingBet) {
-        return res.status(200).json({
-          ErrorCode: 5003,
-          ErrorMessage: "Bet With Same RefNo Exists",
-          Balance: roundToTwoDecimals(currentUser.wallet),
-        });
-      }
+        if (existingBet) {
+          return res.status(200).json({
+            ErrorCode: 5003,
+            ErrorMessage: "Bet With Same RefNo Exists",
+            Balance: roundToTwoDecimals(currentUser.wallet),
+          });
+        }
 
-      const updatedUserBalance = await User.findOneAndUpdate(
-        {
-          gameId: Username,
-          wallet: { $gte: betAmount },
-        },
-        { $inc: { wallet: -betAmount } },
-        { new: true, projection: { wallet: 1 } }
-      ).lean();
-
-      if (!updatedUserBalance) {
-        console.log("PlaceBet not enough balance");
-        return res.status(200).json({
-          ErrorCode: 5,
-          ErrorMessage: "Not enough balance",
-          Balance: roundToTwoDecimals(currentUser.wallet),
-        });
-      }
-
-      await SportSBOBETModal.create({
-        betId: TransferCode,
-        username: Username,
-        producttype: ProductType,
-        tranId: TransactionId,
-        betamount: betAmount,
-        bet: true,
-      });
-
-      return res.status(200).json({
-        AccountName: Username,
-        Balance: roundToTwoDecimals(updatedUserBalance.wallet),
-        ErrorCode: 0,
-        ErrorMessage: "No Error",
-        BetAmount: betAmount,
-      });
-    } else {
-      const [currentUser, existingBet] = await Promise.all([
-        User.findOne(
-          { gameId: Username },
-          { _id: 1, wallet: 1, "gameLock.sbobet.lock": 1 }
-        ).lean(),
-        SportSBOBETModal.exists({
-          betId: TransferCode,
-          username: Username,
-        }),
-      ]);
-
-      if (!currentUser || currentUser.gameLock?.sbobet?.lock) {
-        return res.status(200).json({
-          ErrorCode: 1,
-          ErrorMessage: "Member not exist",
-          Balance: 0,
-        });
-      }
-
-      if (existingBet) {
-        return res.status(200).json({
-          ErrorCode: 5003,
-          ErrorMessage: "Bet With Same RefNo Exists",
-          Balance: roundToTwoDecimals(currentUser.wallet),
-        });
-      }
-
-      const [updatedUserBalance, createdBet] = await Promise.all([
-        User.findOneAndUpdate(
-          {
-            gameId: Username,
-            wallet: { $gte: betAmount },
-          },
+        const updatedUserBalance = await User.findOneAndUpdate(
+          { gameId: Username, wallet: { $gte: betAmount } },
           { $inc: { wallet: -betAmount } },
-          { new: true, projection: { wallet: 1 } }
-        ).lean(),
+          { new: true, projection: { wallet: 1, _id: 0 } }
+        ).lean();
 
-        SportSBOBETModal.create({
+        if (!updatedUserBalance) {
+          return res.status(200).json({
+            ErrorCode: 5,
+            ErrorMessage: "Not enough balance",
+            Balance: roundToTwoDecimals(currentUser.wallet),
+          });
+        }
+
+        await SportSBOBETModal.create({
           betId: TransferCode,
           username: Username,
           producttype: ProductType,
           tranId: TransactionId,
           betamount: betAmount,
           bet: true,
-        }),
-      ]);
-
-      if (!updatedUserBalance) {
-        SportSBOBETModal.findByIdAndDelete(createdBet._id).catch(() => {});
+        });
 
         return res.status(200).json({
-          ErrorCode: 5,
-          ErrorMessage: "Not enough balance",
-          Balance: roundToTwoDecimals(currentUser.wallet),
+          AccountName: Username,
+          Balance: roundToTwoDecimals(updatedUserBalance.wallet),
+          ErrorCode: 0,
+          ErrorMessage: "No Error",
+          BetAmount: betAmount,
         });
       }
-
-      return res.status(200).json({
-        AccountName: Username,
-        Balance: roundToTwoDecimals(updatedUserBalance.wallet),
-        ErrorCode: 0,
-        ErrorMessage: "No Error",
-        BetAmount: Amount,
-      });
     }
   } catch (error) {
-    console.error(
-      "SBOBET: Error in game provider calling place bet api:",
-      error.message
-    );
+    console.error("SBOBET: Error in deduct:", error.message);
     return res.status(200).json({
       ErrorCode: 7,
       ErrorMessage: "Internal Error",
@@ -664,35 +643,16 @@ router.post("/api/sbobet/deduct", async (req, res) => {
   }
 });
 
-router.post("/api/sbobet/settle", async (req, res) => {
+router.post("/api/sbobet/settle", validateSBOBETRequest, async (req, res) => {
   try {
-    const { CompanyKey, Username, TransferCode, WinLoss, IsCashOut } = req.body;
-
-    if (!Username) {
-      return res.status(200).json({
-        ErrorCode: 3,
-        ErrorMessage: "Username empty",
-        Balance: 0,
-      });
-    }
-
-    if (CompanyKey !== sbobetSecret) {
-      return res.status(200).json({
-        ErrorCode: 4,
-        ErrorMessage: "CompanyKey Error",
-        Balance: 0,
-      });
-    }
+    const { Username, TransferCode, WinLoss } = req.body;
 
     const [currentUser, bets, hasAnySettled] = await Promise.all([
       User.findOne({ gameId: Username }, { wallet: 1, _id: 0 }).lean(),
-      SportSBOBETModal.find(
-        { betId: TransferCode },
-        { _id: 1, cancel: 1 } // ✅ Only get _id and cancel
-      )
+      SportSBOBETModal.find({ betId: TransferCode }, { _id: 1, cancel: 1 })
         .sort({ createdAt: 1 })
         .lean(),
-      SportSBOBETModal.exists({ betId: TransferCode, settle: true }), // ✅ Parallel check
+      SportSBOBETModal.exists({ betId: TransferCode, settle: true }),
     ]);
 
     if (!currentUser) {
@@ -729,7 +689,6 @@ router.post("/api/sbobet/settle", async (req, res) => {
     }
 
     const settleAmount = roundToTwoDecimals(WinLoss);
-
     const firstRunningIndex = bets.findIndex((bet) => !bet.cancel);
 
     const [updatedUserBalance] = await Promise.all([
@@ -738,7 +697,6 @@ router.post("/api/sbobet/settle", async (req, res) => {
         { $inc: { wallet: settleAmount } },
         { new: true, projection: { wallet: 1, _id: 0 } }
       ).lean(),
-
       SportSBOBETModal.bulkWrite(
         bets.map((bet, index) => ({
           updateOne: {
@@ -753,6 +711,7 @@ router.post("/api/sbobet/settle", async (req, res) => {
         }))
       ),
     ]);
+
     return res.status(200).json({
       AccountName: Username,
       Balance: roundToTwoDecimals(updatedUserBalance.wallet),
@@ -760,10 +719,7 @@ router.post("/api/sbobet/settle", async (req, res) => {
       ErrorMessage: "No Error",
     });
   } catch (error) {
-    console.error(
-      "SBOBET: Error in game provider calling settle api:",
-      error.message
-    );
+    console.error("SBOBET: Error in settle:", error.message);
     return res.status(200).json({
       ErrorCode: 7,
       ErrorMessage: "Internal Error",
@@ -771,25 +727,9 @@ router.post("/api/sbobet/settle", async (req, res) => {
   }
 });
 
-router.post("/api/sbobet/rollback", async (req, res) => {
+router.post("/api/sbobet/rollback", validateSBOBETRequest, async (req, res) => {
   try {
-    const { CompanyKey, Username, TransferCode } = req.body;
-
-    if (!Username) {
-      return res.status(200).json({
-        ErrorCode: 3,
-        ErrorMessage: "Username empty",
-        Balance: 0,
-      });
-    }
-
-    if (CompanyKey !== sbobetSecret) {
-      return res.status(200).json({
-        ErrorCode: 4,
-        ErrorMessage: "CompanyKey Error",
-        Balance: 0,
-      });
-    }
+    const { Username, TransferCode } = req.body;
 
     const [currentUser, bets] = await Promise.all([
       User.findOne({ gameId: Username }, { wallet: 1, _id: 0 }).lean(),
@@ -800,8 +740,7 @@ router.post("/api/sbobet/rollback", async (req, res) => {
           cancel: 1,
           settleamount: 1,
           betamount: 1,
-          producttype: 1, // ✅ Added producttype
-          tranId: 1,
+          producttype: 1,
           _id: 1,
         }
       )
@@ -827,7 +766,6 @@ router.post("/api/sbobet/rollback", async (req, res) => {
 
     const latestBet = bets[0];
     const hasBeenSettled = bets.some((bet) => bet.settle);
-    const isCancelled = latestBet.cancel;
     const isRunning = !latestBet.settle && !latestBet.cancel;
 
     if (isRunning && !hasBeenSettled) {
@@ -840,23 +778,12 @@ router.post("/api/sbobet/rollback", async (req, res) => {
 
     let rollbackAmount = 0;
 
-    if (isCancelled) {
-      // ✅ Use producttype to determine behavior
-      const productType = latestBet.producttype;
-
-      if (productType === "9") {
-        // ✅ Seamless (ProductType 9): Sum all bet amounts
-        const totalStake = bets.reduce(
-          (sum, bet) => sum + (bet.betamount || 0),
-          0
-        );
-        rollbackAmount = -totalStake;
-      } else {
-        // ✅ Casino/RNG/Sports (ProductType 3/7/1): Use latest bet only
-        rollbackAmount = -(latestBet.betamount || 0);
-      }
+    if (latestBet.cancel) {
+      rollbackAmount =
+        latestBet.producttype === 9
+          ? -bets.reduce((sum, bet) => sum + (bet.betamount || 0), 0)
+          : -(latestBet.betamount || 0);
     } else if (latestBet.settle) {
-      // ✅ For settled bets, use the first bet's settleamount
       const settledBet = bets.find((bet) => bet.settleamount > 0);
       rollbackAmount = -(settledBet?.settleamount || 0);
     }
@@ -880,36 +807,17 @@ router.post("/api/sbobet/rollback", async (req, res) => {
       ErrorMessage: "No Error",
     });
   } catch (error) {
-    console.error(
-      "SBOBET: Error in game provider calling rollback api:",
-      error.message
-    );
+    console.error("SBOBET: Error in rollback:", error.message);
     return res.status(200).json({
       ErrorCode: 7,
       ErrorMessage: "Internal Error",
     });
   }
 });
-router.post("/api/sbobet/cancel", async (req, res) => {
+
+router.post("/api/sbobet/cancel", validateSBOBETRequest, async (req, res) => {
   try {
-    const { CompanyKey, Username, TransferCode, TransactionId, IsCancelAll } =
-      req.body;
-
-    if (!Username) {
-      return res.status(200).json({
-        ErrorCode: 3,
-        ErrorMessage: "Username empty",
-        Balance: 0,
-      });
-    }
-
-    if (CompanyKey !== sbobetSecret) {
-      return res.status(200).json({
-        ErrorCode: 4,
-        ErrorMessage: "CompanyKey Error",
-        Balance: 0,
-      });
-    }
+    const { Username, TransferCode, TransactionId, IsCancelAll } = req.body;
 
     const betFilter = IsCancelAll
       ? { betId: TransferCode, username: Username }
@@ -954,13 +862,14 @@ router.post("/api/sbobet/cancel", async (req, res) => {
 
     let totalRefund = 0;
     for (const bet of bets) {
+      const raiseAmount = bet.raiseamount || 0;
       if (bet.settle) {
         totalRefund -= bet.settleamount || 0;
-        totalRefund -= bet.raiseamount || 0;
+        totalRefund -= raiseAmount;
         totalRefund += bet.betamount || 0;
       } else {
         totalRefund += bet.betamount || 0;
-        totalRefund -= bet.raiseamount || 0;
+        totalRefund -= raiseAmount;
       }
     }
 
@@ -968,7 +877,7 @@ router.post("/api/sbobet/cancel", async (req, res) => {
       User.findOneAndUpdate(
         { gameId: Username },
         { $inc: { wallet: roundToTwoDecimals(totalRefund) } },
-        { new: true, projection: { wallet: 1 } }
+        { new: true, projection: { wallet: 1, _id: 0 } }
       ).lean(),
       SportSBOBETModal.updateMany(betFilter, { $set: { cancel: true } }),
     ]);
@@ -980,10 +889,7 @@ router.post("/api/sbobet/cancel", async (req, res) => {
       ErrorMessage: "No Error",
     });
   } catch (error) {
-    console.error(
-      "SBOBET: Error in game provider calling rollback api:",
-      error.message
-    );
+    console.error("SBOBET: Error in cancel:", error.message);
     return res.status(200).json({
       ErrorCode: 7,
       ErrorMessage: "Internal Error",
@@ -991,35 +897,13 @@ router.post("/api/sbobet/cancel", async (req, res) => {
   }
 });
 
-router.post("/api/sbobet/bonus", async (req, res) => {
+router.post("/api/sbobet/bonus", validateSBOBETRequest, async (req, res) => {
   try {
-    const {
-      CompanyKey,
-      Username,
-      Amount,
-      TransferCode,
-      TransactionId,
-      ProductType,
-    } = req.body;
-
-    if (!Username) {
-      return res.status(200).json({
-        ErrorCode: 3,
-        ErrorMessage: "Username empty",
-        Balance: 0,
-      });
-    }
-
-    if (CompanyKey !== sbobetSecret) {
-      return res.status(200).json({
-        ErrorCode: 4,
-        ErrorMessage: "CompanyKey Error",
-        Balance: 0,
-      });
-    }
+    const { Username, Amount, TransferCode, TransactionId, ProductType } =
+      req.body;
 
     const [currentUser, bonusExists] = await Promise.all([
-      User.findOne({ gameId: Username }, { wallet: 1, _id: 1 }).lean(),
+      User.findOne({ gameId: Username }, { wallet: 1, _id: 0 }).lean(),
       SportSBOBETModal.exists({ betId: TransferCode }),
     ]);
 
@@ -1044,8 +928,8 @@ router.post("/api/sbobet/bonus", async (req, res) => {
     const [updatedUserBalance] = await Promise.all([
       User.findOneAndUpdate(
         { gameId: Username },
-        { $inc: { wallet: roundToTwoDecimals(Amount) } },
-        { new: true, projection: { wallet: 1 } }
+        { $inc: { wallet: bonusAmount } },
+        { new: true, projection: { wallet: 1, _id: 0 } }
       ).lean(),
       SportSBOBETModal.create({
         betId: TransferCode,
@@ -1066,10 +950,7 @@ router.post("/api/sbobet/bonus", async (req, res) => {
       ErrorMessage: "No Error",
     });
   } catch (error) {
-    console.error(
-      "SBOBET: Error in game provider calling settle api:",
-      error.message
-    );
+    console.error("SBOBET: Error in bonus:", error.message);
     return res.status(200).json({
       ErrorCode: 7,
       ErrorMessage: "Internal Error",
@@ -1077,113 +958,76 @@ router.post("/api/sbobet/bonus", async (req, res) => {
   }
 });
 
-router.post("/api/sbobet/getbetstatus", async (req, res) => {
-  try {
-    const { CompanyKey, Username, TransferCode, TransactionId, ProductType } =
-      req.body;
+router.post(
+  "/api/sbobet/getbetstatus",
+  validateSBOBETRequest,
+  async (req, res) => {
+    try {
+      const { Username, TransferCode, TransactionId, ProductType } = req.body;
 
-    if (!Username) {
-      return res.status(200).json({
-        ErrorCode: 3,
-        ErrorMessage: "Username empty",
-      });
-    }
+      const currentUser = await User.findOne(
+        { gameId: Username },
+        { _id: 1 }
+      ).lean();
 
-    if (CompanyKey !== sbobetSecret) {
-      return res.status(200).json({
-        ErrorCode: 4,
-        ErrorMessage: "CompanyKey Error",
-      });
-    }
+      if (!currentUser) {
+        return res.status(200).json({
+          ErrorCode: 1,
+          ErrorMessage: "Member not exist",
+        });
+      }
 
-    const currentUser = await User.findOne(
-      { gameId: Username },
-      { _id: 1 }
-    ).lean();
+      const betFilter =
+        ProductType === 9
+          ? { betId: TransferCode, tranId: TransactionId, username: Username }
+          : { betId: TransferCode, username: Username };
 
-    if (!currentUser) {
-      return res.status(200).json({
-        ErrorCode: 1,
-        ErrorMessage: "Member not exist",
-      });
-    }
-
-    let bet;
-    if (ProductType === 9) {
-      bet = await SportSBOBETModal.findOne(
-        {
-          betId: TransferCode,
-          tranId: TransactionId,
-          username: Username,
-        },
-        {
-          betamount: 1,
-          settleamount: 1,
-          settle: 1,
-          cancel: 1,
-          _id: 0,
-        }
-      )
+      const bet = await SportSBOBETModal.findOne(betFilter, {
+        betamount: 1,
+        settleamount: 1,
+        settle: 1,
+        cancel: 1,
+        _id: 0,
+      })
         .sort({ createdAt: -1 })
         .lean();
-    } else {
-      bet = await SportSBOBETModal.findOne(
-        {
-          betId: TransferCode,
-          username: Username,
-        },
-        {
-          betamount: 1,
-          settleamount: 1,
-          settle: 1,
-          cancel: 1,
-          _id: 0,
-        }
-      )
-        .sort({ createdAt: -1 })
-        .lean();
-    }
 
-    if (!bet) {
+      if (!bet) {
+        return res.status(200).json({
+          ErrorCode: 6,
+          ErrorMessage: "Bet not exists",
+        });
+      }
+
+      let status, winLoss;
+
+      if (bet.cancel) {
+        status = "void";
+        winLoss = 0;
+      } else if (bet.settle) {
+        status = "settled";
+        winLoss = roundToTwoDecimals(bet.settleamount || 0);
+      } else {
+        status = "running";
+        winLoss = 0;
+      }
+
       return res.status(200).json({
-        ErrorCode: 6,
-        ErrorMessage: "Bet not exists",
+        TransferCode,
+        TransactionId,
+        Status: status,
+        WinLoss: winLoss,
+        Stake: roundToTwoDecimals(bet.betamount || 0),
+        ErrorCode: 0,
+        ErrorMessage: "No Error",
+      });
+    } catch (error) {
+      console.error("SBOBET: Error in getbetstatus:", error.message);
+      return res.status(200).json({
+        ErrorCode: 7,
+        ErrorMessage: "Internal Error",
       });
     }
-
-    let status;
-    let winLoss = 0;
-    let stake = roundToTwoDecimals(bet.betamount || 0);
-
-    if (bet.cancel) {
-      // Bet is voided/cancelled
-      status = "void";
-      winLoss = 0;
-    } else if (bet.settle) {
-      // Bet is settled
-      status = "settled";
-      winLoss = roundToTwoDecimals(bet.settleamount || 0);
-    } else {
-      // Bet is still running
-      status = "running";
-      winLoss = 0;
-    }
-
-    return res.status(200).json({
-      TransferCode: TransferCode,
-      TransactionId: TransactionId,
-      Status: status,
-      WinLoss: winLoss,
-      Stake: stake,
-      ErrorCode: 0,
-      ErrorMessage: "No Error",
-    });
-  } catch (error) {
-    console.error("SBOBET getbetstatus error:", error);
-    return res.status(200).json({
-      ErrorCode: 7,
-      ErrorMessage: "Internal Error",
-    });
   }
-});
+);
 module.exports = router;
