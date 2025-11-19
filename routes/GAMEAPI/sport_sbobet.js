@@ -773,12 +773,11 @@ router.post("/api/sbobet/rollback", async (req, res) => {
       });
     }
 
-    const [currentUser, betExists, settledBet] = await Promise.all([
+    const [currentUser, bets] = await Promise.all([
       User.findOne({ gameId: Username }, { wallet: 1, _id: 0 }).lean(),
-      SportSBOBETModal.exists({ betId: TransferCode }),
-      SportSBOBETModal.findOne(
-        { betId: TransferCode, settle: true },
-        { settleamount: 1, _id: 1 }
+      SportSBOBETModal.find(
+        { betId: TransferCode },
+        { settle: 1, cancel: 1, settleamount: 1, betamount: 1, _id: 1 }
       )
         .sort({ createdAt: -1 })
         .lean(),
@@ -791,13 +790,15 @@ router.post("/api/sbobet/rollback", async (req, res) => {
       });
     }
 
-    if (!betExists) {
+    if (!bets.length) {
       return res.status(200).json({
         ErrorCode: 6,
         ErrorMessage: "Bet not exists",
         Balance: roundToTwoDecimals(currentUser.wallet),
       });
     }
+
+    const settledBet = bets.find((bet) => bet.settle);
 
     if (!settledBet) {
       return res.status(200).json({
@@ -807,15 +808,25 @@ router.post("/api/sbobet/rollback", async (req, res) => {
       });
     }
 
-    const rollbackAmount = roundToTwoDecimals(settledBet.settleamount || 0);
+    let rollbackAmount = 0;
+    const isCancelled = bets.some((bet) => bet.cancel);
+
+    if (isCancelled) {
+      rollbackAmount = -(settledBet.betamount || 0);
+    } else {
+      rollbackAmount = -(settledBet.settleamount || 0);
+    }
 
     const [updatedUserBalance] = await Promise.all([
       User.findOneAndUpdate(
         { gameId: Username },
-        { $inc: { wallet: -rollbackAmount } },
+        { $inc: { wallet: roundToTwoDecimals(rollbackAmount) } },
         { new: true, projection: { wallet: 1 } }
       ).lean(),
-      SportSBOBETModal.updateMany({ betId: TransferCode }, { settle: false }),
+      SportSBOBETModal.updateMany(
+        { betId: TransferCode },
+        { $set: { settle: false, settleamount: 0, cancel: false } }
+      ),
     ]);
 
     return res.status(200).json({
