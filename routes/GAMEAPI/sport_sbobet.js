@@ -444,18 +444,20 @@ router.post("/api/sbobet/deduct", async (req, res) => {
 
         if (betAmount <= firstBetAmount) {
           return res.status(200).json({
-            ErrorCode: 5004,
+            ErrorCode: 7,
             ErrorMessage: "2nd Deduct amount must be greater than 1st Deduct",
             Balance: roundToTwoDecimals(currentUser.wallet),
           });
         }
 
+        const amountDifference = betAmount - firstBetAmount;
+
         const updatedUserBalance = await User.findOneAndUpdate(
           {
             gameId: Username,
-            wallet: { $gte: betAmount },
+            wallet: { $gte: roundToTwoDecimals(amountDifference) },
           },
-          { $inc: { wallet: -betAmount } },
+          { $inc: { wallet: -roundToTwoDecimals(amountDifference) } },
           { new: true, projection: { wallet: 1 } }
         ).lean();
 
@@ -472,7 +474,7 @@ router.post("/api/sbobet/deduct", async (req, res) => {
           username: Username,
           producttype: ProductType,
           tranId: TransactionId,
-          betamount: betAmount,
+          betamount: amountDifference,
           bet: true,
         });
 
