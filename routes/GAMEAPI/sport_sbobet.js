@@ -788,10 +788,23 @@ router.post("/api/sbobet/rollback", validateSBOBETRequest, async (req, res) => {
       rollbackAmount = -(settledBet?.settleamount || 0);
     }
 
+    const roundedRollbackAmount = roundToTwoDecimals(rollbackAmount);
+
+    // Build query condition - only check balance if rollback would deduct (negative amount)
+    const updateQuery =
+      roundedRollbackAmount < 0
+        ? {
+            gameId: Username,
+            $expr: {
+              $gte: [{ $add: ["$wallet", roundedRollbackAmount] }, 0],
+            },
+          }
+        : { gameId: Username };
+
     const [updatedUserBalance] = await Promise.all([
       User.findOneAndUpdate(
-        { gameId: Username },
-        { $inc: { wallet: roundToTwoDecimals(rollbackAmount) } },
+        updateQuery,
+        { $inc: { wallet: roundedRollbackAmount } },
         { new: true, projection: { wallet: 1, _id: 0 } }
       ).lean(),
       SportSBOBETModal.updateMany(
@@ -799,6 +812,14 @@ router.post("/api/sbobet/rollback", validateSBOBETRequest, async (req, res) => {
         { $set: { settle: false, settleamount: 0, cancel: false } }
       ),
     ]);
+
+    if (!updatedUserBalance) {
+      return res.status(200).json({
+        ErrorCode: 5,
+        ErrorMessage: "Not enough balance",
+        Balance: roundToTwoDecimals(currentUser.wallet),
+      });
+    }
 
     return res.status(200).json({
       AccountName: Username,
@@ -873,14 +894,35 @@ router.post("/api/sbobet/cancel", validateSBOBETRequest, async (req, res) => {
       }
     }
 
+    const roundedRefundAmount = roundToTwoDecimals(totalRefund);
+
+    // Build query condition - only check balance if cancel would deduct (negative amount)
+    const updateQuery =
+      roundedRefundAmount < 0
+        ? {
+            gameId: Username,
+            $expr: {
+              $gte: [{ $add: ["$wallet", roundedRefundAmount] }, 0],
+            },
+          }
+        : { gameId: Username };
+
     const [updatedUserBalance] = await Promise.all([
       User.findOneAndUpdate(
-        { gameId: Username },
-        { $inc: { wallet: roundToTwoDecimals(totalRefund) } },
+        updateQuery,
+        { $inc: { wallet: roundedRefundAmount } },
         { new: true, projection: { wallet: 1, _id: 0 } }
       ).lean(),
       SportSBOBETModal.updateMany(betFilter, { $set: { cancel: true } }),
     ]);
+
+    if (!updatedUserBalance) {
+      return res.status(200).json({
+        ErrorCode: 5,
+        ErrorMessage: "Not enough balance",
+        Balance: roundToTwoDecimals(currentUser.wallet),
+      });
+    }
 
     return res.status(200).json({
       AccountName: Username,
