@@ -826,13 +826,16 @@ router.post("/api/sbobet/rollback", async (req, res) => {
     }
 
     let rollbackAmount = 0;
-
     if (isCancelled) {
-      rollbackAmount = -(latestBet.betamount || 0);
+      const totalStake = bets.reduce(
+        (sum, bet) => sum + (bet.betamount || 0),
+        0
+      );
+      rollbackAmount = -totalStake;
     } else if (latestBet.settle) {
-      rollbackAmount = -(latestBet.settleamount || 0);
+      const settledBet = bets.find((bet) => bet.settleamount > 0);
+      rollbackAmount = -(settledBet?.settleamount || 0);
     }
-
     const [updatedUserBalance] = await Promise.all([
       User.findOneAndUpdate(
         { gameId: Username },
@@ -917,14 +920,12 @@ router.post("/api/sbobet/cancel", async (req, res) => {
     }
 
     if (alreadyCancelled) {
-      return res
-        .status(200)
-        .json({
-          AccountName: Username,
-          ErrorCode: 2002,
-          ErrorMessage: "Bet Already Canceled",
-          Balance: roundToTwoDecimals(currentUser.wallet),
-        });
+      return res.status(200).json({
+        AccountName: Username,
+        ErrorCode: 2002,
+        ErrorMessage: "Bet Already Canceled",
+        Balance: roundToTwoDecimals(currentUser.wallet),
+      });
     }
 
     let totalRefund = 0;
