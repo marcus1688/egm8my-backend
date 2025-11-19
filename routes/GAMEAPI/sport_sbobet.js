@@ -894,6 +894,7 @@ router.post("/api/sbobet/cancel", async (req, res) => {
         settle: 1,
         settleamount: 1,
         betamount: 1,
+        raiseamount: 1,
         _id: 0,
       }).lean(),
       SportSBOBETModal.exists({ ...betFilter, cancel: true }),
@@ -916,20 +917,25 @@ router.post("/api/sbobet/cancel", async (req, res) => {
     }
 
     if (alreadyCancelled) {
-      return res.status(200).json({
-        ErrorCode: 2002,
-        ErrorMessage: "Bet Already Canceled",
-        Balance: roundToTwoDecimals(currentUser.wallet),
-      });
+      return res
+        .status(200)
+        .json({
+          AccountName: Username,
+          ErrorCode: 2002,
+          ErrorMessage: "Bet Already Canceled",
+          Balance: roundToTwoDecimals(currentUser.wallet),
+        });
     }
 
     let totalRefund = 0;
     for (const bet of bets) {
       if (bet.settle) {
         totalRefund -= bet.settleamount || 0;
+        totalRefund -= bet.raiseamount || 0;
         totalRefund += bet.betamount || 0;
       } else {
         totalRefund += bet.betamount || 0;
+        totalRefund -= bet.raiseamount || 0;
       }
     }
 
