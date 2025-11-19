@@ -844,7 +844,7 @@ router.post("/api/sbobet/rollback", async (req, res) => {
       // ✅ Use producttype to determine behavior
       const productType = latestBet.producttype;
 
-      if (productType === 9) {
+      if (productType === "9") {
         // ✅ Seamless (ProductType 9): Sum all bet amounts
         const totalStake = bets.reduce(
           (sum, bet) => sum + (bet.betamount || 0),
