@@ -780,7 +780,7 @@ router.post("/api/sbobet/rollback", validateSBOBETRequest, async (req, res) => {
 
     if (latestBet.cancel) {
       rollbackAmount =
-        latestBet.producttype === 9
+        latestBet.producttype === "9"
           ? -bets.reduce((sum, bet) => sum + (bet.betamount || 0), 0)
           : -(latestBet.betamount || 0);
     } else if (latestBet.settle) {
