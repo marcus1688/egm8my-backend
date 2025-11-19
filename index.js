@@ -158,11 +158,8 @@ global.PROMO_CODE_PROMOTION_ID = "691b1e7387e4b0f46eaf1e80";
 const allowedOrigins = [
   "https://mysteryclub88.com",
   "https://www.mysteryclub88.com",
-  "https://www.egm8my.vip",
-  "https://www.egm8sg.vip",
-  "https://www.egm8my.com",
-  "https://egm8my-frontend.vercel.app",
-  "https://egm8sg-frontend.vercel.app",
+  "https://www.bm8my.vip",
+  "https://www.bm8sg.vip",
   "capacitor://localhost",
   "ionic://localhost",
   "file://",
