@@ -802,8 +802,8 @@ router.post("/api/sbobet/rollback", async (req, res) => {
 
     if (!settledBet) {
       return res.status(200).json({
-        ErrorCode: 5010,
-        ErrorMessage: "Bet not yet settle, reject rollback",
+        ErrorCode: 2003,
+        ErrorMessage: "Bet Already Rollback",
         Balance: roundToTwoDecimals(currentUser.wallet),
       });
     }
