@@ -798,9 +798,12 @@ router.post("/api/sbobet/rollback", async (req, res) => {
       });
     }
 
-    const settledBet = bets.find((bet) => bet.settle);
+    const latestBet = bets[0];
+    const hasBeenSettled = bets.some((bet) => bet.settle);
+    const isCancelled = latestBet.cancel;
+    const isRunning = !latestBet.settle && !latestBet.cancel;
 
-    if (!settledBet) {
+    if (isRunning && !hasBeenSettled) {
       return res.status(200).json({
         ErrorCode: 2003,
         ErrorMessage: "Bet Already Rollback",
@@ -809,12 +812,11 @@ router.post("/api/sbobet/rollback", async (req, res) => {
     }
 
     let rollbackAmount = 0;
-    const isCancelled = bets.some((bet) => bet.cancel);
 
     if (isCancelled) {
-      rollbackAmount = -(settledBet.betamount || 0);
-    } else {
-      rollbackAmount = -(settledBet.settleamount || 0);
+      rollbackAmount = -(latestBet.betamount || 0);
+    } else if (latestBet.settle) {
+      rollbackAmount = -(latestBet.settleamount || 0);
     }
 
     const [updatedUserBalance] = await Promise.all([
