@@ -917,11 +917,14 @@ router.post("/api/sbobet/cancel", async (req, res) => {
     }
 
     if (alreadyCancelled) {
-      return res.status(200).json({
-        ErrorCode: 2002,
-        ErrorMessage: "Bet Already Canceled",
-        Balance: roundToTwoDecimals(currentUser.wallet),
-      });
+      return res
+        .status(200)
+        .json({
+          AccountName: Username,
+          ErrorCode: 2002,
+          ErrorMessage: "Bet Already Canceled",
+          Balance: roundToTwoDecimals(currentUser.wallet),
+        });
     }
 
     let totalRefund = 0;
