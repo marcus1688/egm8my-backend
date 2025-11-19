@@ -896,6 +896,7 @@ router.post("/api/sbobet/cancel", async (req, res) => {
     for (const bet of bets) {
       if (bet.settle) {
         totalRefund -= bet.settleamount || 0;
+        totalRefund += bet.betamount || 0;
       } else {
         totalRefund += bet.betamount || 0;
       }
