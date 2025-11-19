@@ -2579,7 +2579,6 @@ router.post(
         $inc: {
           totaldeposit: deposit.amount,
           wallet: deposit.amount,
-          ...(spinCount > 0 && { luckySpinCount: spinCount }),
         },
         $set: {
           lastdepositdate: new Date(),
