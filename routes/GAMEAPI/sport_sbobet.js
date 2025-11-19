@@ -832,12 +832,23 @@ router.post("/api/sbobet/rollback", async (req, res) => {
 
     let rollbackAmount = 0;
     if (isCancelled) {
-      const totalStake = bets.reduce(
-        (sum, bet) => sum + (bet.betamount || 0),
-        0
-      );
-      rollbackAmount = -totalStake;
+      // ✅ Check if there are multiple bets with different tranIds (Seamless)
+      const uniqueTranIds = new Set(bets.map((bet) => bet.tranId));
+      const isSeamless = uniqueTranIds.size > 1;
+
+      if (isSeamless) {
+        // ✅ Seamless: Sum all bet amounts (multiple transactions)
+        const totalStake = bets.reduce(
+          (sum, bet) => sum + (bet.betamount || 0),
+          0
+        );
+        rollbackAmount = -totalStake;
+      } else {
+        // ✅ Casino/RNG: Use latest bet amount only (raise scenario)
+        rollbackAmount = -(latestBet.betamount || 0);
+      }
     } else if (latestBet.settle) {
+      // ✅ For settled bets, use the first bet's settleamount
       const settledBet = bets.find((bet) => bet.settleamount > 0);
       rollbackAmount = -(settledBet?.settleamount || 0);
     }
