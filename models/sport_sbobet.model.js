@@ -16,6 +16,9 @@ const sportSBOBETschema = new mongoose.Schema(
     settleamount: {
       type: Number,
     },
+    raiseamount: {
+      type: Number,
+    },
     username: {
       type: String,
     },
