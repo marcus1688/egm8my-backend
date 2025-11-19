@@ -354,6 +354,7 @@ router.post("/api/sbobet/getbalance", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 1,
         ErrorMessage: "Member not exist",
+        Balance: 0,
       });
     }
 
@@ -673,14 +674,14 @@ router.post("/api/sbobet/settle", async (req, res) => {
       });
     }
 
-    const [currentUser, bets, alreadySettled, alreadyCancelled] =
+    const [currentUser, bets, alreadyCancelled, alreadySettled] = // ✅ Swapped order
       await Promise.all([
         User.findOne({ gameId: Username }, { wallet: 1, _id: 0 }).lean(),
         SportSBOBETModal.find({ betId: TransferCode }, { _id: 1 })
           .sort({ createdAt: 1 })
           .lean(),
+        SportSBOBETModal.exists({ betId: TransferCode, cancel: true }), // ✅ Check cancel first
         SportSBOBETModal.exists({ betId: TransferCode, settle: true }),
-        SportSBOBETModal.exists({ betId: TransferCode, cancel: true }),
       ]);
 
     if (!currentUser) {
@@ -713,7 +714,6 @@ router.post("/api/sbobet/settle", async (req, res) => {
         Balance: roundToTwoDecimals(currentUser.wallet),
       });
     }
-
     const settleAmount = roundToTwoDecimals(WinLoss);
 
     const [updatedUserBalance] = await Promise.all([
