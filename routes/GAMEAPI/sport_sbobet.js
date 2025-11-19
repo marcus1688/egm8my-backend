@@ -452,10 +452,11 @@ router.post("/api/sbobet/deduct", async (req, res) => {
           { new: true, projection: { wallet: 1 } }
         ).lean();
 
-        if (!updatedUser) {
+        if (!updatedUserBalance) {
           return res.status(200).json({
             ErrorCode: 5,
             ErrorMessage: "Not enough balance",
+            Balance: roundToTwoDecimals(currentUser.wallet),
           });
         }
 
@@ -503,6 +504,7 @@ router.post("/api/sbobet/deduct", async (req, res) => {
         return res.status(200).json({
           ErrorCode: 5,
           ErrorMessage: "Not enough balance",
+          Balance: roundToTwoDecimals(currentUser.wallet),
         });
       }
 
@@ -629,6 +631,7 @@ router.post("/api/sbobet/deduct", async (req, res) => {
         return res.status(200).json({
           ErrorCode: 5,
           ErrorMessage: "Not enough balance",
+          Balance: roundToTwoDecimals(currentUser.wallet),
         });
       }
 
@@ -691,6 +694,7 @@ router.post("/api/sbobet/settle", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 6,
         ErrorMessage: "Bet not exists",
+        Balance: roundToTwoDecimals(currentUser.wallet),
       });
     }
 
@@ -698,6 +702,7 @@ router.post("/api/sbobet/settle", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 2001,
         ErrorMessage: "Bet Already Settled",
+        Balance: roundToTwoDecimals(currentUser.wallet),
       });
     }
 
@@ -705,6 +710,7 @@ router.post("/api/sbobet/settle", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 2002,
         ErrorMessage: "Bet Already Canceled",
+        Balance: roundToTwoDecimals(currentUser.wallet),
       });
     }
     const settleAmount = roundToTwoDecimals(WinLoss);
@@ -788,6 +794,7 @@ router.post("/api/sbobet/rollback", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 6,
         ErrorMessage: "Bet not exists",
+        Balance: roundToTwoDecimals(currentUser.wallet),
       });
     }
 
@@ -795,6 +802,7 @@ router.post("/api/sbobet/rollback", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 5010,
         ErrorMessage: "Bet not yet settle, reject rollback",
+        Balance: roundToTwoDecimals(currentUser.wallet),
       });
     }
 
@@ -872,6 +880,7 @@ router.post("/api/sbobet/cancel", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 6,
         ErrorMessage: "Bet not exists",
+        Balance: roundToTwoDecimals(currentUser.wallet),
       });
     }
 
@@ -879,6 +888,7 @@ router.post("/api/sbobet/cancel", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 2002,
         ErrorMessage: "Bet Already Canceled",
+        Balance: roundToTwoDecimals(currentUser.wallet),
       });
     }
 
@@ -959,6 +969,7 @@ router.post("/api/sbobet/bonus", async (req, res) => {
       return res.status(200).json({
         ErrorCode: 5003,
         ErrorMessage: "Bonus With Same RefNo Exists",
+        Balance: roundToTwoDecimals(currentUser.wallet),
       });
     }
 
