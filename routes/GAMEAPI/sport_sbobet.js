@@ -795,7 +795,15 @@ router.post("/api/sbobet/rollback", async (req, res) => {
       User.findOne({ gameId: Username }, { wallet: 1, _id: 0 }).lean(),
       SportSBOBETModal.find(
         { betId: TransferCode },
-        { settle: 1, cancel: 1, settleamount: 1, betamount: 1, _id: 1 }
+        {
+          settle: 1,
+          cancel: 1,
+          settleamount: 1,
+          betamount: 1,
+          producttype: 1, // ✅ Added producttype
+          tranId: 1,
+          _id: 1,
+        }
       )
         .sort({ createdAt: -1 })
         .lean(),
@@ -831,20 +839,20 @@ router.post("/api/sbobet/rollback", async (req, res) => {
     }
 
     let rollbackAmount = 0;
-    if (isCancelled) {
-      // ✅ Check if there are multiple bets with different tranIds (Seamless)
-      const uniqueTranIds = new Set(bets.map((bet) => bet.tranId));
-      const isSeamless = uniqueTranIds.size > 1;
 
-      if (isSeamless) {
-        // ✅ Seamless: Sum all bet amounts (multiple transactions)
+    if (isCancelled) {
+      // ✅ Use producttype to determine behavior
+      const productType = latestBet.producttype;
+
+      if (productType === 9) {
+        // ✅ Seamless (ProductType 9): Sum all bet amounts
         const totalStake = bets.reduce(
           (sum, bet) => sum + (bet.betamount || 0),
           0
         );
         rollbackAmount = -totalStake;
       } else {
-        // ✅ Casino/RNG: Use latest bet amount only (raise scenario)
+        // ✅ Casino/RNG/Sports (ProductType 3/7/1): Use latest bet only
         rollbackAmount = -(latestBet.betamount || 0);
       }
     } else if (latestBet.settle) {
@@ -852,11 +860,12 @@ router.post("/api/sbobet/rollback", async (req, res) => {
       const settledBet = bets.find((bet) => bet.settleamount > 0);
       rollbackAmount = -(settledBet?.settleamount || 0);
     }
+
     const [updatedUserBalance] = await Promise.all([
       User.findOneAndUpdate(
         { gameId: Username },
         { $inc: { wallet: roundToTwoDecimals(rollbackAmount) } },
-        { new: true, projection: { wallet: 1 } }
+        { new: true, projection: { wallet: 1, _id: 0 } }
       ).lean(),
       SportSBOBETModal.updateMany(
         { betId: TransferCode },
@@ -881,7 +890,6 @@ router.post("/api/sbobet/rollback", async (req, res) => {
     });
   }
 });
-
 router.post("/api/sbobet/cancel", async (req, res) => {
   try {
     const { CompanyKey, Username, TransferCode, TransactionId, IsCancelAll } =
