@@ -698,6 +698,14 @@ router.post("/api/sbobet/settle", async (req, res) => {
       });
     }
 
+    if (alreadyCancelled) {
+      return res.status(200).json({
+        ErrorCode: 2002,
+        ErrorMessage: "Bet Already Canceled",
+        Balance: roundToTwoDecimals(currentUser.wallet),
+      });
+    }
+
     if (alreadySettled) {
       return res.status(200).json({
         ErrorCode: 2001,
@@ -706,13 +714,6 @@ router.post("/api/sbobet/settle", async (req, res) => {
       });
     }
 
-    if (alreadyCancelled) {
-      return res.status(200).json({
-        ErrorCode: 2002,
-        ErrorMessage: "Bet Already Canceled",
-        Balance: roundToTwoDecimals(currentUser.wallet),
-      });
-    }
     const settleAmount = roundToTwoDecimals(WinLoss);
 
     const [updatedUserBalance] = await Promise.all([
