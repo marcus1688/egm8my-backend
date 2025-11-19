@@ -684,21 +684,21 @@ router.post("/api/sbobet/settle", async (req, res) => {
       });
     }
 
-    const [currentUser, bets, alreadyCancelled, alreadySettled] = // ✅ Swapped order
-      await Promise.all([
-        User.findOne({ gameId: Username }, { wallet: 1, _id: 0 }).lean(),
-        SportSBOBETModal.find({ betId: TransferCode }, { _id: 1 })
-          .sort({ createdAt: 1 })
-          .lean(),
-        SportSBOBETModal.exists({ betId: TransferCode, cancel: true }), // ✅ Check cancel first
-        SportSBOBETModal.exists({ betId: TransferCode, settle: true }),
-      ]);
+    const [currentUser, bets, hasAnySettled] = await Promise.all([
+      User.findOne({ gameId: Username }, { wallet: 1, _id: 0 }).lean(),
+      SportSBOBETModal.find(
+        { betId: TransferCode },
+        { _id: 1, cancel: 1 } // ✅ Only get _id and cancel
+      )
+        .sort({ createdAt: 1 })
+        .lean(),
+      SportSBOBETModal.exists({ betId: TransferCode, settle: true }), // ✅ Parallel check
+    ]);
 
     if (!currentUser) {
       return res.status(200).json({
         ErrorCode: 1,
         ErrorMessage: "Member not exist",
-        Balance: 0,
       });
     }
 
@@ -710,7 +710,9 @@ router.post("/api/sbobet/settle", async (req, res) => {
       });
     }
 
-    if (alreadyCancelled) {
+    const hasAnyRunning = bets.some((bet) => !bet.cancel);
+
+    if (!hasAnyRunning) {
       return res.status(200).json({
         ErrorCode: 2002,
         ErrorMessage: "Bet Already Canceled",
@@ -718,14 +720,17 @@ router.post("/api/sbobet/settle", async (req, res) => {
       });
     }
 
-    if (alreadySettled) {
+    if (hasAnySettled) {
       return res.status(200).json({
         ErrorCode: 2001,
         ErrorMessage: "Bet Already Settled",
         Balance: roundToTwoDecimals(currentUser.wallet),
       });
     }
+
     const settleAmount = roundToTwoDecimals(WinLoss);
+
+    const firstRunningIndex = bets.findIndex((bet) => !bet.cancel);
 
     const [updatedUserBalance] = await Promise.all([
       User.findOneAndUpdate(
@@ -741,7 +746,7 @@ router.post("/api/sbobet/settle", async (req, res) => {
             update: {
               $set: {
                 settle: true,
-                settleamount: index === 0 ? settleAmount : 0,
+                settleamount: index === firstRunningIndex ? settleAmount : 0,
               },
             },
           },
