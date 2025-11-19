@@ -474,7 +474,8 @@ router.post("/api/sbobet/deduct", async (req, res) => {
           username: Username,
           producttype: ProductType,
           tranId: TransactionId,
-          betamount: amountDifference,
+          betamount: betAmount,
+          raiseamount: amountDifference,
           bet: true,
         });
 
