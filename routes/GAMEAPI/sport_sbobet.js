@@ -429,6 +429,7 @@ router.post("/api/sbobet/deduct", async (req, res) => {
         return res.status(200).json({
           ErrorCode: 5003,
           ErrorMessage: "Bet With Same RefNo Exists",
+          Balance: roundToTwoDecimals(currentUser.wallet),
         });
       }
 
