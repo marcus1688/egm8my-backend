@@ -894,6 +894,7 @@ router.post("/api/sbobet/cancel", async (req, res) => {
         settle: 1,
         settleamount: 1,
         betamount: 1,
+        raiseamount: 1,
         _id: 0,
       }).lean(),
       SportSBOBETModal.exists({ ...betFilter, cancel: true }),
@@ -927,9 +928,11 @@ router.post("/api/sbobet/cancel", async (req, res) => {
     for (const bet of bets) {
       if (bet.settle) {
         totalRefund -= bet.settleamount || 0;
+        totalRefund -= bet.raiseamount || 0;
         totalRefund += bet.betamount || 0;
       } else {
         totalRefund += bet.betamount || 0;
+        totalRefund -= bet.raiseamount || 0;
       }
     }
 
