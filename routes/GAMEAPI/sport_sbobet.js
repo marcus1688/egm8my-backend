@@ -503,9 +503,7 @@ router.post("/api/sbobet/deduct", async (req, res) => {
       ]);
 
       if (!updatedUserBalance) {
-        SportSBOBETModal.findByIdAndUpdate(createdBet._id, {
-          cancel: true,
-        }).catch(() => {});
+        SportSBOBETModal.findByIdAndDelete(createdBet._id).catch(() => {});
 
         console.log("PlaceBet not enough balance");
         return res.status(200).json({
@@ -634,9 +632,7 @@ router.post("/api/sbobet/deduct", async (req, res) => {
       ]);
 
       if (!updatedUserBalance) {
-        SportSBOBETModal.findByIdAndUpdate(createdBet._id, {
-          cancel: true,
-        }).catch(() => {});
+        SportSBOBETModal.findByIdAndDelete(createdBet._id).catch(() => {});
 
         return res.status(200).json({
           ErrorCode: 5,
