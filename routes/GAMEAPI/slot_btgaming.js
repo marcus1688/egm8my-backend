@@ -20,7 +20,7 @@ const SlotBTGamingModal = require("../../models/slot_btgaming.model");
 require("dotenv").config();
 
 const btGamingAccount = "103235631101481";
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const btGamingApiURL = "https://btapi.g8game.net/v2_2";
 const btGamingSecret = process.env.BTGAMING_SECRET;
 const btGamingMD5 = process.env.BTGAMING_MD5;

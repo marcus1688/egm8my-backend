@@ -21,7 +21,7 @@ require("dotenv").config();
 
 const epicWinOperatorID = "epwnEGM8MYRMYR";
 const epicWinSecret = process.env.EPICWIN_SECRET;
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const epicWinAPIURL = "https://smapi.eptech88.com/api/opgateway/v1/op/";
 
 function roundToTwoDecimals(num) {

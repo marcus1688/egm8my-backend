@@ -21,7 +21,7 @@ require("dotenv").config();
 
 const rich88PFID = "pmyr_IEGP";
 const rich88Secret = process.env.RICH88_SECRET;
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const rich88APIURL = "https://lobbycenter.ark8899.com/";
 
 function roundToTwoDecimals(num) {

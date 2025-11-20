@@ -44,7 +44,7 @@ async function GameWalletLogAttempt(
 
 const nextSpinMC = "ZBH1472";
 const nextSpinSecret = process.env.NEXTSPIN_SECRET;
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const nextSpinAPIURL = "https://merchantapi.ns-api-cy2-tokyo01.com/api";
 const nextSpinGameURL = "https://lobby.d1mquqjm.com";
 const nextSpinCustomBrand = "EGM8";

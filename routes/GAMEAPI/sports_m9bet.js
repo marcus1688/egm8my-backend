@@ -18,7 +18,7 @@ const SportM9BetModal = require("../../models/sport_m9bet.model");
 const cron = require("node-cron");
 require("dotenv").config();
 
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const m9betAPIURL = "https://apid.mywinday.com";
 const m9betAccount = "1jmegm8";
 const m9betSecret = process.env.M9BET_SECRET;

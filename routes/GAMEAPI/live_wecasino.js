@@ -16,7 +16,7 @@ const Decimal = require("decimal.js");
 const LiveWeCasinoModal = require("../../models/live_wecasino.model");
 require("dotenv").config();
 
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const weCasinoAPIURL = "https://nc-ugs-weop.ms16618.com";
 const weCasinoSecret = process.env.WECASINO_SECRET;
 const weCasinoOperatorID = "egm8myrwenV3";

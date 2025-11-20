@@ -19,7 +19,7 @@ require("dotenv").config();
 
 const fastSpingMerchant = "EGM8MYR";
 const fastSpinSecret = process.env.FASTSPIN_SECRET;
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const fastSpinAPIURL = "https://api.fastspinzone.com/api";
 
 function roundToTwoDecimals(num) {

@@ -21,7 +21,7 @@ require("dotenv").config();
 
 const jiliAgentId = "TitanSW59MMK_EGM8MYR";
 const jiliKey = process.env.JILI_SECRET;
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const jiliAPIURL = "https://wb-api-2.jismk2u.com/api1";
 
 function generateRandomText(length) {

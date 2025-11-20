@@ -18,7 +18,7 @@ const Decimal = require("decimal.js");
 require("dotenv").config();
 
 const sbobetSecret = process.env.SBOBET_SECRET;
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const sbobetAPIURL = "https://ex-api-yy.xxttgg.com";
 const sbobetAgent = "EGM8MYR";
 const sbobetCreatedAgent = "EGM8MYRAM";

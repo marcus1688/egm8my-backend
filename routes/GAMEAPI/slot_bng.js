@@ -19,11 +19,11 @@ const SlotBNGModal = require("../../models/slot_bng.model");
 
 require("dotenv").config();
 
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const bngAPIURL = "https://gate.c3.bng.games/op/";
 const bngSecret = process.env.BNG_SECRET;
 const bngProjectName = "egm8myr";
-const cashierURL = "http://egm8my.vip/myaccount/deposit";
+const cashierURL = "https://www.bm8my.vip/myaccount/deposit";
 const brandName = "egm8my";
 const bngTitle = "EGM8MY";
 

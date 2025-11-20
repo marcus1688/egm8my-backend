@@ -20,7 +20,7 @@ require("dotenv").config();
 
 const habaneroBrandID = process.env.HABANERO_BRANDID;
 const habaneroKey = process.env.HABANERO_APIKEY;
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const habaneroAPIURL = "https://ws-a.insvr.com/jsonapi/";
 const habaneroGameAPIURL = "https://app-a.insvr.com/go.ashx";
 

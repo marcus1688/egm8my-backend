@@ -18,7 +18,7 @@ const SlotPlayStarModal = require("../../models/slot_playstar.model");
 const GamePlayStarGameModal = require("../../models/slot_playstarDatabase.model");
 require("dotenv").config();
 
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const playstarAPIURL = "https://api-sg3-g2.egdoebdg.com";
 const playstarHostId = process.env.PLAYSTAR_SECRET;
 

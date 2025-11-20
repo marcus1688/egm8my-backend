@@ -21,7 +21,7 @@ require("dotenv").config();
 const tfGamingParnerId = "12433";
 const tfGamingPublic = process.env.TFGAMING_PUBLICTOKEN;
 const tfGamingPrivate = process.env.TFGAMING_PRIVATETOKEN;
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const tfGamingAPIURL = "https://spi.r4espt.com/";
 const tfGamingLaunchGameURL =
   "https://api-v4.tf-api-2013.com/api/v4/launch/url";

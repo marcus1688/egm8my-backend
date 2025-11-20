@@ -18,7 +18,7 @@ const GameAceWinGameModal = require("../../models/slot_acewinDatabase.model");
 const SlotAceWinModal = require("../../models/slot_acewin.model");
 require("dotenv").config();
 
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const acewinAPIURL = "https://macross-platform-ag-prod.acewinplusfafafa.com";
 const acewinSecret = process.env.ACEWIN_SECRET;
 const acewinAgentId = "infi688awsl_egm8myr_myr";

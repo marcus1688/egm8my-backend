@@ -160,9 +160,9 @@ async function transferOutAlipay(user, formattedWithdrawAmount) {
 
 const lionKingSN = process.env.LIONKING_SN;
 const lionKingSecret = process.env.LIONKING_SECRET;
-const webURL = "https://www.oc7.me/";
+const webURL = "https://www.bm8my.vip/";
 const lionKingAPIURL = "https://api.lk888.info/";
-const returnCallbackUrl = "https://api.oc7.me/api/lionking";
+const returnCallbackUrl = "https://api.bm8my.vip/api/lionking";
 
 function generateSignature(id, method, sn, playerCode) {
   const rawString = `${id}${method}${sn}${playerCode}${lionKingSecret}`;

@@ -23,9 +23,9 @@ const playtechKioskKey = process.env.PLAYTECH_SECRET;
 const playtechKioskName = "SJ82_EGM8MYR";
 const playtechPrefix = "EG8MY";
 const playtechServerName = "AGCASINO";
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const playtechApiURL = "https://api.agmidway.com";
-const cashierURL = "https://www.egm8my.vip/myaccount/deposit";
+const cashierURL = "https://www.bm8my.vip/myaccount/deposit";
 
 const errorResponses = {
   playerNotFound: (requestId) => ({

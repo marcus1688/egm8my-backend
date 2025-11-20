@@ -21,10 +21,10 @@ require("dotenv").config();
 
 const microGamingAgentCode = "ZBH1469_MYR_SW";
 const microGamingSecret = process.env.MICROGAMING_SECRET;
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const microGamingAPIURL = "https://api-superswansw.k2net.io";
 const microGamingTokenURL = "https://sts-superswansw.k2net.io";
-const cashierURL = "https://www.egm8my.vip/myaccount/deposit";
+const cashierURL = "https://www.bm8my.vip/myaccount/deposit";
 
 function roundToTwoDecimals(num) {
   return Math.round(num * 100) / 100;

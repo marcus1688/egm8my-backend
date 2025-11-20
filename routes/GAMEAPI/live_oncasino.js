@@ -17,7 +17,7 @@ const Decimal = require("decimal.js");
 require("dotenv").config();
 
 const oncasinoSecret = process.env.ONCASINO_SECRET;
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const oncasinoAPIURL = "https://third-api.ongames.info";
 const oncasinoAgent = "EGM8MYR";
 

@@ -17,7 +17,7 @@ const GameWalletLog = require("../../models/gamewalletlog.model");
 const GameSpadeGamingGameModal = require("../../models/slot_spadegamingDatabase.model");
 const spadeGamingMerchant = "EGM8MYR";
 const spadeGamingSecret = process.env.SPADEGAMING_SECRET;
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const spadeGamingApiURL = "https://merchantapi.hugedolphin.com/api/";
 
 function roundToTwoDecimals(num) {

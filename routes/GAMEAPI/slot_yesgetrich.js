@@ -19,7 +19,7 @@ const Decimal = require("decimal.js");
 require("dotenv").config();
 
 const ygrHeaders = "EGM8MYR";
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const ygrAPIURL = "https://tyche8w-service.yahutech.com";
 const ygrLaunchAPIURL = "https://tyche8w-service.yahutech.com";
 

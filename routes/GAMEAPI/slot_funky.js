@@ -18,7 +18,7 @@ const GameFunkyGameModal = require("../../models/slot_funkyDatabase.model");
 
 const funkyAgent = "1000300-EGM8MYR";
 const funkySECRET = process.env.FUNKY_SECRET;
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const funkyAPIURL = "https://cfbb7e4b9e25.funplayfky.com";
 
 function roundToTwoDecimals(num) {

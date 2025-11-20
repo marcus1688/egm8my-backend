@@ -18,7 +18,7 @@ require("dotenv").config();
 //Staging
 const jokerAppID = "FTLW";
 const jokerSecret = process.env.JOKER_SECRET;
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const jokerApiURL = "https://w.apiext88.net/seamless";
 const jokerGameURL = "https://www.weimen99f.net";
 

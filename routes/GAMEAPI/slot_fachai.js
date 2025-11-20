@@ -21,7 +21,7 @@ require("dotenv").config();
 //Staging
 const fachaiSecret = process.env.FACHAI_SECRET;
 const fachaiCode = "DAD";
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const fachaiAPIURL = "https://ap9.fcg178.net";
 
 function aesEncrypt(dataString, appKey) {

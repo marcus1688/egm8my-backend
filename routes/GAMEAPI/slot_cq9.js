@@ -20,7 +20,7 @@ const path = require("path");
 
 require("dotenv").config();
 
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const cq9APIURL = "https://apii.cqgame.cc";
 const cq9API_KEY = process.env.CQ9_APIKEY;
 

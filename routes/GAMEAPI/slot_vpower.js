@@ -18,7 +18,7 @@ const SlotVPowerModal = require("../../models/slot_vpower.model");
 const GameVPowerGameModal = require("../../models/slot_vpowerDatabase.model");
 require("dotenv").config();
 
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const vpowerAPIURL = "https://sg.kldss223.com/api/v2/ext";
 const vpowerGameURL = "https://sg.kldss223.com/api/v2/ext/player/openGame";
 const vpowerAPPID = process.env.VPOWER_APPID;

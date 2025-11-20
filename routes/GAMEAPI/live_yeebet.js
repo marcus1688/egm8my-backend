@@ -17,7 +17,7 @@ const LiveYeebetModal = require("../../models/live_yeebet.model");
 
 require("dotenv").config();
 
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const yeebetAPIURL = "https://api.yeebet.vip";
 const yeebetSecret = process.env.YEEBET_SECRET;
 const yeebetAppID = "EGM8MYR";

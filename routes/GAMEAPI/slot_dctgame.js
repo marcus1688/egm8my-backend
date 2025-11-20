@@ -21,7 +21,7 @@ require("dotenv").config();
 
 const dctGameBrandID = "S010217";
 const dctGameKey = process.env.DCTGAME_SECRET;
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const dctGameAPIURL = "https://gaming.dcgames.asia";
 
 const generateRandomCode = () => {

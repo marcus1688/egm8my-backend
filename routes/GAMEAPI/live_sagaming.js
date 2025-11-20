@@ -16,7 +16,7 @@ const { parseStringPromise } = require("xml2js");
 const GameWalletLog = require("../../models/gamewalletlog.model");
 const LiveSaGamingModal = require("../../models/live_sagaming.model");
 
-const webURL = "http://egm8my.vip/";
+const webURL = "https://www.bm8my.vip/";
 const saGamingApiUrl = "https://api.sa-apisvr.com/api/api.aspx";
 const saGamingGameUrl = "https://web.sa-globalxns.com/app.aspx";
 const saGamingSecurity = process.env.LIVE_SAGAMING_SECURITYKEY;
