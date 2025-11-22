@@ -243,7 +243,7 @@ router.post(
   }
 );
 
-router.post("/api/skl99/deposit", async (req, res) => {
+router.post("/api/skl99deposit", async (req, res) => {
   try {
     const {
       reference_no,
