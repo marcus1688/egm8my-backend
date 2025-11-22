@@ -6739,3 +6739,4 @@ router.get("/api/user/game-locks", authenticateToken, async (req, res) => {
 
 module.exports = router;
 module.exports.checkAndUpdateVIPLevel = checkAndUpdateVIPLevel;
+module.exports.updateUserGameLocks = updateUserGameLocks;
