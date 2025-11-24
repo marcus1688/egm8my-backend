@@ -26,7 +26,9 @@ const { checkAndUpdateVIPLevel, updateUserGameLocks } = require("../users");
 const PaymentGatewayTransactionLog = require("../../models/paymentgatewayTransactionLog.model");
 const kioskbalance = require("../../models/kioskbalance.model");
 const { updateKioskBalance } = require("../../services/kioskBalanceService");
-
+const BankTransactionLog = require("../../models/banktransactionlog.model");
+const BankList = require("../../models/banklist.model");
+const LiveTransaction = require("../../models/transaction.model");
 require("dotenv").config();
 const merchantCheck = "egmsoft1919@gmail.com";
 const skl99SecretServer1 = process.env.SKL99_SECRET_SERVER;
@@ -58,6 +60,29 @@ router.post("/api/skl99/banks", async (req, res) => {
         message: response.data.message || "Failed to fetch bank options",
       });
     }
+
+    return res.status(200).json({
+      success: true,
+      message: "Bank options retrieved",
+      data: response.data,
+    });
+  } catch (error) {
+    console.error("Error fetching bank options:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Server error fetching bank options",
+    });
+  }
+});
+
+router.post("/api/skl99/getwithdrawbank", async (req, res) => {
+  try {
+    const response = await axios.get(
+      `${skl99APIURL}/api/transfer_out/get_all_gateways`,
+      {
+        headers: { "Content-Type": "application/json" },
+      }
+    );
 
     return res.status(200).json({
       success: true,
@@ -306,8 +331,7 @@ router.post("/api/skl99deposit", async (req, res) => {
     }
 
     if (status === "SUCCESS" && existingTrx.status !== "Success") {
-      // ✅ OPTIMIZED: Fetch user, gateway, and kioskSettings in parallel
-      const [user, gateway, kioskSettings] = await Promise.all([
+      const [user, gateway, kioskSettings, bank] = await Promise.all([
         User.findOne(
           { username: existingTrx.username },
           {
@@ -330,6 +354,15 @@ router.post("/api/skl99deposit", async (req, res) => {
           .lean(),
 
         kioskbalance.findOne({}, { status: 1 }).lean(),
+
+        BankList.findById("69247c9f7ef1ac832d86e65f", {
+          _id: 1,
+          bankname: 1,
+          ownername: 1,
+          bankaccount: 1,
+          qrimage: 1,
+          currentbalance: 1,
+        }).lean(),
       ]);
 
       if (!user) {
@@ -337,69 +370,149 @@ router.post("/api/skl99deposit", async (req, res) => {
         return res.status(200).json(req.body);
       }
 
+      if (!bank) {
+        console.error(`Bank not found: 69247c9f7ef1ac832d86e65f`);
+        return res.status(200).json(req.body);
+      }
+
       const isNewDeposit = !user.firstDepositDate;
       const oldGatewayBalance = gateway?.balance || 0;
+      const oldBankBalance = bank.currentbalance || 0;
 
-      const [updatedUser, newDeposit, , walletLog, updatedGateway] =
-        await Promise.all([
-          User.findByIdAndUpdate(
-            user._id,
+      const [
+        updatedUser,
+        newDeposit,
+        ,
+        walletLog,
+        updatedGateway,
+        updatedBank,
+      ] = await Promise.all([
+        User.findByIdAndUpdate(
+          user._id,
+          {
+            $inc: {
+              wallet: roundedAmount,
+              totaldeposit: roundedAmount,
+            },
+            $set: {
+              lastdepositdate: new Date(),
+              ...(isNewDeposit && {
+                firstDepositDate: existingTrx.createdAt,
+              }),
+            },
+          },
+          { new: true, projection: { wallet: 1 } }
+        ).lean(),
+
+        Deposit.create({
+          userId: user._id,
+          username: user.username,
+          fullname: user.fullname || "unknown",
+          bankname: "SKL99",
+          ownername: "Payment Gateway",
+          transfernumber: transaction_id,
+          walletType: "Main",
+          transactionType: "deposit",
+          method: "auto",
+          processBy: "admin",
+          amount: roundedAmount,
+          walletamount: user.wallet,
+          remark: "-",
+          status: "approved",
+          processtime: "00:00:00",
+          newDeposit: isNewDeposit,
+          transactionId: invoice_no,
+          duplicateIP: user.duplicateIP,
+          duplicateBank: user.duplicateBank,
+        }),
+
+        skl99Modal.findByIdAndUpdate(existingTrx._id, {
+          $set: { status: statusText },
+        }),
+
+        UserWalletLog.create({
+          userId: user._id,
+          transactionid: invoice_no,
+          transactiontime: new Date(),
+          transactiontype: "deposit",
+          amount: roundedAmount,
+          status: "approved",
+        }),
+
+        paymentgateway.findOneAndUpdate(
+          { name: { $regex: /^skl99$/i } },
+          { $inc: { balance: roundedAmount } },
+          { new: true, projection: { _id: 1, name: 1, balance: 1 } }
+        ),
+
+        BankList.findByIdAndUpdate(
+          "69247c9f7ef1ac832d86e65f",
+          [
             {
-              $inc: {
-                wallet: roundedAmount,
-                totaldeposit: roundedAmount,
-              },
               $set: {
-                lastdepositdate: new Date(),
-                ...(isNewDeposit && {
-                  firstDepositDate: existingTrx.createdAt,
-                }),
+                totalDeposits: { $add: ["$totalDeposits", roundedAmount] },
+                currentbalance: {
+                  $subtract: [
+                    {
+                      $add: [
+                        "$startingbalance",
+                        { $add: ["$totalDeposits", roundedAmount] },
+                        "$totalCashIn",
+                      ],
+                    },
+                    {
+                      $add: ["$totalWithdrawals", "$totalCashOut"],
+                    },
+                  ],
+                },
               },
             },
-            { new: true, projection: { wallet: 1 } }
-          ).lean(),
+          ],
+          { new: true, projection: { currentbalance: 1 } }
+        ).lean(),
+      ]);
 
-          Deposit.create({
-            userId: user._id,
-            username: user.username,
-            fullname: user.fullname || "unknown",
-            bankname: "SKL99",
-            ownername: "Payment Gateway",
-            transfernumber: transaction_id,
-            walletType: "Main",
-            transactionType: "deposit",
-            method: "auto",
-            processBy: "admin",
-            amount: roundedAmount,
-            walletamount: user.wallet,
-            remark: "-",
-            status: "approved",
-            processtime: "00:00:00",
-            newDeposit: isNewDeposit,
-            transactionId: invoice_no,
-            duplicateIP: user.duplicateIP,
-            duplicateBank: user.duplicateBank,
-          }),
+      await BankTransactionLog.create({
+        bankName: bank.bankname,
+        ownername: bank.ownername,
+        bankAccount: bank.bankaccount,
+        remark: "-",
+        lastBalance: oldBankBalance,
+        currentBalance:
+          updatedBank?.currentbalance || oldBankBalance + roundedAmount,
+        processby: "admin",
+        qrimage: bank.qrimage,
+        playerusername: user.username,
+        playerfullname: user.fullname,
+        transactiontype: "deposit",
+        amount: roundedAmount,
+      });
 
-          skl99Modal.findByIdAndUpdate(existingTrx._id, {
-            $set: { status: statusText },
-          }),
+      const depositCount = await LiveTransaction.countDocuments({
+        type: "deposit",
+      });
 
-          UserWalletLog.create({
-            userId: user._id,
-            transactionid: invoice_no,
-            transactiontime: new Date(),
-            transactiontype: "deposit",
-            amount: roundedAmount,
-            status: "approved",
-          }),
-
-          paymentgateway.findOneAndUpdate(
-            { name: { $regex: /^skl99$/i } },
-            { $inc: { balance: roundedAmount } },
-            { new: true, projection: { _id: 1, name: 1, balance: 1 } }
-          ),
-        ]);
+      if (depositCount >= 5) {
+        await LiveTransaction.findOneAndUpdate(
+          { type: "deposit" },
+          {
+            $set: {
+              username: user.username,
+              amount: roundedAmount,
+              time: new Date(),
+            },
+          },
+          { sort: { time: 1 } }
+        );
+      } else {
+        await LiveTransaction.create({
+          type: "deposit",
+          username: user.username,
+          amount: roundedAmount,
+          time: new Date(),
+          status: "completed",
+        });
+      }
 
       if (kioskSettings?.status) {
         const kioskResult = await updateKioskBalance(
@@ -546,6 +659,350 @@ router.post("/api/skl99deposit", async (req, res) => {
       stack: error.stack,
     });
     return res.status(200).json(req.body);
+  }
+});
+
+router.post("/admin/api/skl99/requesttransfer/:userId", async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "User not found. Please try again or contact customer service for assistance.",
+          zh: "用户未找到，请重试或联系客服以获取帮助。",
+          ms: "Pengguna tidak ditemui, sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          zh_hk: "用戶未找到，請重試或聯絡客服以獲取幫助。",
+          id: "Pengguna tidak ditemukan. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+        },
+      });
+    }
+
+    const {
+      amount,
+      bankCode,
+      accountHolder,
+      accountNumber,
+      bankName,
+      transactionId,
+    } = req.body;
+
+    if (!amount || !bankCode || !accountHolder || !accountNumber) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "Please complete all required fields",
+          zh: "请完成所有必填项",
+          zh_hk: "麻煩完成所有必填項目",
+          ms: "Sila lengkapkan semua medan yang diperlukan",
+          id: "Silakan lengkapi semua kolom yang diperlukan",
+        },
+      });
+    }
+
+    const formattedAmount = Number(amount).toFixed(2);
+
+    const requestBody = {
+      api_token: skl99SecretServer1,
+      amount: formattedAmount,
+      to_bank: bankCode,
+      to_bank_account_no: accountNumber,
+      account_holder: accountHolder,
+      invoice_no: transactionId,
+    };
+
+    const response = await axios.post(
+      `${skl99APIURL}/api/transfer_out/init`,
+      requestBody,
+      {
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+    console.log(response.data);
+    return;
+    if (response.data.status !== 1) {
+      console.log(`EasyPay API Error: ${response.data}`);
+
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "Payout request failed",
+          zh: "申请代付失败",
+          zh_hk: "申請代付失敗",
+          ms: "Permintaan pembayaran gagal",
+          id: "Permintaan pembayaran gagal",
+        },
+      });
+    }
+
+    await Promise.all([
+      skl99Modal.create({
+        ourRefNo: transactionId,
+        paymentGatewayRefNo: response.data.data.order_id,
+        transfername: "N/A",
+        username: user.username,
+        amount: Number(formattedAmount),
+        transferType: bankName || bankCode,
+        transactiontype: "withdraw",
+        status: "Pending",
+        platformCharge: Number(response.data.data.service_change) || 0,
+        remark: "-",
+        promotionId: null,
+      }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: {
+        en: "Payout request submitted successfully",
+        zh: "提交申请代付成功",
+        zh_hk: "提交申請代付成功",
+        ms: "Permintaan pembayaran berjaya diserahkan",
+        id: "Permintaan pembayaran berhasil diajukan",
+      },
+    });
+  } catch (error) {
+    console.error(
+      `Error in EasyPay API - User: ${req.user?.userId}, Amount: ${req.body?.amount}:`,
+      error.response?.data || error.message
+    );
+
+    return res.status(200).json({
+      success: false,
+      message: {
+        en: "Payout request failed",
+        zh: "申请代付失败",
+        zh_hk: "申請代付失敗",
+        ms: "Permintaan pembayaran gagal",
+        id: "Permintaan pembayaran gagal",
+      },
+    });
+  }
+});
+
+router.post("/api/easypay/receivedtransfercalled168", async (req, res) => {
+  try {
+    const {
+      tx_id,
+      order_id,
+      status,
+      final_amount,
+      order_amount,
+      service_change,
+    } = req.body;
+
+    if (!order_id || order_amount == null || !status) {
+      console.log("Missing required parameters:", {
+        order_id,
+        order_amount,
+        status,
+      });
+      return res.status(200).json({ status: 0 });
+    }
+
+    const statusMapping = {
+      COMPLETE: "Success",
+    };
+
+    const statusText = statusMapping[status] || "Reject";
+    const amount = Number(order_amount);
+
+    // Find existing transaction
+    const existingTrx = await easyPayModal
+      .findOne(
+        { paymentGatewayRefNo: order_id },
+        { username: 1, status: 1, createdAt: 1, _id: 1 }
+      )
+      .lean();
+
+    if (!existingTrx) {
+      console.log(`Transaction not found: ${order_id}, creating record`);
+      await easyPayModal.create({
+        username: "N/A",
+        transfername: "N/A",
+        ourRefNo: tx_id,
+        paymentGatewayRefNo: order_id,
+        amount,
+        transactiontype: "withdraw",
+        status: statusText,
+        platformCharge: Number(service_change || 0),
+        remark: `No transaction found with reference: ${order_id}. Created from callback.`,
+      });
+
+      return res.status(200).json({ status: 0 });
+    }
+
+    // Check if already processed successfully
+    if (status === "COMPLETE" && existingTrx.status === "Success") {
+      console.log("Transaction already processed successfully, skipping");
+      return res.status(200).json({
+        status: 1,
+      });
+    }
+
+    if (status === "COMPLETE" && existingTrx.status !== "Success") {
+      const user = await User.findOne(
+        { username: existingTrx.username },
+        {
+          _id: 1,
+          username: 1,
+          fullname: 1,
+          wallet: 1,
+          duplicateIP: 1,
+          duplicateBank: 1,
+        }
+      ).lean();
+
+      if (!user) {
+        console.error(`User not found: ${existingTrx.username}`);
+        return res.status(200).json({ status: 0 });
+      }
+
+      const gateway = await paymentgateway
+        .findOne(
+          { name: { $regex: /^easypay$/i } },
+          { _id: 1, name: 1, balance: 1 }
+        )
+        .lean();
+
+      const oldGatewayBalance = gateway?.balance || 0;
+
+      const [, updatedGateway] = await Promise.all([
+        easyPayModal
+          .findByIdAndUpdate(existingTrx._id, { status: statusText })
+          .lean(),
+
+        paymentgateway
+          .findOneAndUpdate(
+            { name: { $regex: /^easypay$/i } },
+            { $inc: { balance: -roundToTwoDecimals(amount) } },
+            { new: true, projection: { _id: 1, name: 1, balance: 1 } }
+          )
+          .lean(),
+      ]);
+
+      await PaymentGatewayTransactionLog.create({
+        gatewayId: gateway._id,
+        gatewayName: gateway.name,
+        transactiontype: "withdraw",
+        amount: roundToTwoDecimals(amount),
+        lastBalance: oldGatewayBalance,
+        currentBalance:
+          updatedGateway?.balance ||
+          oldGatewayBalance - roundToTwoDecimals(amount),
+        remark: `Withdraw from ${user.username}`,
+        playerusername: user.username,
+        processby: "system",
+      });
+    } else if (status !== "COMPLETE" && existingTrx.status !== "Reject") {
+      const [, , withdraw, updatedUser] = await Promise.all([
+        easyPayModal.findByIdAndUpdate(existingTrx._id, {
+          $set: { status: statusText },
+        }),
+
+        UserWalletLog.findOneAndUpdate(
+          { transactionid: tx_id },
+          { $set: { status: "rejected" } }
+        ),
+
+        Withdraw.findOneAndUpdate(
+          { transactionId: tx_id },
+          {
+            $set: {
+              status: "rejected",
+              processBy: "admin",
+              processtime: "00:00:00",
+            },
+          },
+          {
+            new: false,
+            projection: { _id: 1, amount: 1, withdrawbankid: 1, remark: 1 },
+          }
+        ).lean(),
+
+        User.findOneAndUpdate(
+          { username: existingTrx.username },
+          { $inc: { wallet: roundToTwoDecimals(amount) } },
+          {
+            new: true,
+            projection: { _id: 1, username: 1, fullname: 1, wallet: 1 },
+          }
+        ).lean(),
+      ]);
+
+      if (!withdraw) {
+        console.log(`Withdraw not found for tx_id: ${tx_id}`);
+        return res.status(200).json({ status: 0 });
+      }
+
+      const [kioskSettings, bank] = await Promise.all([
+        kioskbalance.findOne({}, { status: 1 }).lean(),
+        BankList.findById(withdraw.withdrawbankid).lean(),
+      ]);
+
+      if (!bank) {
+        console.log("Invalid bank easypay callback");
+        return res.status(200).json({ status: 0 });
+      }
+
+      const finalUpdates = [];
+
+      if (kioskSettings?.status) {
+        const kioskResult = await updateKioskBalance(
+          "subtract",
+          withdraw.amount,
+          {
+            username: existingTrx.username,
+            transactionType: "withdraw reverted",
+            remark: `Withdraw ID: ${withdraw._id}`,
+            processBy: "admin",
+          }
+        );
+        if (!kioskResult.success) {
+          return res.status(200).json({ status: 0 });
+        }
+      }
+
+      await Promise.all([
+        BankList.findByIdAndUpdate(withdraw.withdrawbankid, {
+          $inc: {
+            currentbalance: withdraw.amount,
+            totalWithdrawals: -withdraw.amount,
+          },
+        }),
+
+        BankTransactionLog.create({
+          bankName: bank.bankname,
+          ownername: bank.ownername,
+          bankAccount: bank.bankaccount,
+          remark: withdraw.remark || "-",
+          lastBalance: bank.currentbalance - withdraw.amount,
+          currentBalance: bank.currentbalance,
+          processby: "admin",
+          transactiontype: "reverted withdraw",
+          amount: withdraw.amount,
+          qrimage: bank.qrimage,
+          playerusername: updatedUser?.username || existingTrx.username,
+          playerfullname: updatedUser?.fullname || "N/A",
+        }),
+      ]);
+
+      console.log(
+        `Transaction rejected: ${order_id}, User ${existingTrx.username} refunded ${amount}, New wallet: ${updatedUser?.wallet}`
+      );
+    }
+
+    return res.status(200).json({ status: 1 });
+  } catch (error) {
+    console.error("Payment callback processing error:", {
+      error: error.message,
+      body: req.body,
+      timestamp: moment().utc().format(),
+      stack: error.stack,
+    });
+    return res.status(200).json({ status: 0 });
   }
 });
 
