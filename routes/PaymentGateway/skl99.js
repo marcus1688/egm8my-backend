@@ -253,7 +253,6 @@ router.post("/api/skl99deposit", async (req, res) => {
       status_message,
       merchant_code,
     } = req.body;
-    console.log("skl99 callback", req.body);
 
     if (!invoice_no || amount === undefined || status === undefined) {
       console.log("Missing required parameters:", {
@@ -275,8 +274,14 @@ router.post("/api/skl99deposit", async (req, res) => {
 
     const statusCode = String(status);
     const statusText = statusMapping[statusCode] || "Unknown";
+    const roundedAmount = roundToTwoDecimals(amount);
 
-    const existingTrx = await skl99Modal.findOne({ ourRefNo: invoice_no });
+    const existingTrx = await skl99Modal
+      .findOne(
+        { ourRefNo: invoice_no },
+        { _id: 1, username: 1, status: 1, createdAt: 1, promotionId: 1 }
+      )
+      .lean();
 
     if (!existingTrx) {
       console.log(`Transaction not found: ${invoice_no}, creating record`);
@@ -285,7 +290,7 @@ router.post("/api/skl99deposit", async (req, res) => {
         transfername: "N/A",
         ourRefNo: invoice_no,
         paymentGatewayRefNo: transaction_id,
-        amount: roundToTwoDecimals(amount),
+        amount: roundedAmount,
         transactiontype: "deposit",
         status: statusText,
         platformCharge: 0,
@@ -301,19 +306,31 @@ router.post("/api/skl99deposit", async (req, res) => {
     }
 
     if (status === "SUCCESS" && existingTrx.status !== "Success") {
-      const user = await User.findOne(
-        { username: existingTrx.username },
-        {
-          _id: 1,
-          username: 1,
-          fullname: 1,
-          wallet: 1,
-          totaldeposit: 1,
-          firstDepositDate: 1,
-          duplicateIP: 1,
-          duplicateBank: 1,
-        }
-      ).lean();
+      // ✅ OPTIMIZED: Fetch user, gateway, and kioskSettings in parallel
+      const [user, gateway, kioskSettings] = await Promise.all([
+        User.findOne(
+          { username: existingTrx.username },
+          {
+            _id: 1,
+            username: 1,
+            fullname: 1,
+            wallet: 1,
+            totaldeposit: 1,
+            firstDepositDate: 1,
+            duplicateIP: 1,
+            duplicateBank: 1,
+          }
+        ).lean(),
+
+        paymentgateway
+          .findOne(
+            { name: { $regex: /^skl99$/i } },
+            { _id: 1, name: 1, balance: 1 }
+          )
+          .lean(),
+
+        kioskbalance.findOne({}, { status: 1 }).lean(),
+      ]);
 
       if (!user) {
         console.error(`User not found: ${existingTrx.username}`);
@@ -321,88 +338,73 @@ router.post("/api/skl99deposit", async (req, res) => {
       }
 
       const isNewDeposit = !user.firstDepositDate;
-
-      const setObject = {
-        lastdepositdate: new Date(),
-        ...(isNewDeposit && { firstDepositDate: existingTrx.createdAt }),
-      };
-
-      const updatedUser = await User.findByIdAndUpdate(
-        user._id,
-        {
-          $inc: {
-            wallet: roundToTwoDecimals(amount),
-            totaldeposit: roundToTwoDecimals(amount),
-          },
-          $set: setObject,
-        },
-        { new: true, projection: { wallet: 1 } }
-      ).lean();
-
-      const gateway = await paymentgateway
-        .findOne(
-          { name: { $regex: /^skl99$/i } },
-          { _id: 1, name: 1, balance: 1 }
-        )
-        .lean();
-
       const oldGatewayBalance = gateway?.balance || 0;
 
-      const parallelOperations = [
-        Deposit.create({
-          userId: user._id,
-          username: user.username,
-          fullname: user.fullname || "unknown",
-          bankname: "SKL99",
-          ownername: "Payment Gateway",
-          transfernumber: transaction_id,
-          walletType: "Main",
-          transactionType: "deposit",
-          method: "auto",
-          processBy: "admin",
-          amount: roundToTwoDecimals(amount),
-          walletamount: user.wallet,
-          remark: "-",
-          status: "approved",
-          processtime: "00:00:00",
-          newDeposit: isNewDeposit,
-          transactionId: invoice_no,
-          duplicateIP: user.duplicateIP,
-          duplicateBank: user.duplicateBank,
-        }),
+      const [updatedUser, newDeposit, , walletLog, updatedGateway] =
+        await Promise.all([
+          User.findByIdAndUpdate(
+            user._id,
+            {
+              $inc: {
+                wallet: roundedAmount,
+                totaldeposit: roundedAmount,
+              },
+              $set: {
+                lastdepositdate: new Date(),
+                ...(isNewDeposit && {
+                  firstDepositDate: existingTrx.createdAt,
+                }),
+              },
+            },
+            { new: true, projection: { wallet: 1 } }
+          ).lean(),
 
-        skl99Modal.findByIdAndUpdate(
-          existingTrx._id,
-          { $set: { status: statusText } },
-          { new: true }
-        ),
+          Deposit.create({
+            userId: user._id,
+            username: user.username,
+            fullname: user.fullname || "unknown",
+            bankname: "SKL99",
+            ownername: "Payment Gateway",
+            transfernumber: transaction_id,
+            walletType: "Main",
+            transactionType: "deposit",
+            method: "auto",
+            processBy: "admin",
+            amount: roundedAmount,
+            walletamount: user.wallet,
+            remark: "-",
+            status: "approved",
+            processtime: "00:00:00",
+            newDeposit: isNewDeposit,
+            transactionId: invoice_no,
+            duplicateIP: user.duplicateIP,
+            duplicateBank: user.duplicateBank,
+          }),
 
-        UserWalletLog.create({
-          userId: user._id,
-          transactionid: invoice_no,
-          transactiontime: new Date(),
-          transactiontype: "deposit",
-          amount: roundToTwoDecimals(amount),
-          status: "approved",
-        }),
+          skl99Modal.findByIdAndUpdate(existingTrx._id, {
+            $set: { status: statusText },
+          }),
 
-        paymentgateway.findOneAndUpdate(
-          { name: { $regex: /^skl99$/i } },
-          { $inc: { balance: roundToTwoDecimals(amount) } },
-          { new: true, projection: { _id: 1, name: 1, balance: 1 } }
-        ),
-      ];
+          UserWalletLog.create({
+            userId: user._id,
+            transactionid: invoice_no,
+            transactiontime: new Date(),
+            transactiontype: "deposit",
+            amount: roundedAmount,
+            status: "approved",
+          }),
 
-      const [newDeposit, , , updatedGateway] = await Promise.all(
-        parallelOperations
-      );
+          paymentgateway.findOneAndUpdate(
+            { name: { $regex: /^skl99$/i } },
+            { $inc: { balance: roundedAmount } },
+            { new: true, projection: { _id: 1, name: 1, balance: 1 } }
+          ),
+        ]);
 
-      const kioskSettings = await kioskbalance.findOne({});
-
-      if (kioskSettings && kioskSettings.status) {
+      if (kioskSettings?.status) {
         const kioskResult = await updateKioskBalance(
           "subtract",
-          roundToTwoDecimals(amount),
+          roundedAmount,
           {
             username: user.username,
             transactionType: "deposit approval",
@@ -411,13 +413,7 @@ router.post("/api/skl99deposit", async (req, res) => {
           }
         );
         if (!kioskResult.success) {
-          return res.status(200).json({
-            success: false,
-            message: {
-              en: "Failed to update kiosk balance",
-              zh: "更新Kiosk余额失败",
-            },
-          });
+          console.error("Failed to update kiosk balance for deposit");
         }
       }
 
@@ -432,14 +428,13 @@ router.post("/api/skl99deposit", async (req, res) => {
       });
 
       await PaymentGatewayTransactionLog.create({
-        gatewayId: gateway._id,
-        gatewayName: gateway.name,
+        gatewayId: gateway?._id,
+        gatewayName: gateway?.name || "SKL99",
         transactiontype: "deposit",
-        amount: roundToTwoDecimals(amount),
+        amount: roundedAmount,
         lastBalance: oldGatewayBalance,
         currentBalance:
-          updatedGateway?.balance ||
-          oldGatewayBalance + roundToTwoDecimals(amount),
+          updatedGateway?.balance || oldGatewayBalance + roundedAmount,
         remark: `Deposit from ${user.username}`,
         playerusername: user.username,
         processby: "system",
@@ -448,17 +443,15 @@ router.post("/api/skl99deposit", async (req, res) => {
 
       if (existingTrx.promotionId) {
         try {
-          const promotion = await Promotion.findOne(
-            { _id: existingTrx.promotionId },
-            {
-              claimtype: 1,
-              bonuspercentage: 1,
-              bonusexact: 1,
-              maxbonus: 1,
-              maintitle: 1,
-              maintitleEN: 1,
-            }
-          ).lean();
+          const promotion = await Promotion.findById(existingTrx.promotionId, {
+            claimtype: 1,
+            bonuspercentage: 1,
+            bonusexact: 1,
+            maxbonus: 1,
+            maintitle: 1,
+            maintitleEN: 1,
+          }).lean();
+
           if (!promotion) {
             console.log("SKL99, couldn't find promotion");
           } else {
@@ -481,12 +474,10 @@ router.post("/api/skl99deposit", async (req, res) => {
               bonusAmount = roundToTwoDecimals(bonusAmount);
               const bonusTransactionId = uuidv4();
 
-              await Promise.all([
+              const [, newBonus] = await Promise.all([
                 User.findByIdAndUpdate(user._id, {
-                  $inc: {
-                    wallet: bonusAmount,
-                  },
-                }).lean(),
+                  $inc: { wallet: bonusAmount },
+                }),
 
                 Bonus.create({
                   transactionId: bonusTransactionId,
@@ -496,7 +487,7 @@ router.post("/api/skl99deposit", async (req, res) => {
                   transactionType: "bonus",
                   processBy: "admin",
                   amount: bonusAmount,
-                  walletamount: user.wallet,
+                  walletamount: updatedUser?.wallet || user.wallet,
                   status: "approved",
                   method: "manual",
                   remark: "-",
@@ -518,6 +509,22 @@ router.post("/api/skl99deposit", async (req, res) => {
                   promotionnameEN: promotion.maintitleEN,
                 }),
               ]);
+
+              if (kioskSettings?.status) {
+                const kioskResult = await updateKioskBalance(
+                  "subtract",
+                  bonusAmount,
+                  {
+                    username: user.username,
+                    transactionType: "bonus approval",
+                    remark: `Bonus ID: ${newBonus._id}`,
+                    processBy: "admin",
+                  }
+                );
+                if (!kioskResult.success) {
+                  console.error("Failed to update kiosk balance for bonus");
+                }
+              }
             }
           }
         } catch (promotionError) {
