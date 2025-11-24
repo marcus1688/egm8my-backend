@@ -568,13 +568,18 @@ router.get("/api/checkin/status", authenticateToken, async (req, res) => {
     const userId = req.user.userId;
     const malaysiaTime = getMalaysiaTime();
     const malaysiaMidnight = malaysiaTime.clone().startOf("day");
-
     let checkin = await Checkin.findOne({ userId });
     if (!checkin) {
-      checkin = new Checkin({ userId });
-      await checkin.save();
+      return res.json({
+        success: true,
+        checkedIn: false,
+        checkInData: {
+          currentStreak: 0,
+          lastCheckIn: null,
+          monthlyCheckIns: {},
+        },
+      });
     }
-
     const lastCheckInDate = checkin.lastCheckIn
       ? moment.tz(checkin.lastCheckIn, "Asia/Kuala_Lumpur")
       : null;
