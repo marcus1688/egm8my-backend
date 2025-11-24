@@ -21,6 +21,7 @@ const UserWalletLog = require("../../models/userwalletlog.model");
 const Bonus = require("../../models/bonus.model");
 const Promotion = require("../../models/promotion.model");
 const Deposit = require("../../models/deposit.model");
+const Withdraw = require("../../models/withdraw.model");
 const paymentgateway = require("../../models/paymentgateway.model");
 const { checkAndUpdateVIPLevel, updateUserGameLocks } = require("../users");
 const PaymentGatewayTransactionLog = require("../../models/paymentgatewayTransactionLog.model");
@@ -723,7 +724,7 @@ router.post("/admin/api/skl99/requesttransfer/:userId", async (req, res) => {
     console.log(response.data);
     return;
     if (response.data.status !== 1) {
-      console.log(`EasyPay API Error: ${response.data}`);
+      console.log(`SKL99 API Error: ${response.data}`);
 
       return res.status(200).json({
         success: false,
@@ -765,7 +766,7 @@ router.post("/admin/api/skl99/requesttransfer/:userId", async (req, res) => {
     });
   } catch (error) {
     console.error(
-      `Error in EasyPay API - User: ${req.user?.userId}, Amount: ${req.body?.amount}:`,
+      `Error in SKL99 API - User: ${req.user?.userId}, Amount: ${req.body?.amount}:`,
       error.response?.data || error.message
     );
 
@@ -782,133 +783,135 @@ router.post("/admin/api/skl99/requesttransfer/:userId", async (req, res) => {
   }
 });
 
-router.post("/api/easypay/receivedtransfercalled168", async (req, res) => {
+router.post("/api/skl99withdraw", async (req, res) => {
   try {
     const {
-      tx_id,
-      order_id,
+      reference_no,
+      transaction_id,
+      invoice_no,
+      amount,
       status,
-      final_amount,
-      order_amount,
-      service_change,
+      status_message,
+      merchant_code,
     } = req.body;
 
-    if (!order_id || order_amount == null || !status) {
+    if (!invoice_no || amount == undefined || status === undefined) {
       console.log("Missing required parameters:", {
-        order_id,
-        order_amount,
+        invoice_no,
+        amount,
         status,
       });
-      return res.status(200).json({ status: 0 });
+      return res.status(200).json(req.body);
+    }
+
+    if (merchantCheck !== merchant_code) {
+      return res.status(200).json(req.body);
     }
 
     const statusMapping = {
-      COMPLETE: "Success",
+      FAILED: "Reject",
+      SUCCESS: "Success",
     };
 
-    const statusText = statusMapping[status] || "Reject";
-    const amount = Number(order_amount);
+    const statusCode = String(status);
+    const statusText = statusMapping[statusCode] || "Unknown";
+    const roundedAmount = roundToTwoDecimals(amount);
 
-    // Find existing transaction
-    const existingTrx = await easyPayModal
+    const existingTrx = await skl99Modal
       .findOne(
-        { paymentGatewayRefNo: order_id },
-        { username: 1, status: 1, createdAt: 1, _id: 1 }
+        { ourRefNo: invoice_no },
+        { _id: 1, username: 1, status: 1, createdAt: 1, promotionId: 1 }
       )
       .lean();
 
     if (!existingTrx) {
-      console.log(`Transaction not found: ${order_id}, creating record`);
-      await easyPayModal.create({
+      console.log(`Transaction not found: ${invoice_no}, creating record`);
+      await skl99Modal.create({
         username: "N/A",
         transfername: "N/A",
-        ourRefNo: tx_id,
-        paymentGatewayRefNo: order_id,
-        amount,
+        ourRefNo: invoice_no,
+        paymentGatewayRefNo: transaction_id,
+        amount: roundedAmount,
         transactiontype: "withdraw",
         status: statusText,
-        platformCharge: Number(service_change || 0),
-        remark: `No transaction found with reference: ${order_id}. Created from callback.`,
+        platformCharge: 0,
+        remark: `No transaction found with reference: ${invoice_no}. Created from callback.`,
       });
 
-      return res.status(200).json({ status: 0 });
+      return res.status(200).json(req.body);
     }
 
-    // Check if already processed successfully
-    if (status === "COMPLETE" && existingTrx.status === "Success") {
+    if (status === "SUCCESS" && existingTrx.status === "Success") {
       console.log("Transaction already processed successfully, skipping");
-      return res.status(200).json({
-        status: 1,
-      });
+      return res.status(200).json(req.body);
     }
 
-    if (status === "COMPLETE" && existingTrx.status !== "Success") {
-      const user = await User.findOne(
-        { username: existingTrx.username },
-        {
-          _id: 1,
-          username: 1,
-          fullname: 1,
-          wallet: 1,
-          duplicateIP: 1,
-          duplicateBank: 1,
-        }
-      ).lean();
-
-      if (!user) {
-        console.error(`User not found: ${existingTrx.username}`);
-        return res.status(200).json({ status: 0 });
-      }
-
-      const gateway = await paymentgateway
-        .findOne(
-          { name: { $regex: /^easypay$/i } },
-          { _id: 1, name: 1, balance: 1 }
-        )
-        .lean();
-
-      const oldGatewayBalance = gateway?.balance || 0;
-
-      const [, updatedGateway] = await Promise.all([
-        easyPayModal
-          .findByIdAndUpdate(existingTrx._id, { status: statusText })
-          .lean(),
+    if (status === "SUCCESS" && existingTrx.status !== "Success") {
+      const [user, gateway] = await Promise.all([
+        User.findOne(
+          { username: existingTrx.username },
+          {
+            _id: 1,
+            username: 1,
+            fullname: 1,
+            wallet: 1,
+            duplicateIP: 1,
+            duplicateBank: 1,
+          }
+        ).lean(),
 
         paymentgateway
-          .findOneAndUpdate(
-            { name: { $regex: /^easypay$/i } },
-            { $inc: { balance: -roundToTwoDecimals(amount) } },
-            { new: true, projection: { _id: 1, name: 1, balance: 1 } }
+          .findOne(
+            { name: { $regex: /^skl99$/i } },
+            { _id: 1, name: 1, balance: 1 }
           )
           .lean(),
       ]);
 
+      if (!user) {
+        console.error(`User not found: ${existingTrx.username}`);
+        return res.status(200).json(req.body);
+      }
+
+      const oldGatewayBalance = gateway?.balance || 0;
+
+      const [, updatedGateway] = await Promise.all([
+        skl99Modal.findByIdAndUpdate(existingTrx._id, {
+          $set: { status: statusText },
+        }),
+
+        paymentgateway.findOneAndUpdate(
+          { name: { $regex: /^skl99$/i } },
+          { $inc: { balance: -roundedAmount } },
+          { new: true, projection: { _id: 1, name: 1, balance: 1 } }
+        ),
+      ]);
+
       await PaymentGatewayTransactionLog.create({
-        gatewayId: gateway._id,
-        gatewayName: gateway.name,
+        gatewayId: gateway?._id,
+        gatewayName: gateway?.name || "SKL99",
         transactiontype: "withdraw",
-        amount: roundToTwoDecimals(amount),
+        amount: roundedAmount,
         lastBalance: oldGatewayBalance,
         currentBalance:
-          updatedGateway?.balance ||
-          oldGatewayBalance - roundToTwoDecimals(amount),
+          updatedGateway?.balance || oldGatewayBalance - roundedAmount,
         remark: `Withdraw from ${user.username}`,
         playerusername: user.username,
         processby: "system",
       });
-    } else if (status !== "COMPLETE" && existingTrx.status !== "Reject") {
+    } else if (status === "FAILED" && existingTrx.status !== "Reject") {
       const [, , withdraw, updatedUser] = await Promise.all([
-        easyPayModal.findByIdAndUpdate(existingTrx._id, {
+        skl99Modal.findByIdAndUpdate(existingTrx._id, {
           $set: { status: statusText },
         }),
 
         UserWalletLog.findOneAndUpdate(
-          { transactionid: tx_id },
+          { transactionid: invoice_no },
           { $set: { status: "rejected" } }
         ),
 
         Withdraw.findOneAndUpdate(
-          { transactionId: tx_id },
+          { transactionId: invoice_no },
           {
             $set: {
               status: "rejected",
@@ -924,7 +927,7 @@ router.post("/api/easypay/receivedtransfercalled168", async (req, res) => {
 
         User.findOneAndUpdate(
           { username: existingTrx.username },
-          { $inc: { wallet: roundToTwoDecimals(amount) } },
+          { $inc: { wallet: roundedAmount } },
           {
             new: true,
             projection: { _id: 1, username: 1, fullname: 1, wallet: 1 },
@@ -933,21 +936,26 @@ router.post("/api/easypay/receivedtransfercalled168", async (req, res) => {
       ]);
 
       if (!withdraw) {
-        console.log(`Withdraw not found for tx_id: ${tx_id}`);
-        return res.status(200).json({ status: 0 });
+        console.log(`Withdraw not found for invoice_no: ${invoice_no}`);
+        return res.status(200).json(req.body);
       }
 
       const [kioskSettings, bank] = await Promise.all([
         kioskbalance.findOne({}, { status: 1 }).lean(),
-        BankList.findById(withdraw.withdrawbankid).lean(),
+        BankList.findById(withdraw.withdrawbankid, {
+          _id: 1,
+          bankname: 1,
+          ownername: 1,
+          bankaccount: 1,
+          qrimage: 1,
+          currentbalance: 1,
+        }).lean(),
       ]);
 
       if (!bank) {
-        console.log("Invalid bank easypay callback");
-        return res.status(200).json({ status: 0 });
+        console.log("Invalid bank skl99 callback");
+        return res.status(200).json(req.body);
       }
-
-      const finalUpdates = [];
 
       if (kioskSettings?.status) {
         const kioskResult = await updateKioskBalance(
@@ -961,9 +969,11 @@ router.post("/api/easypay/receivedtransfercalled168", async (req, res) => {
           }
         );
         if (!kioskResult.success) {
-          return res.status(200).json({ status: 0 });
+          console.error("Failed to update kiosk balance for withdraw revert");
         }
       }
+
+      const newBankBalance = bank.currentbalance + withdraw.amount;
 
       await Promise.all([
         BankList.findByIdAndUpdate(withdraw.withdrawbankid, {
@@ -978,8 +988,8 @@ router.post("/api/easypay/receivedtransfercalled168", async (req, res) => {
           ownername: bank.ownername,
           bankAccount: bank.bankaccount,
           remark: withdraw.remark || "-",
-          lastBalance: bank.currentbalance - withdraw.amount,
-          currentBalance: bank.currentbalance,
+          lastBalance: bank.currentbalance,
+          currentBalance: newBankBalance,
           processby: "admin",
           transactiontype: "reverted withdraw",
           amount: withdraw.amount,
@@ -990,11 +1000,11 @@ router.post("/api/easypay/receivedtransfercalled168", async (req, res) => {
       ]);
 
       console.log(
-        `Transaction rejected: ${order_id}, User ${existingTrx.username} refunded ${amount}, New wallet: ${updatedUser?.wallet}`
+        `Transaction rejected: ${invoice_no}, User ${existingTrx.username} refunded ${roundedAmount}, New wallet: ${updatedUser?.wallet}`
       );
     }
 
-    return res.status(200).json({ status: 1 });
+    return res.status(200).json(req.body);
   } catch (error) {
     console.error("Payment callback processing error:", {
       error: error.message,
@@ -1002,10 +1012,9 @@ router.post("/api/easypay/receivedtransfercalled168", async (req, res) => {
       timestamp: moment().utc().format(),
       stack: error.stack,
     });
-    return res.status(200).json({ status: 0 });
+    return res.status(200).json(req.body);
   }
 });
-
 router.get("/admin/api/skl99data", authenticateAdminToken, async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
