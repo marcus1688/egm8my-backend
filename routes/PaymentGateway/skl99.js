@@ -173,7 +173,6 @@ router.post(
           headers: { "Content-Type": "application/json" },
         }
       );
-      console.log(response.data);
       if (!response.data.transaction_link) {
         console.log(`SKL99 API Error: ${JSON.stringify(response.data)}`);
 
@@ -460,7 +459,6 @@ router.post("/api/skl99deposit", async (req, res) => {
               maintitleEN: 1,
             }
           ).lean();
-
           if (!promotion) {
             console.log("SKL99, couldn't find promotion");
           } else {
@@ -484,6 +482,12 @@ router.post("/api/skl99deposit", async (req, res) => {
               const bonusTransactionId = uuidv4();
 
               await Promise.all([
+                User.findByIdAndUpdate(user._id, {
+                  $inc: {
+                    wallet: bonusAmount,
+                  },
+                }).lean(),
+
                 Bonus.create({
                   transactionId: bonusTransactionId,
                   userId: user._id,
