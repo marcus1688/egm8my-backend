@@ -772,4 +772,34 @@ router.post("/api/fpaymy", async (req, res) => {
   }
 });
 
+router.get("/admin/api/fpaydata", authenticateAdminToken, async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    let dateFilter = {};
+
+    if (startDate && endDate) {
+      dateFilter.createdAt = {
+        $gte: moment(new Date(startDate)).utc().toDate(),
+        $lte: moment(new Date(endDate)).utc().toDate(),
+      };
+    }
+
+    const dgData = await fpayModal
+      .find(dateFilter)
+      .sort({ createdAt: -1 })
+      .lean();
+    res.status(200).json({
+      success: true,
+      message: "FPAY retrieved successfully",
+      data: dgData,
+    });
+  } catch (error) {
+    console.error("Error retrieving user bonus FPAY:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve bonus FPAY",
+      error: error.message,
+    });
+  }
+});
 module.exports = router;
