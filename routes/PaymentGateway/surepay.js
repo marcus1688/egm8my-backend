@@ -38,7 +38,10 @@ const surePayCallbackSecret = process.env.SUREPAY_CALLBACKKEY;
 const webURL = "https://www.bm8my.vip/";
 const surepayAPIURL = "https://my.paymentgt.com/";
 const callbackUrl = "https://api.egm8my.vip/api/surepay/receivedcalled158291";
+const transferoutcallbackUrl =
+  "https://api.egm8my.vip/api/surepay/receivedtransfercalled168";
 const bankIDPG = "69247c9f7ef1ac832d86e65f";
+const payoutBankCode = "10021774";
 
 function roundToTwoDecimals(num) {
   return Math.round(num * 100) / 100;
@@ -773,4 +776,140 @@ router.get(
     }
   }
 );
+
+router.post("/admin/api/surepay/requesttransfer/:userId", async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "User not found. Please try again or contact customer service for assistance.",
+          zh: "用户未找到，请重试或联系客服以获取帮助。",
+          ms: "Pengguna tidak ditemui, sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          zh_hk: "用戶未找到，請重試或聯絡客服以獲取幫助。",
+          id: "Pengguna tidak ditemukan. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+        },
+      });
+    }
+
+    const {
+      amount,
+      bankCode,
+      accountHolder,
+      accountNumber,
+      bankName,
+      transactionId,
+    } = req.body;
+
+    if (!amount || !bankCode || !accountHolder || !accountNumber) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "Please complete all required fields",
+          zh: "请完成所有必填项",
+          zh_hk: "麻煩完成所有必填項目",
+          ms: "Sila lengkapkan semua medan yang diperlukan",
+          id: "Silakan lengkapi semua kolom yang diperlukan",
+        },
+      });
+    }
+
+    const clientIP = req.ip || req.connection.remoteAddress || "127.0.0.1";
+    const formattedAmount = Number(amount).toFixed(2);
+
+    const token = generateSurePayRequestToken(
+      merchantName,
+      formattedAmount,
+      transactionId,
+      accountHolder,
+      surePaySecret,
+      "MYR",
+      clientIP
+    );
+
+    const payload = {
+      merchant: merchantName,
+      amount: formattedAmount,
+      refid: transactionId,
+      token: token,
+      customer: accountHolder,
+      currency: "MYR",
+      bankcode: payoutBankCode,
+      destbankaccname: accountHolder,
+      destbankcode: bankCode,
+      destbankaccno: accountNumber,
+      clientip: clientIP,
+      post_url: transferoutcallbackUrl,
+    };
+    console.log(payload);
+    console.log(`${surepayAPIURL}api/payout`);
+    const response = await axios.post(`${surepayAPIURL}api/payout`, payload, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+    console.log(response.data, "hihi");
+    return;
+    if (response.data.code !== "success") {
+      console.log(`SKL99 API Error: ${response.data}`);
+
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "Payout request failed",
+          zh: "申请代付失败",
+          zh_hk: "申請代付失敗",
+          ms: "Permintaan pembayaran gagal",
+          id: "Permintaan pembayaran gagal",
+        },
+      });
+    }
+
+    await Promise.all([
+      skl99Modal.create({
+        ourRefNo: transactionId,
+        paymentGatewayRefNo: response.data.data.vendor_id,
+        transfername: "N/A",
+        username: user.username,
+        amount: Number(formattedAmount),
+        transferType: bankName || bankCode,
+        transactiontype: "withdraw",
+        status: "Pending",
+        platformCharge: 0,
+        remark: "-",
+        promotionId: null,
+      }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: {
+        en: "Payout request submitted successfully",
+        zh: "提交申请代付成功",
+        zh_hk: "提交申請代付成功",
+        ms: "Permintaan pembayaran berjaya diserahkan",
+        id: "Permintaan pembayaran berhasil diajukan",
+      },
+    });
+  } catch (error) {
+    console.error(
+      `Error in SKL99 API - User: ${req.user?.userId}, Amount: ${req.body?.amount}:`,
+      error.response?.data || error.message
+    );
+
+    return res.status(200).json({
+      success: false,
+      message: {
+        en: "Payout request failed",
+        zh: "申请代付失败",
+        zh_hk: "申請代付失敗",
+        ms: "Permintaan pembayaran gagal",
+        id: "Permintaan pembayaran gagal",
+      },
+    });
+  }
+});
 module.exports = router;
