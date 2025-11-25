@@ -332,18 +332,18 @@ router.post("/api/surepay/receivedcalled158291", async (req, res) => {
   try {
     const { amount, merchant, refid, token, trxno, status, status_message } =
       req.body;
-
+    console.log("surepay return", req.body);
     if (!refid || amount === undefined || status === undefined) {
       console.log("Missing required parameters:", {
         refid,
         amount,
         status,
       });
-      return res.status(200).json(req.body);
+      return res.status(200).json({ status: -1 });
     }
 
     if (merchantName !== merchant) {
-      return res.status(200).json(req.body);
+      return res.status(200).json({ status: -1 });
     }
 
     const expectedToken = generateSurePayCallbackToken(
@@ -356,7 +356,7 @@ router.post("/api/surepay/receivedcalled158291", async (req, res) => {
 
     if (token !== expectedToken) {
       console.log("Invalid callback token");
-      return res.status(200).send("FAILED");
+      return res.status(200).json({ status: -1 });
     }
 
     const statusMapping = {
@@ -389,12 +389,12 @@ router.post("/api/surepay/receivedcalled158291", async (req, res) => {
         remark: `No transaction found with reference: ${refid}. Created from callback.`,
       });
 
-      return res.status(200).json(req.body);
+      return res.status(200).json({ status: -1 });
     }
 
     if (status === 1 && existingTrx.status === "Success") {
       console.log("Transaction already processed successfully, skipping");
-      return res.status(200).json(req.body);
+      return res.status(200).json({ status: 1 });
     }
 
     if (status === 1 && existingTrx.status !== "Success") {
@@ -434,12 +434,12 @@ router.post("/api/surepay/receivedcalled158291", async (req, res) => {
 
       if (!user) {
         console.error(`User not found: ${existingTrx.username}`);
-        return res.status(200).json(req.body);
+        return res.status(200).json({ status: -1 });
       }
 
       if (!bank) {
         console.error(`Bank not found: 69247c9f7ef1ac832d86e65f`);
-        return res.status(200).json(req.body);
+        return res.status(200).json({ status: -1 });
       }
 
       const isNewDeposit = !user.firstDepositDate;
@@ -717,7 +717,7 @@ router.post("/api/surepay/receivedcalled158291", async (req, res) => {
       });
     }
 
-    return res.status(200).json(req.body);
+    return res.status(200).json({ status: 1 });
   } catch (error) {
     console.error("Payment callback processing error:", {
       error: error.message,
@@ -725,7 +725,7 @@ router.post("/api/surepay/receivedcalled158291", async (req, res) => {
       timestamp: moment().utc().format(),
       stack: error.stack,
     });
-    return res.status(200).json(req.body);
+    return res.status(200).json({ status: -1 });
   }
 });
 
