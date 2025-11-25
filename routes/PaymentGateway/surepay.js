@@ -107,6 +107,7 @@ function generateSurePayRequestToken(
   clientip
 ) {
   const tokenString = `${merchant}${amount}${refid}${customer}${apikey}${currency}${clientip}`;
+
   return crypto.createHash("md5").update(tokenString).digest("hex");
 }
 
@@ -848,13 +849,26 @@ router.post("/admin/api/surepay/requesttransfer/:userId", async (req, res) => {
     console.log(`${surepayAPIURL}api/payout`);
     const response = await axios.post(`${surepayAPIURL}api/payout`, payload, {
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
       },
     });
     console.log(response.data, "hihi");
     return;
-    if (response.data.code !== "success") {
-      console.log(`SKL99 API Error: ${response.data}`);
+    if (response.data.status !== 1) {
+      console.log(`SUREPAY API Error: ${response.data}`);
+
+      if (response.data.status === -101) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Payment gateway has insufficient balance.",
+            zh: "支付网关金额不足。",
+            zh_hk: "支付網關金額不足。",
+            ms: "Baki gerbang pembayaran tidak mencukupi.",
+            id: "Saldo gateway pembayaran tidak mencukupi.",
+          },
+        });
+      }
 
       return res.status(200).json({
         success: false,
@@ -869,7 +883,7 @@ router.post("/admin/api/surepay/requesttransfer/:userId", async (req, res) => {
     }
 
     await Promise.all([
-      skl99Modal.create({
+      surepayModal.create({
         ourRefNo: transactionId,
         paymentGatewayRefNo: response.data.data.vendor_id,
         transfername: "N/A",
