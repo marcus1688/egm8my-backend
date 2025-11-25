@@ -2226,12 +2226,13 @@ async function checkAndUpdateVIPLevel(userId) {
       } else {
         depositA = parseFloat(a.benefits["Total Deposit"] || 0);
       }
-
       if (b.benefits instanceof Map) {
         depositB = parseFloat(b.benefits.get("Total Deposit") || 0);
       } else {
         depositB = parseFloat(b.benefits["Total Deposit"] || 0);
       }
+      if (isNaN(depositA)) depositA = 0;
+      if (isNaN(depositB)) depositB = 0;
 
       return depositB - depositA;
     });

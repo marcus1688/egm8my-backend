@@ -206,7 +206,9 @@ router.post("/api/luckySpinStartGame", authenticateToken, async (req, res) => {
 // Get Big Winner List
 router.get("/api/UserLuckySpinLog", async (req, res) => {
   try {
-    const luckyspinlog = await LuckySpinLog.find()
+    const luckyspinlog = await LuckySpinLog.find({
+      winning: { $gt: 0 },
+    })
       .select("playerusername createdAt")
       .sort({ createdAt: -1 })
       .limit(20);
