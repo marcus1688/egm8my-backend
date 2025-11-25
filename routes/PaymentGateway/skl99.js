@@ -268,7 +268,7 @@ router.post(
   }
 );
 
-router.post("/api/skl99deposit", async (req, res) => {
+router.post("/api/skldepositprod", async (req, res) => {
   try {
     const {
       reference_no,
@@ -781,7 +781,7 @@ router.post("/admin/api/skl99/requesttransfer/:userId", async (req, res) => {
   }
 });
 
-router.post("/api/skl99withdraw", async (req, res) => {
+router.post("/api/sklwithdrawprod", async (req, res) => {
   try {
     const {
       reference_no,

@@ -341,7 +341,7 @@ router.post("/api/surepay/receivedcalled158291", async (req, res) => {
       status_message,
       fee,
     } = req.body;
-    console.log("surepay return", req.body);
+
     if (!refid || amount === undefined || status === undefined) {
       console.log("Missing required parameters:", {
         refid,
