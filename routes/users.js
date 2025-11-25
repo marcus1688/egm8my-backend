@@ -3399,18 +3399,16 @@ router.post(
 
       let bank = null;
 
-      if (deposit.method !== "auto") {
-        bank = await BankList.findById(deposit.bankid);
+      bank = await BankList.findById(deposit.bankid);
 
-        if (!bank) {
-          return res.status(200).json({
-            success: false,
-            message: {
-              en: "Bank account not found",
-              zh: "找不到银行账户",
-            },
-          });
-        }
+      if (!bank) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Bank account not found",
+            zh: "找不到银行账户",
+          },
+        });
       }
 
       const kioskSettings = await kioskbalance.findOne({});
@@ -3452,11 +3450,9 @@ router.post(
       );
       await checkAndUpdateVIPLevel(user._id);
 
-      if (deposit.method !== "auto" && bank) {
-        bank.currentbalance -= deposit.amount;
-        bank.totalDeposits -= deposit.amount;
-        await bank.save();
-      }
+      bank.currentbalance -= deposit.amount;
+      bank.totalDeposits -= deposit.amount;
+      await bank.save();
 
       deposit.reverted = true;
       deposit.status = "reverted";
@@ -3510,23 +3506,21 @@ router.post(
       adminuser.totalRevertedDeposits += 1;
       await adminuser.save();
 
-      if (deposit.method !== "auto" && bank) {
-        const transactionLog = new BankTransactionLog({
-          bankName: bank.bankname,
-          ownername: bank.ownername,
-          bankAccount: bank.bankaccount,
-          remark: deposit.remark || "-",
-          lastBalance: bank.currentbalance + deposit.amount,
-          currentBalance: bank.currentbalance,
-          processby: adminuser.username,
-          transactiontype: "reverted deposit",
-          amount: deposit.amount,
-          qrimage: bank.qrimage,
-          playerusername: user.username,
-          playerfullname: user.fullname,
-        });
-        await transactionLog.save();
-      }
+      const transactionLog = new BankTransactionLog({
+        bankName: bank.bankname,
+        ownername: bank.ownername,
+        bankAccount: bank.bankaccount,
+        remark: deposit.remark || "-",
+        lastBalance: bank.currentbalance + deposit.amount,
+        currentBalance: bank.currentbalance,
+        processby: adminuser.username,
+        transactiontype: "reverted deposit",
+        amount: deposit.amount,
+        qrimage: bank.qrimage,
+        playerusername: user.username,
+        playerfullname: user.fullname,
+      });
+      await transactionLog.save();
 
       const depositTime = new Date(deposit.createdAt);
       const timeBefore = new Date(depositTime.getTime() - 3000);
