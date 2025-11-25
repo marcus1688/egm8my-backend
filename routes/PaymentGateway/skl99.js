@@ -721,9 +721,7 @@ router.post("/admin/api/skl99/requesttransfer/:userId", async (req, res) => {
         headers: { "Content-Type": "application/json" },
       }
     );
-    console.log(response.data);
-    return;
-    if (response.data.status !== 1) {
+    if (response.data.code !== "success") {
       console.log(`SKL99 API Error: ${response.data}`);
 
       return res.status(200).json({
@@ -741,14 +739,14 @@ router.post("/admin/api/skl99/requesttransfer/:userId", async (req, res) => {
     await Promise.all([
       skl99Modal.create({
         ourRefNo: transactionId,
-        paymentGatewayRefNo: response.data.data.order_id,
+        paymentGatewayRefNo: response.data.data.vendor_id,
         transfername: "N/A",
         username: user.username,
         amount: Number(formattedAmount),
         transferType: bankName || bankCode,
         transactiontype: "withdraw",
         status: "Pending",
-        platformCharge: Number(response.data.data.service_change) || 0,
+        platformCharge: 0,
         remark: "-",
         promotionId: null,
       }),
