@@ -392,12 +392,12 @@ router.post("/api/surepay/receivedcalled158291", async (req, res) => {
       return res.status(200).json({ status: -1 });
     }
 
-    if (status === 1 && existingTrx.status === "Success") {
+    if (status === "1" && existingTrx.status === "Success") {
       console.log("Transaction already processed successfully, skipping");
       return res.status(200).json({ status: 1 });
     }
 
-    if (status === 1 && existingTrx.status !== "Success") {
+    if (status === "1" && existingTrx.status !== "Success") {
       const [user, gateway, kioskSettings, bank] = await Promise.all([
         User.findOne(
           { username: existingTrx.username },
