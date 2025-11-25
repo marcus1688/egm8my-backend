@@ -907,14 +907,14 @@ router.post("/api/skl99withdraw", async (req, res) => {
 
         UserWalletLog.findOneAndUpdate(
           { transactionid: invoice_no },
-          { $set: { status: "rejected" } }
+          { $set: { status: "cancel" } }
         ),
 
         Withdraw.findOneAndUpdate(
           { transactionId: invoice_no },
           {
             $set: {
-              status: "rejected",
+              status: "reverted",
               processBy: "admin",
               processtime: "00:00:00",
             },
@@ -973,8 +973,6 @@ router.post("/api/skl99withdraw", async (req, res) => {
         }
       }
 
-      const newBankBalance = bank.currentbalance + withdraw.amount;
-
       await Promise.all([
         BankList.findByIdAndUpdate(withdraw.withdrawbankid, {
           $inc: {
@@ -989,7 +987,7 @@ router.post("/api/skl99withdraw", async (req, res) => {
           bankAccount: bank.bankaccount,
           remark: withdraw.remark || "-",
           lastBalance: bank.currentbalance,
-          currentBalance: newBankBalance,
+          currentBalance: bank.currentbalance + withdraw.amount,
           processby: "admin",
           transactiontype: "reverted withdraw",
           amount: withdraw.amount,
