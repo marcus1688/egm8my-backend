@@ -79,6 +79,120 @@ function generateMD5Hash(data, secretKey) {
   return hash.digest("hex");
 }
 
+// async function updateBTGamingManualOrderTimestampsPlus() {
+//   try {
+//     // List of gameIDs in order (AB1541 = latest, AB1501 = oldest)
+//     const gameIds = [
+//       "S-LK03",
+//       "S-RH02",
+//       "S-FS01",
+//       "S-FS02",
+//       "S-CG02",
+//       "S-RK02",
+//       "S-BA01",
+//       "S-MR02",
+//       "S-MC01",
+//       "S-RV01",
+//       "S-GP03",
+//       "S-DW01",
+//       "S-CS02",
+//       "S-LR01",
+//       "S-GP04",
+//       "S-GK01",
+//       "S-WW02",
+//       "S-PW03",
+//       "S-LS03",
+//       "S-GL02",
+//       "S-CS03",
+//       "S-JM01",
+//       "S-HN01",
+//       "S-RM01",
+//       "S-TD01",
+//       "S-GR01",
+//       "S-FH04",
+//       "S-RC01",
+//       "S-FM03",
+//       "S-HT02",
+//       "S-JT03",
+//       "S-GW03",
+//       "S-MT01",
+//       "S-MG02",
+//       "S-FD01",
+//       "S-SW02",
+//       "S-FF01",
+//       "S-CG01",
+//       "S-VB01",
+//       "S-ZE01",
+//     ];
+
+//     // Start from current time + 1 month for the latest game (AB1541)
+//     const currentTime = new Date();
+//     const startTime = new Date(
+//       currentTime.getTime() + 30 * 24 * 60 * 60 * 1000
+//     ); // Add 30 days (1 month)
+
+//     // Process each gameID with 30-minute intervals
+//     for (let i = 0; i < gameIds.length; i++) {
+//       const gameId = gameIds[i];
+
+//       // Calculate timestamp: latest game gets start time (current + 1 month), each subsequent game is 30 minutes older
+//       const timestamp = new Date(startTime.getTime() - i * 30 * 60 * 1000); // 30 minutes = 30 * 60 * 1000 milliseconds
+
+//       // Update the document directly in the collection, bypassing schema timestamps
+//       const result = await GameSpadeGamingGameModal.collection.updateOne(
+//         { gameID: gameId },
+//         {
+//           $set: {
+//             createdAt: timestamp,
+//             updatedAt: timestamp,
+//           },
+//         }
+//       );
+
+//       if (result.matchedCount > 0) {
+//         console.log(
+//           `Updated BTGaming gameID ${gameId} with timestamp: ${timestamp.toISOString()}`
+//         );
+//       } else {
+//         console.log(`BTGaming GameID ${gameId} not found in database`);
+//       }
+//     }
+
+//     console.log("BTGaming manual order timestamp update completed!");
+//     console.log(
+//       `Start time was set to: ${startTime.toISOString()} (current time + 1 month)`
+//     );
+
+//     // Verify the updates by fetching and displaying the results
+//     const updatedGames = await GameSpadeGamingGameModal.find(
+//       { gameID: { $in: gameIds } },
+//       { gameID: 1, createdAt: 1, gameNameEN: 1, hot: 1 }
+//     ).sort({ createdAt: -1 });
+
+//     console.log(
+//       "\nVerification - BTGaming Games ordered by createdAt (newest first):"
+//     );
+//     updatedGames.forEach((game, index) => {
+//       console.log(
+//         `${index + 1}. GameID: ${
+//           game.gameID
+//         }, CreatedAt: ${game.createdAt.toISOString()}, Hot: ${
+//           game.hot
+//         }, Name: ${game.gameNameEN}`
+//       );
+//     });
+
+//     console.log(
+//       `\nTotal games updated: ${updatedGames.length}/${gameIds.length}`
+//     );
+//   } catch (error) {
+//     console.error("Error updating BTGaming manual order timestamps:", error);
+//   }
+// }
+
+// // Call the function
+// updateBTGamingManualOrderTimestampsPlus();
+
 router.post("/api/spadegaming/comparegame", async (req, res) => {
   try {
     const { gameLang } = req.body;
@@ -333,10 +447,9 @@ router.post(
   authenticateToken,
   async (req, res) => {
     try {
-      // zh-CN or en_US
       const { gameLang, gameCode, gameType } = req.body;
 
-      let lang = "zh_CN";
+      let lang = "en_US";
 
       if (gameLang === "en") {
         lang = "en_US";

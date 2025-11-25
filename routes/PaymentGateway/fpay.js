@@ -386,7 +386,8 @@ router.post("/api/fpaymy", async (req, res) => {
       name,
       type,
     } = req.body;
-
+    console.log("fpay request", req.body);
+    return res.status(200).json();
     if (!order_id || amount === undefined || order_status === undefined) {
       console.log("Missing required parameters:", {
         order_id,
