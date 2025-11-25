@@ -330,8 +330,16 @@ router.post(
 
 router.post("/api/surepay/receivedcalled158291", async (req, res) => {
   try {
-    const { amount, merchant, refid, token, trxno, status, status_message } =
-      req.body;
+    const {
+      amount,
+      merchant,
+      refid,
+      token,
+      trxno,
+      status,
+      status_message,
+      fee,
+    } = req.body;
     console.log("surepay return", req.body);
     if (!refid || amount === undefined || status === undefined) {
       console.log("Missing required parameters:", {
@@ -385,7 +393,7 @@ router.post("/api/surepay/receivedcalled158291", async (req, res) => {
         amount: roundedAmount,
         transactiontype: "deposit",
         status: statusText,
-        platformCharge: 0,
+        platformCharge: fee || 0,
         remark: `No transaction found with reference: ${refid}. Created from callback.`,
       });
 
@@ -494,7 +502,7 @@ router.post("/api/surepay/receivedcalled158291", async (req, res) => {
         }),
 
         surepayModal.findByIdAndUpdate(existingTrx._id, {
-          $set: { status: statusText },
+          $set: { status: statusText, platformCharge: fee || 0 },
         }),
 
         UserWalletLog.create({
