@@ -38,6 +38,7 @@ const surePayCallbackSecret = process.env.SUREPAY_CALLBACKKEY;
 const webURL = "https://www.bm8my.vip/";
 const surepayAPIURL = "https://my.paymentgt.com/";
 const callbackUrl = "https://api.egm8my.vip/api/surepay/receivedcalled158291";
+const bankIDPG = "69247c9f7ef1ac832d86e65f";
 
 function roundToTwoDecimals(num) {
   return Math.round(num * 100) / 100;
@@ -430,7 +431,7 @@ router.post("/api/surepay/receivedcalled158291", async (req, res) => {
 
         kioskbalance.findOne({}, { status: 1 }).lean(),
 
-        BankList.findById("69247c9f7ef1ac832d86e65f", {
+        BankList.findById(bankIDPG, {
           _id: 1,
           bankname: 1,
           ownername: 1,
@@ -446,7 +447,7 @@ router.post("/api/surepay/receivedcalled158291", async (req, res) => {
       }
 
       if (!bank) {
-        console.error(`Bank not found: 69247c9f7ef1ac832d86e65f`);
+        console.error(`Bank not found: ${bankIDPG}`);
         return res.status(200).json({ status: -1 });
       }
 
@@ -490,6 +491,7 @@ router.post("/api/surepay/receivedcalled158291", async (req, res) => {
           transactionType: "deposit",
           method: "auto",
           processBy: "admin",
+          bankid: bankIDPG,
           amount: roundedAmount,
           walletamount: user.wallet,
           remark: "-",
@@ -521,7 +523,7 @@ router.post("/api/surepay/receivedcalled158291", async (req, res) => {
         ),
 
         BankList.findByIdAndUpdate(
-          "69247c9f7ef1ac832d86e65f",
+          bankIDPG,
           [
             {
               $set: {
