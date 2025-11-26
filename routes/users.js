@@ -5810,7 +5810,24 @@ router.get(
         cashoutStats,
       ] = financialResults;
 
-      // Generic aggregation function for game turnover
+      const getUsernameMap = async (gameIds) => {
+        const upperCaseGameIds = gameIds
+          .filter((id) => id != null)
+          .map((id) => id.toUpperCase());
+
+        if (upperCaseGameIds.length === 0) return {};
+
+        const users = await User.find(
+          { gameId: { $in: upperCaseGameIds } },
+          { gameId: 1, username: 1, _id: 0 }
+        ).lean();
+
+        return users.reduce((map, user) => {
+          map[user.gameId.toLowerCase()] = user.username.toLowerCase();
+          return map;
+        }, {});
+      };
+
       const getAllUsersTurnover = async (
         model,
         matchConditions,
@@ -5819,7 +5836,6 @@ router.get(
         }
       ) => {
         try {
-          // Add date filter to match conditions
           const fullMatchConditions = {
             ...matchConditions,
             createdAt: dateFilter.createdAt,
@@ -5837,8 +5853,13 @@ router.get(
             },
           ]);
 
+          if (results.length === 0) return [];
+
+          const gameIds = results.map((item) => item._id);
+
+          const gameIdToUsername = await getUsernameMap(gameIds);
           return results.map((item) => ({
-            username: item._id,
+            username: gameIdToUsername[item._id] || item._id,
             turnover: Number(item.turnover.toFixed(2)),
           }));
         } catch (error) {
