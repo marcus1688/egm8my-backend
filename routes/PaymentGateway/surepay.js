@@ -1028,6 +1028,50 @@ async function handleRejectedWithdrawalApproval(
   );
 }
 
+async function handleApprovedWithdrawalReject(
+  existingTrx,
+  refid,
+  roundedAmount,
+  user
+) {
+  const gateway = await paymentgateway
+    .findOne(
+      { name: { $regex: /^surepay$/i } },
+      { _id: 1, name: 1, balance: 1 }
+    )
+    .lean();
+
+  if (!gateway) {
+    console.error("Gateway not found for withdrawal rejection");
+    return;
+  }
+
+  const oldGatewayBalance = gateway.balance || 0;
+
+  const updatedGateway = await paymentgateway.findOneAndUpdate(
+    { name: { $regex: /^surepay$/i } },
+    { $inc: { balance: roundedAmount } },
+    { new: true, projection: { _id: 1, name: 1, balance: 1 } }
+  );
+
+  await PaymentGatewayTransactionLog.create({
+    gatewayId: gateway._id,
+    gatewayName: gateway.name || "SUREPAY",
+    transactiontype: "reverted withdraw",
+    amount: roundedAmount,
+    lastBalance: oldGatewayBalance,
+    currentBalance:
+      updatedGateway?.balance || oldGatewayBalance + roundedAmount,
+    remark: `Revert withdraw from ${user.username}`,
+    playerusername: user.username,
+    processby: "system",
+  });
+
+  console.log(
+    `Approved withdrawal re-rejected: ${refid}, User ${existingTrx.username}, Amount: ${roundedAmount}`
+  );
+}
+
 router.post("/api/surepay/receivedtransfercalled168", async (req, res) => {
   try {
     const {
@@ -1232,6 +1276,15 @@ router.post("/api/surepay/receivedtransfercalled168", async (req, res) => {
           }
         ).lean(),
       ]);
+
+      if (existingTrx.status === "Success") {
+        await handleApprovedWithdrawalReject(
+          existingTrx,
+          refid,
+          roundedAmount,
+          updatedUser
+        );
+      }
 
       if (!withdraw) {
         console.log(`Withdraw not found for refid: ${refid}`);
