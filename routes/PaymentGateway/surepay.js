@@ -35,6 +35,7 @@ require("dotenv").config();
 const merchantName = "Infinity011";
 const surePaySecret = process.env.SUREPAY_APIKEY;
 const surePayCallbackSecret = process.env.SUREPAY_CALLBACKKEY;
+const surePayPayoutSecret = process.env.SUREPAY_PAYOUTAPIKEY;
 const webURL = "https://www.bm8my.vip/";
 const surepayAPIURL = "https://my.paymentgt.com/";
 const callbackUrl = "https://api.egm8my.vip/api/surepay/receivedcalled158291";
@@ -826,7 +827,7 @@ router.post("/admin/api/surepay/requesttransfer/:userId", async (req, res) => {
       formattedAmount,
       transactionId,
       accountHolder,
-      surePaySecret,
+      surePayPayoutSecret,
       "MYR",
       clientIP
     );
@@ -845,15 +846,12 @@ router.post("/admin/api/surepay/requesttransfer/:userId", async (req, res) => {
       clientip: clientIP,
       post_url: transferoutcallbackUrl,
     };
-    console.log(payload);
-    console.log(`${surepayAPIURL}api/payout`);
+
     const response = await axios.post(`${surepayAPIURL}api/payout`, payload, {
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
       },
     });
-    console.log(response.data, "hihi");
-    return;
     if (response.data.status !== 1) {
       console.log(`SUREPAY API Error: ${response.data}`);
 
@@ -885,7 +883,7 @@ router.post("/admin/api/surepay/requesttransfer/:userId", async (req, res) => {
     await Promise.all([
       surepayModal.create({
         ourRefNo: transactionId,
-        paymentGatewayRefNo: response.data.data.vendor_id,
+        paymentGatewayRefNo: response.data.trxno,
         transfername: "N/A",
         username: user.username,
         amount: Number(formattedAmount),
@@ -910,7 +908,7 @@ router.post("/admin/api/surepay/requesttransfer/:userId", async (req, res) => {
     });
   } catch (error) {
     console.error(
-      `Error in SKL99 API - User: ${req.user?.userId}, Amount: ${req.body?.amount}:`,
+      `Error in SUREPAY API - User: ${req.user?.userId}, Amount: ${req.body?.amount}:`,
       error.response?.data || error.message
     );
 
@@ -924,6 +922,253 @@ router.post("/admin/api/surepay/requesttransfer/:userId", async (req, res) => {
         id: "Permintaan pembayaran gagal",
       },
     });
+  }
+});
+
+router.post("/api/surepay/receivedtransfercalled168", async (req, res) => {
+  try {
+    const {
+      merchant,
+      amount,
+      refid,
+      customer,
+      token,
+      trxno,
+      status,
+      status_message,
+    } = req.body;
+
+    console.log("surepay", req.body);
+
+    if (!refid || amount === undefined || status === undefined) {
+      console.log("Missing required parameters:", {
+        refid,
+        amount,
+        status,
+      });
+      return res.status(200).json({ status: -1 });
+    }
+
+    if (merchantName !== merchant) {
+      return res.status(200).json({ status: -1 });
+    }
+
+    const expectedToken = generateSurePayCallbackToken(
+      merchant,
+      amount,
+      status,
+      surePayCallbackSecret,
+      trxno
+    );
+
+    if (token !== expectedToken) {
+      console.log("Invalid callback token");
+      return res.status(200).json({ status: -1 });
+    }
+
+    const statusMapping = {
+      "-1": "Reject",
+      1: "Success",
+    };
+
+    const statusCode = String(status);
+    const statusText = statusMapping[statusCode] || "Unknown";
+    const roundedAmount = roundToTwoDecimals(amount);
+
+    const existingTrx = await surepayModal
+      .findOne(
+        { ourRefNo: refid },
+        { _id: 1, username: 1, status: 1, createdAt: 1, promotionId: 1 }
+      )
+      .lean();
+
+    if (!existingTrx) {
+      console.log(`Transaction not found: ${refid}, creating record`);
+      await surepayModal.create({
+        username: "N/A",
+        transfername: "N/A",
+        ourRefNo: refid,
+        paymentGatewayRefNo: trxno,
+        amount: roundedAmount,
+        transactiontype: "withdraw",
+        status: statusText,
+        platformCharge: 0,
+        remark: `No transaction found with reference: ${refid}. Created from callback.`,
+      });
+
+      return res.status(200).json({ status: -1 });
+    }
+
+    if (status === "SUCCESS" && existingTrx.status === "Success") {
+      console.log("Transaction already processed successfully, skipping");
+      return res.status(200).json({ status: 1 });
+    }
+
+    if (status === "SUCCESS" && existingTrx.status !== "Success") {
+      const [user, gateway] = await Promise.all([
+        User.findOne(
+          { username: existingTrx.username },
+          {
+            _id: 1,
+            username: 1,
+            fullname: 1,
+            wallet: 1,
+            duplicateIP: 1,
+            duplicateBank: 1,
+          }
+        ).lean(),
+
+        paymentgateway
+          .findOne(
+            { name: { $regex: /^surepay$/i } },
+            { _id: 1, name: 1, balance: 1 }
+          )
+          .lean(),
+      ]);
+
+      if (!user) {
+        console.error(`User not found: ${existingTrx.username}`);
+        return res.status(200).json({ status: -1 });
+      }
+
+      const oldGatewayBalance = gateway?.balance || 0;
+
+      const [, updatedGateway] = await Promise.all([
+        surepayModal.findByIdAndUpdate(existingTrx._id, {
+          $set: { status: statusText },
+        }),
+
+        paymentgateway.findOneAndUpdate(
+          { name: { $regex: /^surepay$/i } },
+          { $inc: { balance: -roundedAmount } },
+          { new: true, projection: { _id: 1, name: 1, balance: 1 } }
+        ),
+      ]);
+
+      await PaymentGatewayTransactionLog.create({
+        gatewayId: gateway?._id,
+        gatewayName: gateway?.name || "SUREPAY",
+        transactiontype: "withdraw",
+        amount: roundedAmount,
+        lastBalance: oldGatewayBalance,
+        currentBalance:
+          updatedGateway?.balance || oldGatewayBalance - roundedAmount,
+        remark: `Withdraw from ${user.username}`,
+        playerusername: user.username,
+        processby: "system",
+      });
+    } else if (status === "FAILED" && existingTrx.status !== "Reject") {
+      const [, , withdraw, updatedUser] = await Promise.all([
+        surepayModal.findByIdAndUpdate(existingTrx._id, {
+          $set: { status: statusText },
+        }),
+
+        UserWalletLog.findOneAndUpdate(
+          { transactionid: refid },
+          { $set: { status: "cancel" } }
+        ),
+
+        Withdraw.findOneAndUpdate(
+          { transactionId: refid },
+          {
+            $set: {
+              status: "reverted",
+              processBy: "admin",
+              processtime: "00:00:00",
+            },
+          },
+          {
+            new: false,
+            projection: { _id: 1, amount: 1, withdrawbankid: 1, remark: 1 },
+          }
+        ).lean(),
+
+        User.findOneAndUpdate(
+          { username: existingTrx.username },
+          { $inc: { wallet: roundedAmount } },
+          {
+            new: true,
+            projection: { _id: 1, username: 1, fullname: 1, wallet: 1 },
+          }
+        ).lean(),
+      ]);
+
+      if (!withdraw) {
+        console.log(`Withdraw not found for refid: ${refid}`);
+        return res.status(200).json({ status: 1 });
+      }
+
+      const [kioskSettings, bank] = await Promise.all([
+        kioskbalance.findOne({}, { status: 1 }).lean(),
+        BankList.findById(withdraw.withdrawbankid, {
+          _id: 1,
+          bankname: 1,
+          ownername: 1,
+          bankaccount: 1,
+          qrimage: 1,
+          currentbalance: 1,
+        }).lean(),
+      ]);
+
+      if (!bank) {
+        console.log("Invalid bank surepay callback");
+        return res.status(200).json({ status: 1 });
+      }
+
+      if (kioskSettings?.status) {
+        const kioskResult = await updateKioskBalance(
+          "subtract",
+          withdraw.amount,
+          {
+            username: existingTrx.username,
+            transactionType: "withdraw reverted",
+            remark: `Withdraw ID: ${withdraw._id}`,
+            processBy: "admin",
+          }
+        );
+        if (!kioskResult.success) {
+          console.error("Failed to update kiosk balance for withdraw revert");
+        }
+      }
+
+      await Promise.all([
+        BankList.findByIdAndUpdate(withdraw.withdrawbankid, {
+          $inc: {
+            currentbalance: withdraw.amount,
+            totalWithdrawals: -withdraw.amount,
+          },
+        }),
+
+        BankTransactionLog.create({
+          bankName: bank.bankname,
+          ownername: bank.ownername,
+          bankAccount: bank.bankaccount,
+          remark: withdraw.remark || "-",
+          lastBalance: bank.currentbalance,
+          currentBalance: bank.currentbalance + withdraw.amount,
+          processby: "admin",
+          transactiontype: "reverted withdraw",
+          amount: withdraw.amount,
+          qrimage: bank.qrimage,
+          playerusername: updatedUser?.username || existingTrx.username,
+          playerfullname: updatedUser?.fullname || "N/A",
+        }),
+      ]);
+
+      console.log(
+        `Transaction rejected: ${refid}, User ${existingTrx.username} refunded ${roundedAmount}, New wallet: ${updatedUser?.wallet}`
+      );
+    }
+
+    return res.status(200).json({ status: 1 });
+  } catch (error) {
+    console.error("Payment callback processing error:", {
+      error: error.message,
+      body: req.body,
+      timestamp: moment().utc().format(),
+      stack: error.stack,
+    });
+    return res.status(200).json({ status: -1 });
   }
 });
 module.exports = router;
