@@ -999,12 +999,12 @@ router.post("/api/surepay/receivedtransfercalled168", async (req, res) => {
       return res.status(200).json({ status: -1 });
     }
 
-    if (status === "SUCCESS" && existingTrx.status === "Success") {
+    if (status === "1" && existingTrx.status === "Success") {
       console.log("Transaction already processed successfully, skipping");
       return res.status(200).json({ status: 1 });
     }
 
-    if (status === "SUCCESS" && existingTrx.status !== "Success") {
+    if (status === "1" && existingTrx.status !== "Success") {
       const [user, gateway] = await Promise.all([
         User.findOne(
           { username: existingTrx.username },
@@ -1057,7 +1057,7 @@ router.post("/api/surepay/receivedtransfercalled168", async (req, res) => {
         playerusername: user.username,
         processby: "system",
       });
-    } else if (status === "FAILED" && existingTrx.status !== "Reject") {
+    } else if (status === "-1" && existingTrx.status !== "Reject") {
       const [, , withdraw, updatedUser] = await Promise.all([
         surepayModal.findByIdAndUpdate(existingTrx._id, {
           $set: { status: statusText },
@@ -1158,6 +1158,10 @@ router.post("/api/surepay/receivedtransfercalled168", async (req, res) => {
       console.log(
         `Transaction rejected: ${refid}, User ${existingTrx.username} refunded ${roundedAmount}, New wallet: ${updatedUser?.wallet}`
       );
+    } else {
+      await surepayModal.findByIdAndUpdate(existingTrx._id, {
+        $set: { status: statusText, remark: status_message },
+      });
     }
 
     return res.status(200).json({ status: 1 });
