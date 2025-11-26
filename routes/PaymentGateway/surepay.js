@@ -925,6 +925,109 @@ router.post("/admin/api/surepay/requesttransfer/:userId", async (req, res) => {
   }
 });
 
+async function handleRejectedWithdrawalApproval(
+  existingTrx,
+  refid,
+  roundedAmount,
+  user
+) {
+  const [, withdraw, updatedUser] = await Promise.all([
+    UserWalletLog.findOneAndUpdate(
+      { transactionid: refid },
+      { $set: { status: "approved" } }
+    ),
+
+    Withdraw.findOneAndUpdate(
+      { transactionId: refid },
+      {
+        $set: {
+          status: "approved",
+          processBy: "admin",
+          processtime: "00:00:00",
+        },
+      },
+      {
+        new: false,
+        projection: { _id: 1, amount: 1, withdrawbankid: 1, remark: 1 },
+      }
+    ).lean(),
+
+    User.findOneAndUpdate(
+      { username: existingTrx.username },
+      { $inc: { wallet: -roundedAmount } },
+      {
+        new: true,
+        projection: { _id: 1, username: 1, fullname: 1, wallet: 1 },
+      }
+    ).lean(),
+  ]);
+
+  if (!withdraw) {
+    console.error(`Withdraw record not found for refid: ${refid}`);
+    return;
+  }
+
+  const [kioskSettings, bank] = await Promise.all([
+    kioskbalance.findOne({}, { status: 1 }).lean(),
+    BankList.findById(withdraw.withdrawbankid, {
+      _id: 1,
+      bankname: 1,
+      ownername: 1,
+      bankaccount: 1,
+      qrimage: 1,
+      currentbalance: 1,
+    }).lean(),
+  ]);
+
+  if (!bank) {
+    console.error(
+      `Bank not found for withdrawbankid: ${withdraw.withdrawbankid}`
+    );
+    return;
+  }
+
+  if (kioskSettings?.status) {
+    const kioskResult = await updateKioskBalance("add", withdraw.amount, {
+      username: existingTrx.username,
+      transactionType: "withdraw approval",
+      remark: `Withdraw ID: ${withdraw._id}`,
+      processBy: "admin",
+    });
+
+    if (!kioskResult.success) {
+      console.error("Failed to update kiosk balance for withdraw approval");
+    }
+  }
+
+  await Promise.all([
+    BankList.findByIdAndUpdate(withdraw.withdrawbankid, {
+      $inc: {
+        currentbalance: -withdraw.amount,
+        totalWithdrawals: withdraw.amount,
+      },
+    }),
+
+    BankTransactionLog.create({
+      bankName: bank.bankname,
+      ownername: bank.ownername,
+      bankAccount: bank.bankaccount,
+      remark: withdraw.remark || "-",
+      lastBalance: bank.currentbalance,
+      currentBalance: bank.currentbalance - withdraw.amount,
+      processby: "admin",
+      transactiontype: "withdraw",
+      amount: withdraw.amount,
+      qrimage: bank.qrimage,
+      playerusername: updatedUser?.username || existingTrx.username,
+      playerfullname: updatedUser?.fullname || "N/A",
+    }),
+  ]);
+
+  console.log(
+    `Rejected withdrawal re-approved: ${refid}, User ${existingTrx.username}, Amount: ${roundedAmount}`
+  );
+}
+
 router.post("/api/surepay/receivedtransfercalled168", async (req, res) => {
   try {
     const {
@@ -1031,32 +1134,69 @@ router.post("/api/surepay/receivedtransfercalled168", async (req, res) => {
         return res.status(200).json({ status: -1 });
       }
 
-      const oldGatewayBalance = gateway?.balance || 0;
+      if (status === "1" && existingTrx.status !== "Success") {
+        const [user, gateway] = await Promise.all([
+          User.findOne(
+            { username: existingTrx.username },
+            {
+              _id: 1,
+              username: 1,
+              fullname: 1,
+              wallet: 1,
+              duplicateIP: 1,
+              duplicateBank: 1,
+            }
+          ).lean(),
 
-      const [, updatedGateway] = await Promise.all([
-        surepayModal.findByIdAndUpdate(existingTrx._id, {
-          $set: { status: statusText },
-        }),
+          paymentgateway
+            .findOne(
+              { name: { $regex: /^surepay$/i } },
+              { _id: 1, name: 1, balance: 1 }
+            )
+            .lean(),
+        ]);
 
-        paymentgateway.findOneAndUpdate(
-          { name: { $regex: /^surepay$/i } },
-          { $inc: { balance: -roundedAmount } },
-          { new: true, projection: { _id: 1, name: 1, balance: 1 } }
-        ),
-      ]);
+        if (!user) {
+          console.error(`User not found: ${existingTrx.username}`);
+          return res.status(200).json({ status: -1 });
+        }
 
-      await PaymentGatewayTransactionLog.create({
-        gatewayId: gateway?._id,
-        gatewayName: gateway?.name || "SUREPAY",
-        transactiontype: "withdraw",
-        amount: roundedAmount,
-        lastBalance: oldGatewayBalance,
-        currentBalance:
-          updatedGateway?.balance || oldGatewayBalance - roundedAmount,
-        remark: `Withdraw from ${user.username}`,
-        playerusername: user.username,
-        processby: "system",
-      });
+        if (existingTrx.status === "Reject") {
+          await handleRejectedWithdrawalApproval(
+            existingTrx,
+            refid,
+            roundedAmount,
+            user
+          );
+        }
+
+        const oldGatewayBalance = gateway?.balance || 0;
+
+        const [, updatedGateway] = await Promise.all([
+          surepayModal.findByIdAndUpdate(existingTrx._id, {
+            $set: { status: statusText },
+          }),
+
+          paymentgateway.findOneAndUpdate(
+            { name: { $regex: /^surepay$/i } },
+            { $inc: { balance: -roundedAmount } },
+            { new: true, projection: { _id: 1, name: 1, balance: 1 } }
+          ),
+        ]);
+
+        await PaymentGatewayTransactionLog.create({
+          gatewayId: gateway?._id,
+          gatewayName: gateway?.name || "SUREPAY",
+          transactiontype: "withdraw",
+          amount: roundedAmount,
+          lastBalance: oldGatewayBalance,
+          currentBalance:
+            updatedGateway?.balance || oldGatewayBalance - roundedAmount,
+          remark: `Withdraw from ${user.username}`,
+          playerusername: user.username,
+          processby: "system",
+        });
+      }
     } else if (status === "-1" && existingTrx.status !== "Reject") {
       const [, , withdraw, updatedUser] = await Promise.all([
         surepayModal.findByIdAndUpdate(existingTrx._id, {
@@ -1175,4 +1315,5 @@ router.post("/api/surepay/receivedtransfercalled168", async (req, res) => {
     return res.status(200).json({ status: -1 });
   }
 });
+
 module.exports = router;
