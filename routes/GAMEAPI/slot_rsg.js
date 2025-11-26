@@ -19,8 +19,8 @@ const SlotRSGModal = require("../../models/slot_rsg.model");
 require("dotenv").config();
 
 const webURL = "https://www.bm8my.vip/";
-const rsgAPIURL = "http://tsegm8-api.royalgaming777.com/SingleWallet";
-const rsgAccount = "6op3qc6uk93l";
+const rsgAPIURL = "http://egm8-api.rsgaming888.com/SingleWallet";
+const rsgAccount = "f6e0j4i1o7we";
 const rsgSecret = process.env.RSG_SECRET;
 const rsgDesKey = process.env.RSG_DESKEY;
 const rsgDesIV = process.env.RSG_DESIV;
