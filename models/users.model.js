@@ -338,9 +338,7 @@ const userSchema = new mongoose.Schema(
       spadegamingfish: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
-      alipay: { type: gameStatusSchema, default: () => ({}) },
-      lionking: { type: gameStatusSchema, default: () => ({}) },
-      gw99: { type: gameStatusSchema, default: () => ({}) },
+      mega888: { type: gameStatusSchema, default: () => ({}) },
       // xe88: { type: gameStatusSchema, default: () => ({}) },
       // kiss918: { type: gameStatusSchema, default: () => ({}) },
     },
@@ -464,6 +462,22 @@ const userSchema = new mongoose.Schema(
     },
     acewinGameToken: {
       type: String,
+    },
+    mega888GameID: {
+      type: String,
+      default: null,
+    },
+    mega888GamePW: {
+      type: String,
+      default: null,
+    },
+    pastMega888GameID: {
+      type: [String],
+      default: [],
+    },
+    pastMega888GamePW: {
+      type: [String],
+      default: [],
     },
   },
   {
