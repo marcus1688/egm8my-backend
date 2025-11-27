@@ -781,6 +781,150 @@ router.post("/admin/api/skl99/requesttransfer/:userId", async (req, res) => {
   }
 });
 
+async function handleRejectedWithdrawalApproval(
+  existingTrx,
+  invoice_no,
+  roundedAmount,
+  user
+) {
+  const [, withdraw, updatedUser] = await Promise.all([
+    UserWalletLog.findOneAndUpdate(
+      { transactionid: invoice_no },
+      { $set: { status: "approved" } }
+    ),
+
+    Withdraw.findOneAndUpdate(
+      { transactionId: invoice_no },
+      {
+        $set: {
+          status: "approved",
+          processBy: "admin",
+          processtime: "00:00:00",
+        },
+      },
+      {
+        new: false,
+        projection: { _id: 1, amount: 1, withdrawbankid: 1, remark: 1 },
+      }
+    ).lean(),
+
+    User.findOneAndUpdate(
+      { username: existingTrx.username },
+      { $inc: { wallet: -roundedAmount } },
+      {
+        new: true,
+        projection: { _id: 1, username: 1, fullname: 1, wallet: 1 },
+      }
+    ).lean(),
+  ]);
+
+  if (!withdraw) {
+    console.error(`Withdraw record not found for invoice_no: ${invoice_no}`);
+    return;
+  }
+
+  const [kioskSettings, bank] = await Promise.all([
+    kioskbalance.findOne({}, { status: 1 }).lean(),
+    BankList.findById(withdraw.withdrawbankid, {
+      _id: 1,
+      bankname: 1,
+      ownername: 1,
+      bankaccount: 1,
+      qrimage: 1,
+      currentbalance: 1,
+    }).lean(),
+  ]);
+
+  if (!bank) {
+    console.error(
+      `Bank not found for withdrawbankid: ${withdraw.withdrawbankid}`
+    );
+    return;
+  }
+
+  if (kioskSettings?.status) {
+    const kioskResult = await updateKioskBalance("add", withdraw.amount, {
+      username: existingTrx.username,
+      transactionType: "withdraw approval",
+      remark: `Withdraw ID: ${withdraw._id}`,
+      processBy: "admin",
+    });
+
+    if (!kioskResult.success) {
+      console.error("Failed to update kiosk balance for withdraw approval");
+    }
+  }
+
+  await Promise.all([
+    BankList.findByIdAndUpdate(withdraw.withdrawbankid, {
+      $inc: {
+        currentbalance: -withdraw.amount,
+        totalWithdrawals: withdraw.amount,
+      },
+    }),
+
+    BankTransactionLog.create({
+      bankName: bank.bankname,
+      ownername: bank.ownername,
+      bankAccount: bank.bankaccount,
+      remark: withdraw.remark || "-",
+      lastBalance: bank.currentbalance,
+      currentBalance: bank.currentbalance - withdraw.amount,
+      processby: "admin",
+      transactiontype: "withdraw",
+      amount: withdraw.amount,
+      qrimage: bank.qrimage,
+      playerusername: updatedUser?.username || existingTrx.username,
+      playerfullname: updatedUser?.fullname || "N/A",
+    }),
+  ]);
+
+  console.log(
+    `Rejected withdrawal re-approved: ${invoice_no}, User ${existingTrx.username}, Amount: ${roundedAmount}`
+  );
+}
+
+async function handleApprovedWithdrawalReject(
+  existingTrx,
+  invoice_no,
+  roundedAmount,
+  user
+) {
+  const gateway = await paymentgateway
+    .findOne({ name: { $regex: /^skl99$/i } }, { _id: 1, name: 1, balance: 1 })
+    .lean();
+
+  if (!gateway) {
+    console.error("Gateway not found for withdrawal rejection");
+    return;
+  }
+
+  const oldGatewayBalance = gateway.balance || 0;
+
+  const updatedGateway = await paymentgateway.findOneAndUpdate(
+    { name: { $regex: /^skl99$/i } },
+    { $inc: { balance: roundedAmount } },
+    { new: true, projection: { _id: 1, name: 1, balance: 1 } }
+  );
+
+  await PaymentGatewayTransactionLog.create({
+    gatewayId: gateway._id,
+    gatewayName: gateway.name || "SKL99",
+    transactiontype: "reverted withdraw",
+    amount: roundedAmount,
+    lastBalance: oldGatewayBalance,
+    currentBalance:
+      updatedGateway?.balance || oldGatewayBalance + roundedAmount,
+    remark: `Revert withdraw from ${user.username}`,
+    playerusername: user.username,
+    processby: "system",
+  });
+
+  console.log(
+    `Approved withdrawal re-rejected: ${invoice_no}, User ${existingTrx.username}, Amount: ${roundedAmount}`
+  );
+}
+
 router.post("/api/sklwithdrawprod", async (req, res) => {
   try {
     const {
@@ -871,6 +1015,15 @@ router.post("/api/sklwithdrawprod", async (req, res) => {
         return res.status(200).json(req.body);
       }
 
+      if (existingTrx.status === "Reject") {
+        await handleRejectedWithdrawalApproval(
+          existingTrx,
+          invoice_no,
+          roundedAmount,
+          user
+        );
+      }
+
       const oldGatewayBalance = gateway?.balance || 0;
 
       const [, updatedGateway] = await Promise.all([
@@ -932,6 +1085,15 @@ router.post("/api/sklwithdrawprod", async (req, res) => {
           }
         ).lean(),
       ]);
+
+      if (existingTrx.status === "Success") {
+        await handleApprovedWithdrawalReject(
+          existingTrx,
+          invoice_no,
+          roundedAmount,
+          updatedUser
+        );
+      }
 
       if (!withdraw) {
         console.log(`Withdraw not found for invoice_no: ${invoice_no}`);
