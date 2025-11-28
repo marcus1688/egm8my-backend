@@ -133,8 +133,8 @@ const verifyAllBetAuth = (req, res, next) => {
   const contentType =
     req.method !== "GET" ? "application/json; charset=UTF-8" : "";
 
-  // Use req.originalUrl directly since AllBet includes the full path in signature
-  const path = req.originalUrl;
+  // Remove /api/allbe prefix - AllBet uses only /GetBalance/player in signature
+  const path = req.originalUrl.replace("/api/allbe", "");
   const date = req.headers.date;
 
   console.log("HTTP Method:", req.method);
