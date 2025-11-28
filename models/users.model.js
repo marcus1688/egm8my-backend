@@ -336,6 +336,7 @@ const userSchema = new mongoose.Schema(
       acewinfish: { type: gameLockSchema, default: () => ({}) },
       spadegamingslot: { type: gameLockSchema, default: () => ({}) },
       spadegamingfish: { type: gameLockSchema, default: () => ({}) },
+      allbet: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       mega888: { type: gameStatusSchema, default: () => ({}) },
@@ -478,6 +479,10 @@ const userSchema = new mongoose.Schema(
     pastMega888GamePW: {
       type: [String],
       default: [],
+    },
+    allbetRegistered: {
+      type: Boolean,
+      default: false,
     },
   },
   {
