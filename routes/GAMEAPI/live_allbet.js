@@ -131,15 +131,15 @@ const verifyAllBetAuth = (req, res, next) => {
 
   const contentMD5 = req.headers["content-md5"] || "";
   const contentType =
-    req.method !== "GET" ? "application/json; charset=UTF-8" : "";
+    req.method !== "GET" ? "application/json; charset=utf-8" : "";
 
-  // Remove /api/allbe prefix - AllBet uses only /GetBalance/player in signature
+  // Remove /api/allbe prefix
   const path = req.originalUrl.replace("/api/allbe", "");
   const date = req.headers.date;
 
   console.log("HTTP Method:", req.method);
-  console.log("Content-MD5:", contentMD5);
-  console.log("Content-Type:", contentType);
+  console.log("Content-MD5:", `'${contentMD5}'`);
+  console.log("Content-Type:", `'${contentType}'`);
   console.log("Date:", date);
   console.log("Path:", path);
 
@@ -148,7 +148,10 @@ const verifyAllBetAuth = (req, res, next) => {
   console.log("String for Signature:");
   console.log(JSON.stringify(stringForSignature));
 
+  // Make sure the secret is properly decoded
   const decodedKey = Buffer.from(allbetSecret, "base64");
+  console.log("Secret length:", allbetSecret.length);
+  console.log("Decoded key length:", decodedKey.length);
 
   const signature = crypto
     .createHmac("sha1", decodedKey)
