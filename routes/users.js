@@ -1904,7 +1904,7 @@ router.get("/api/userdata", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const user = await User.findById(userId).select(
-      "fullname username bankAccounts totaldeposit email lastRebateClaim lastCommissionClaim telegramId facebookId lastLogin phonenumber luckySpinClaim  wallet createdAt dob withdrawlock rebate email isPhoneVerified isEmailVerified monthlyBonusCountdownTime monthlyLoyaltyCountdownTime weeklySignInTime totaldeposit viplevel cryptoWallet luckySpinCount luckySpinAmount referralLink referralCode referralQrCode referralBy positionTaking totalturnover firstDepositDate googleId luckySpinPoints"
+      "fullname username bankAccounts totaldeposit email lastRebateClaim lastCommissionClaim telegramId facebookId lastLogin phonenumber luckySpinClaim  wallet createdAt dob withdrawlock rebate email isPhoneVerified isEmailVerified monthlyBonusCountdownTime monthlyLoyaltyCountdownTime weeklySignInTime totaldeposit viplevel cryptoWallet luckySpinCount luckySpinAmount referralLink referralCode referralQrCode referralBy positionTaking totalturnover firstDepositDate googleId luckySpinPoints mega888GameID mega888GamePW"
     );
     if (!user) {
       return res.status(200).json({ message: "用户未找到" });
