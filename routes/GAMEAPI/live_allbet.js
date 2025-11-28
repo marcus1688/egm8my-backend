@@ -119,6 +119,7 @@ async function registerAllbetUser(username) {
 
 const verifyAllBetAuth = (req, res, next) => {
   const auth = req.headers.authorization;
+  console.log(auth, "auth");
   if (!auth) {
     return res.status(200).json({
       resultCode: 40000,
@@ -142,7 +143,7 @@ const verifyAllBetAuth = (req, res, next) => {
     .digest("base64");
 
   const expectedAuth = `AB ${allbetOperatorID}:${signature}`;
-
+  console.log(expectedAuth, "expectedauth");
   if (auth !== expectedAuth) {
     return res
       .status(200)
