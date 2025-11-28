@@ -31,8 +31,8 @@ const modulePermissions = {
       { value: "luckydraw", label: "Lucky Draw" },
     ],
   },
-  bm8my: {
-    label: "BM8MY",
+  bm8: {
+    label: "BM8",
     permissions: [
       { value: "rescuesetting", label: "Resuce Setting" },
       { value: "rescuereport", label: "Rescue Report" },
