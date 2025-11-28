@@ -18,12 +18,12 @@ const liveAllbetModal = require("../../models/live_allbet.model");
 require("dotenv").config();
 
 const webURL = "https://www.bm8my.vip/";
-const allbetAPIURL = "https://sw2.apitestenv.net:8443";
+const allbetAPIURL = "https://sw2-2.absvc.net/";
 const allbetSecret = process.env.ALLBET_SECRET;
 const allbetCallbackSecret = process.env.ALLBET_CALLBACKSECRET;
-const allbetOperatorID = "7781635";
-const allbetSuffix = "bls";
-const allbetAgent = "pdpeca";
+const allbetOperatorID = "1089380";
+const allbetSuffix = "2le";
+const allbetAgent = "wcwv9y5";
 
 function roundToTwoDecimals(num) {
   return Math.round(num * 100) / 100;
@@ -388,7 +388,7 @@ const getCleanPlayerName = (player) => {
 };
 
 router.get(
-  "/api/allbe/GetBalance/:player",
+  "/api/allbet/GetBalance/:player",
   verifyAllBetAuth,
   async (req, res) => {
     try {
