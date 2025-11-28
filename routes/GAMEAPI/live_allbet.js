@@ -40,7 +40,7 @@ function generateSignature(verb, contentMD5, contentType, date, path) {
 }
 
 function getRFC1123Date() {
-  return moment().utc().format("ddd, DD MMM YYYY HH:mm:ss [UTC]");
+  return moment().format("ddd, DD MMM YYYY HH:mm:ss [GMT]ZZ");
 }
 
 async function GameWalletLogAttempt(
