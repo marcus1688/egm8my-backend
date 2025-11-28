@@ -379,7 +379,7 @@ router.get(
         console.log("hi2");
         return sendAllBetResponse(res, 10003, "Player account does not exist");
       }
-
+      console.log("success", currentUser.wallet);
       return sendAllBetResponse(res, 0, "Success", currentUser.wallet);
     } catch (error) {
       console.error("[AllBet GetBalance] Error:", error.message);
