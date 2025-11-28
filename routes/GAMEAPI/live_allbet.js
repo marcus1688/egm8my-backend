@@ -20,6 +20,7 @@ require("dotenv").config();
 const webURL = "https://www.bm8my.vip/";
 const allbetAPIURL = "https://sw2.apitestenv.net:8443";
 const allbetSecret = process.env.ALLBET_SECRET;
+const allbetCallbackSecret = process.env.ALLBET_CALLBACKSECRET;
 const allbetOperatorID = "7781635";
 const allbetSuffix = "bls";
 const allbetAgent = "pdpeca";
@@ -119,9 +120,6 @@ async function registerAllbetUser(username) {
 
 const verifyAllBetAuth = (req, res, next) => {
   const auth = req.headers.authorization;
-  console.log("=== AllBet Auth Verification ===");
-  console.log("Received Auth:", auth);
-
   if (!auth) {
     return res.status(200).json({
       resultCode: 40000,
@@ -131,27 +129,13 @@ const verifyAllBetAuth = (req, res, next) => {
 
   const contentMD5 = req.headers["content-md5"] || "";
   const contentType =
-    req.method !== "GET" ? "application/json; charset=utf-8" : "";
-
-  // Remove /api/allbe prefix
-  const path = req.originalUrl.replace("/api/allbe", "");
+    req.method !== "GET" ? "application/json; charset=UTF-8" : "";
+  const path = req.originalUrl.replace("/api/allbet", "");
   const date = req.headers.date;
-
-  console.log("HTTP Method:", req.method);
-  console.log("Content-MD5:", `'${contentMD5}'`);
-  console.log("Content-Type:", `'${contentType}'`);
-  console.log("Date:", date);
-  console.log("Path:", path);
 
   const stringForSignature = `${req.method}\n${contentMD5}\n${contentType}\n${date}\n${path}`;
 
-  console.log("String for Signature:");
-  console.log(JSON.stringify(stringForSignature));
-
-  // Make sure the secret is properly decoded
-  const decodedKey = Buffer.from(allbetSecret, "base64");
-  console.log("Secret length:", allbetSecret.length);
-  console.log("Decoded key length:", decodedKey.length);
+  const decodedKey = Buffer.from(allbetCallbackSecret, "base64");
 
   const signature = crypto
     .createHmac("sha1", decodedKey)
@@ -159,14 +143,11 @@ const verifyAllBetAuth = (req, res, next) => {
     .digest("base64");
 
   const expectedAuth = `AB ${allbetOperatorID}:${signature}`;
-  console.log("Expected Auth:", expectedAuth);
-  console.log("=================================");
 
   if (auth !== expectedAuth) {
-    return res.status(200).json({
-      resultCode: 10001,
-      message: "Invalid signature",
-    });
+    return res
+      .status(200)
+      .json({ resultCode: 10001, message: "Invalid signature" });
   }
 
   next();

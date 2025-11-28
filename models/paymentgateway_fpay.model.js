@@ -39,6 +39,11 @@ const fpaySchema = new mongoose.Schema(
     promotionId: {
       type: String,
     },
+
+    // paymenttype
+    paymenttype: {
+      type: String,
+    },
   },
   {
     timestamps: {
