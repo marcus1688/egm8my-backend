@@ -361,6 +361,7 @@ router.get(
       const { player } = req.params;
 
       if (!player) {
+        console.log("hi");
         return sendAllBetResponse(
           res,
           40000,
@@ -375,6 +376,7 @@ router.get(
       ).lean();
 
       if (!currentUser) {
+        console.log("hi2");
         return sendAllBetResponse(res, 10003, "Player account does not exist");
       }
 
