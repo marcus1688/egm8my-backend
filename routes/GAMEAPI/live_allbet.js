@@ -119,7 +119,9 @@ async function registerAllbetUser(username) {
 
 const verifyAllBetAuth = (req, res, next) => {
   const auth = req.headers.authorization;
-  console.log(auth, "auth");
+  console.log("=== AllBet Auth Verification ===");
+  console.log("Received Auth:", auth);
+
   if (!auth) {
     return res.status(200).json({
       resultCode: 40000,
@@ -133,9 +135,21 @@ const verifyAllBetAuth = (req, res, next) => {
   const path = req.originalUrl.replace("/api/allbet", "");
   const date = req.headers.date;
 
+  // Log all components
+  console.log("HTTP Method:", req.method);
+  console.log("Content-MD5:", contentMD5);
+  console.log("Content-Type:", contentType);
+  console.log("Date:", date);
+  console.log("Path:", path);
+
   const stringForSignature = `${req.method}\n${contentMD5}\n${contentType}\n${date}\n${path}`;
 
+  console.log("String for Signature:");
+  console.log(JSON.stringify(stringForSignature));
+  console.log("Raw bytes:", Buffer.from(stringForSignature, "utf8"));
+
   const decodedKey = Buffer.from(allbetSecret, "base64");
+  console.log("Decoded Key Length:", decodedKey.length);
 
   const signature = crypto
     .createHmac("sha1", decodedKey)
@@ -143,11 +157,18 @@ const verifyAllBetAuth = (req, res, next) => {
     .digest("base64");
 
   const expectedAuth = `AB ${allbetOperatorID}:${signature}`;
-  console.log(expectedAuth, "expectedauth");
+  console.log("Expected Auth:", expectedAuth);
+  console.log("=================================");
+
   if (auth !== expectedAuth) {
-    return res
-      .status(200)
-      .json({ resultCode: 10001, message: "Invalid signature" });
+    return res.status(200).json({
+      resultCode: 10001,
+      message: "Invalid signature",
+      debug: {
+        received: auth,
+        expected: expectedAuth,
+      },
+    });
   }
 
   next();
