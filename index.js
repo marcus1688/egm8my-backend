@@ -168,6 +168,8 @@ const allowedOrigins = [
   "https://www.mysteryclub88.com",
   "https://www.bm8my.vip",
   "https://www.bm8sg.vip",
+  "https://www.bm8my.com",
+  "https://www.bm8sg.com",
   "capacitor://localhost",
   "ionic://localhost",
   "file://",
