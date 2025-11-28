@@ -1255,15 +1255,34 @@ router.post("/api/telegram-login", loginLimiter, async (req, res) => {
     auth_date,
     hash,
     referralCode,
+    bot_id,
   } = req.body;
   let clientIp = req.headers["x-forwarded-for"] || req.ip;
   clientIp = clientIp.split(",")[0].trim();
   const geo = geoip.lookup(clientIp);
   try {
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const BOT_TOKENS = {
+      8563523697: process.env.TELEGRAM_BOT_TOKEN_VIP,
+      8444676449: process.env.TELEGRAM_BOT_TOKEN_COM,
+    };
+
+    const botToken = BOT_TOKENS[bot_id] || process.env.TELEGRAM_BOT_TOKEN_VIP;
+
+    if (!botToken) {
+      return res.status(400).json({
+        success: false,
+        message: {
+          en: "Invalid bot configuration",
+          zh: "无效的机器人配置",
+          ms: "Konfigurasi bot tidak sah",
+        },
+      });
+    }
     const secretKey = crypto.createHash("sha256").update(botToken).digest();
     const dataCheckString = Object.keys(req.body)
-      .filter((key) => key !== "hash" && key !== "referralCode")
+      .filter(
+        (key) => key !== "hash" && key !== "referralCode" && key !== "bot_id"
+      )
       .sort()
       .map((key) => `${key}=${req.body[key]}`)
       .join("\n");
