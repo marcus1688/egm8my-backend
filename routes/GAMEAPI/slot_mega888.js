@@ -156,6 +156,7 @@ const mega888CheckBalance = async (user) => {
       "open.mega.balance.get"
     );
     const response = await axios.post(mega888APIURL, payload);
+
     return {
       success: !response.data.error,
       balance: response.data.result || 0,
@@ -2163,3 +2164,4 @@ module.exports = router;
 module.exports.fetchAndStoreMega888GameHistory =
   fetchAndStoreMega888GameHistory;
 module.exports.getMega888TurnoverForRebate = getMega888TurnoverForRebate;
+module.exports.mega888CheckBalance = mega888CheckBalance;

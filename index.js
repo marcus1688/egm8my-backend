@@ -111,6 +111,7 @@ const importGameListRouter = require("./routes/GAMEAPI/0_ImportGameList");
 const gameStatusRouter = require("./routes/GAMEAPI/0_GameStatus");
 const allGameFunctionRouter = require("./routes/GAMEAPI/0_GameFunction");
 const gameTotalTurnoverRouter = require("./routes/GAMEAPI/0_GameTotalTurnover");
+const transferGameFunctionRouter = require("./routes/GAMEAPI/0_CombinedGameFunction");
 
 const adminListRouter = require("./routes/adminlist");
 const notificationRouter = require("./routes/notification");
@@ -905,6 +906,7 @@ app.use(importGameListRouter);
 app.use(gameStatusRouter);
 app.use(allGameFunctionRouter);
 app.use(gameTotalTurnoverRouter);
+app.use(transferGameFunctionRouter);
 
 app.use(adminListRouter);
 app.use(notificationRouter);
