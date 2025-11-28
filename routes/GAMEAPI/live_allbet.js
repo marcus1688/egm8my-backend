@@ -132,10 +132,11 @@ const verifyAllBetAuth = (req, res, next) => {
   const contentMD5 = req.headers["content-md5"] || "";
   const contentType =
     req.method !== "GET" ? "application/json; charset=UTF-8" : "";
-  const path = req.originalUrl.replace("/api/allbet", "");
+
+  // Use req.originalUrl directly since AllBet includes the full path in signature
+  const path = req.originalUrl;
   const date = req.headers.date;
 
-  // Log all components
   console.log("HTTP Method:", req.method);
   console.log("Content-MD5:", contentMD5);
   console.log("Content-Type:", contentType);
@@ -146,10 +147,8 @@ const verifyAllBetAuth = (req, res, next) => {
 
   console.log("String for Signature:");
   console.log(JSON.stringify(stringForSignature));
-  console.log("Raw bytes:", Buffer.from(stringForSignature, "utf8"));
 
   const decodedKey = Buffer.from(allbetSecret, "base64");
-  console.log("Decoded Key Length:", decodedKey.length);
 
   const signature = crypto
     .createHmac("sha1", decodedKey)
@@ -164,10 +163,6 @@ const verifyAllBetAuth = (req, res, next) => {
     return res.status(200).json({
       resultCode: 10001,
       message: "Invalid signature",
-      debug: {
-        received: auth,
-        expected: expectedAuth,
-      },
     });
   }
 
