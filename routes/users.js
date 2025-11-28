@@ -2205,20 +2205,26 @@ async function checkAndUpdateVIPLevel(userId) {
   try {
     const user = await User.findById(userId);
     if (!user) {
-      console.error("User not found when checking VIP level");
       return { success: false, message: "User not found" };
     }
+
     const vipSettings = await vip.findOne({});
     if (
       !vipSettings ||
       !vipSettings.vipLevels ||
       vipSettings.vipLevels.length === 0
     ) {
-      console.error("VIP settings not found");
       return { success: false, message: "VIP settings not found" };
     }
+
     const totalDeposit = user.totaldeposit;
-    const sortedVipLevels = [...vipSettings.vipLevels].sort((a, b) => {
+    const excludedLevels = ["BM8 Elite VIP"];
+
+    const filteredVipLevels = vipSettings.vipLevels.filter((level) => {
+      return !excludedLevels.includes(level.name);
+    });
+
+    const sortedVipLevels = [...filteredVipLevels].sort((a, b) => {
       let depositA = 0;
       let depositB = 0;
       if (a.benefits instanceof Map) {
@@ -2233,9 +2239,9 @@ async function checkAndUpdateVIPLevel(userId) {
       }
       if (isNaN(depositA)) depositA = 0;
       if (isNaN(depositB)) depositB = 0;
-
       return depositB - depositA;
     });
+
     let newLevel = null;
     for (const level of sortedVipLevels) {
       let requiredDeposit = 0;
@@ -2244,17 +2250,30 @@ async function checkAndUpdateVIPLevel(userId) {
       } else {
         requiredDeposit = parseFloat(level.benefits["Total Deposit"] || 0);
       }
+      if (isNaN(requiredDeposit)) requiredDeposit = 0;
+
       if (totalDeposit >= requiredDeposit) {
         newLevel = level.name;
         break;
       }
     }
+
     if (!newLevel && sortedVipLevels.length > 0) {
       const lowestLevelIndex = sortedVipLevels.length - 1;
       newLevel = sortedVipLevels[lowestLevelIndex].name;
     }
+
+    if (excludedLevels.includes(user.viplevel)) {
+      return {
+        success: true,
+        message: "User in special VIP level, no auto-update",
+        currentLevel: user.viplevel,
+      };
+    }
+
     if (newLevel && newLevel !== user.viplevel) {
       const oldLevel = user.viplevel;
+
       if (user.lowestviplevel) {
         const newLevelIndex = sortedVipLevels.findIndex(
           (level) => level.name === newLevel
@@ -2262,10 +2281,8 @@ async function checkAndUpdateVIPLevel(userId) {
         const lowestLevelIndex = sortedVipLevels.findIndex(
           (level) => level.name === user.lowestviplevel
         );
+
         if (lowestLevelIndex !== -1 && newLevelIndex > lowestLevelIndex) {
-          // console.log(
-          //   `Cannot downgrade user ${user.username} to ${newLevel} because lowest VIP level is ${user.lowestviplevel}`
-          // );
           return {
             success: false,
             message: "Cannot downgrade below lowest VIP level",
@@ -2279,24 +2296,6 @@ async function checkAndUpdateVIPLevel(userId) {
       user.viplevel = newLevel;
       await user.save();
 
-      console.log(
-        `User ${user.username} VIP level updated from ${oldLevel} to ${newLevel}`
-      );
-      try {
-        // 假设您有一个VIPChangeLog模型来记录VIP变更
-        /*
-    await new VIPChangeLog({
-      userId: user._id,
-      username: user.username,
-      oldLevel,
-      newLevel,
-      reason: "Total deposit threshold reached",
-      totalDeposit: user.totaldeposit
-    }).save();
-    */
-      } catch (logError) {
-        console.error("Error logging VIP change:", logError);
-      }
       return {
         success: true,
         message: "VIP level updated",
@@ -2311,7 +2310,6 @@ async function checkAndUpdateVIPLevel(userId) {
       currentLevel: user.viplevel,
     };
   } catch (error) {
-    console.error("Error in checkAndUpdateVIPLevel:", error);
     return {
       success: false,
       message: "Internal server error",
