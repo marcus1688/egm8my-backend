@@ -117,10 +117,14 @@ async function registerAllbetUser(username) {
     };
   }
 }
-
 const verifyAllBetAuth = (req, res, next) => {
+  console.log("\n=== AllBet Auth Verification ===");
+
   const auth = req.headers.authorization;
+  console.log("1. Received Authorization:", auth);
+
   if (!auth) {
+    console.log("❌ No authorization header");
     return res.status(200).json({
       resultCode: 40000,
       message: "Invalid request parameter: authorization header is required",
@@ -133,9 +137,31 @@ const verifyAllBetAuth = (req, res, next) => {
   const path = req.originalUrl.replace("/api/allbet", "");
   const date = req.headers.date;
 
+  console.log("2. Request Details:");
+  console.log("   - HTTP Method:", req.method);
+  console.log("   - Content-MD5:", contentMD5 ? contentMD5 : "(empty)");
+  console.log("   - Content-Type:", contentType ? contentType : "(empty)");
+  console.log("   - Date:", date);
+  console.log("   - Original URL:", req.originalUrl);
+  console.log("   - Path for signature:", path);
+
   const stringForSignature = `${req.method}\n${contentMD5}\n${contentType}\n${date}\n${path}`;
 
+  console.log("3. String for Signature:");
+  console.log(JSON.stringify(stringForSignature));
+  console.log(
+    "   Hex:",
+    Buffer.from(stringForSignature, "utf8").toString("hex")
+  );
+
   const decodedKey = Buffer.from(allbetCallbackSecret, "base64");
+  console.log("4. Secret Key:");
+  console.log("   - Original length:", allbetCallbackSecret.length);
+  console.log("   - Decoded length:", decodedKey.length);
+  console.log(
+    "   - First 10 chars:",
+    allbetCallbackSecret.substring(0, 10) + "..."
+  );
 
   const signature = crypto
     .createHmac("sha1", decodedKey)
@@ -143,6 +169,13 @@ const verifyAllBetAuth = (req, res, next) => {
     .digest("base64");
 
   const expectedAuth = `AB ${allbetOperatorID}:${signature}`;
+
+  console.log("5. Signature Comparison:");
+  console.log("   - Generated signature:", signature);
+  console.log("   - Expected Auth:", expectedAuth);
+  console.log("   - Received Auth:", auth);
+  console.log("   - Match:", auth === expectedAuth ? "✅ YES" : "❌ NO");
+  console.log("=================================\n");
 
   if (auth !== expectedAuth) {
     return res
