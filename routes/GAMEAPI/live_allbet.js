@@ -18,7 +18,7 @@ const liveAllbetModal = require("../../models/live_allbet.model");
 require("dotenv").config();
 
 const webURL = "https://www.bm8my.vip/";
-const allbetAPIURL = "https://sw2.apitestenv.net:8443/";
+const allbetAPIURL = "https://sw2.apitestenv.net:8443";
 const allbetSecret = process.env.ALLBET_SECRET;
 const allbetCallbackSecret = process.env.ALLBET_CALLBACKSECRET;
 const allbetOperatorID = "7781635";
@@ -134,56 +134,53 @@ const verifyAllBetAuth = (req, res, next) => {
   const contentMD5 = req.headers["content-md5"] || "";
   const contentType =
     req.method !== "GET" ? "application/json; charset=UTF-8" : "";
-  const path = req.originalUrl.replace("/api/allbet", "");
   const date = req.headers.date;
+
+  // Try BOTH path variations
+  const fullPath = req.originalUrl; // /api/allbe/GetBalance/9w9nsimbls
+  const shortPath = req.originalUrl.replace("/api/allbe", ""); // /GetBalance/9w9nsimbls
 
   console.log("2. Request Details:");
   console.log("   - HTTP Method:", req.method);
   console.log("   - Content-MD5:", contentMD5 ? contentMD5 : "(empty)");
   console.log("   - Content-Type:", contentType ? contentType : "(empty)");
   console.log("   - Date:", date);
-  console.log("   - Original URL:", req.originalUrl);
-  console.log("   - Path for signature:", path);
+  console.log("   - Full Path:", fullPath);
+  console.log("   - Short Path:", shortPath);
 
-  const stringForSignature = `${req.method}\n${contentMD5}\n${contentType}\n${date}\n${path}`;
-
-  console.log("3. String for Signature:");
-  console.log(JSON.stringify(stringForSignature));
-  console.log(
-    "   Hex:",
-    Buffer.from(stringForSignature, "utf8").toString("hex")
-  );
-
+  // Test with BOTH paths
+  const paths = [fullPath, shortPath];
   const decodedKey = Buffer.from(allbetCallbackSecret, "base64");
-  console.log("4. Secret Key:");
-  console.log("   - Original length:", allbetCallbackSecret.length);
-  console.log("   - Decoded length:", decodedKey.length);
-  console.log(
-    "   - First 10 chars:",
-    allbetCallbackSecret.substring(0, 10) + "..."
-  );
 
-  const signature = crypto
-    .createHmac("sha1", decodedKey)
-    .update(stringForSignature, "utf8")
-    .digest("base64");
+  for (const path of paths) {
+    const stringForSignature = `${req.method}\n${contentMD5}\n${contentType}\n${date}\n${path}`;
 
-  const expectedAuth = `AB ${allbetOperatorID}:${signature}`;
+    const signature = crypto
+      .createHmac("sha1", decodedKey)
+      .update(stringForSignature, "utf8")
+      .digest("base64");
 
-  console.log("5. Signature Comparison:");
-  console.log("   - Generated signature:", signature);
-  console.log("   - Expected Auth:", expectedAuth);
-  console.log("   - Received Auth:", auth);
-  console.log("   - Match:", auth === expectedAuth ? "✅ YES" : "❌ NO");
-  console.log("=================================\n");
+    const expectedAuth = `AB ${allbetOperatorID}:${signature}`;
 
-  if (auth !== expectedAuth) {
-    return res
-      .status(200)
-      .json({ resultCode: 10001, message: "Invalid signature" });
+    console.log(`\nTesting with path: ${path}`);
+    console.log(
+      "   - String for Signature:",
+      JSON.stringify(stringForSignature)
+    );
+    console.log("   - Generated signature:", signature);
+    console.log("   - Expected Auth:", expectedAuth);
+    console.log("   - Match:", auth === expectedAuth ? "✅ YES" : "❌ NO");
+
+    if (auth === expectedAuth) {
+      console.log("=== ✅ AUTHENTICATION SUCCESSFUL ===\n");
+      return next();
+    }
   }
 
-  next();
+  console.log("=== ❌ AUTHENTICATION FAILED ===\n");
+  return res
+    .status(200)
+    .json({ resultCode: 10001, message: "Invalid signature" });
 };
 
 router.post("/api/allbet/launchGame", authenticateToken, async (req, res) => {
@@ -361,7 +358,7 @@ router.post("/api/allbet/launchGame", authenticateToken, async (req, res) => {
       },
     });
   } catch (error) {
-    console.log("ALLBET error in launching game", error.message);
+    console.log("ALLBET error in launching game", error);
     return res.status(200).json({
       success: false,
       message: {
