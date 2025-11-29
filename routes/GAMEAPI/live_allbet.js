@@ -118,10 +118,7 @@ async function registerAllbetUser(username) {
   }
 }
 const verifyAllBetAuth = (req, res, next) => {
-  console.log("\n=== AllBet Auth Verification ===");
-
   const auth = req.headers.authorization;
-  console.log("1. Received Authorization:", auth);
 
   if (!auth) {
     console.log("❌ No authorization header");
@@ -136,17 +133,8 @@ const verifyAllBetAuth = (req, res, next) => {
     req.method !== "GET" ? "application/json; charset=UTF-8" : "";
   const date = req.headers.date;
 
-  // Try BOTH path variations
   const fullPath = req.originalUrl; // /api/allbe/GetBalance/9w9nsimbls
   const shortPath = req.originalUrl.replace("/api/allbe", ""); // /GetBalance/9w9nsimbls
-
-  console.log("2. Request Details:");
-  console.log("   - HTTP Method:", req.method);
-  console.log("   - Content-MD5:", contentMD5 ? contentMD5 : "(empty)");
-  console.log("   - Content-Type:", contentType ? contentType : "(empty)");
-  console.log("   - Date:", date);
-  console.log("   - Full Path:", fullPath);
-  console.log("   - Short Path:", shortPath);
 
   // Test with BOTH paths
   const paths = [fullPath, shortPath];
@@ -162,22 +150,11 @@ const verifyAllBetAuth = (req, res, next) => {
 
     const expectedAuth = `AB ${allbetOperatorID}:${signature}`;
 
-    console.log(`\nTesting with path: ${path}`);
-    console.log(
-      "   - String for Signature:",
-      JSON.stringify(stringForSignature)
-    );
-    console.log("   - Generated signature:", signature);
-    console.log("   - Expected Auth:", expectedAuth);
-    console.log("   - Match:", auth === expectedAuth ? "✅ YES" : "❌ NO");
-
     if (auth === expectedAuth) {
-      console.log("=== ✅ AUTHENTICATION SUCCESSFUL ===\n");
       return next();
     }
   }
 
-  console.log("=== ❌ AUTHENTICATION FAILED ===\n");
   return res
     .status(200)
     .json({ resultCode: 10001, message: "Invalid signature" });

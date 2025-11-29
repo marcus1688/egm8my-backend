@@ -17,6 +17,8 @@ const moment = require("moment");
 const qs = require("querystring");
 const GameWalletLog = require("../../models/gamewalletlog.model");
 const slotMega888Modal = require("../../models/slot_mega888.model");
+const GameSyncLog = require("../../models/game_syncdata.model");
+const cron = require("node-cron");
 require("dotenv").config();
 
 //Staging
@@ -1182,115 +1184,345 @@ router.post(
   }
 );
 
+// router.post("/api/mega888/getturnoverforrebate", async (req, res) => {
+//   const today = moment.utc().add(8, "hours").format("YYYY-MM-DD");
+//   const yesterday = moment
+//     .utc()
+//     .add(8, "hours")
+//     .subtract(1, "days")
+//     .format("YYYY-MM-DD");
+
+//   const { date } = req.body;
+//   let start, end;
+
+//   if (date === "today") {
+//     start = moment(today)
+//       .utc()
+//       .add(8, "hours")
+//       .startOf("day")
+//       .format("YYYY-MM-DD HH:mm:ss");
+//     end = moment(today)
+//       .utc()
+//       .add(8, "hours")
+//       .endOf("day")
+//       .format("YYYY-MM-DD HH:mm:ss");
+//   } else if (date === "yesterday") {
+//     start = moment(yesterday)
+//       .utc()
+//       .add(8, "hours")
+//       .startOf("day")
+//       .format("YYYY-MM-DD HH:mm:ss");
+//     end = moment(yesterday)
+//       .utc()
+//       .add(8, "hours")
+//       .endOf("day")
+//       .format("YYYY-MM-DD HH:mm:ss");
+//   }
+
+//   const random = String(Date.now());
+//   const digest = generateMD5Hash(
+//     random + mega888SN + mega888AgentId + mega888Secret
+//   );
+
+//   const payload = buildParams(
+//     {
+//       sn: mega888SN,
+//       random: random,
+//       agentLoginId: mega888AgentId,
+//       digest: digest,
+//       type: 1,
+//       startTime: start,
+//       endTime: end,
+//     },
+//     "open.mega.player.total.report"
+//   );
+
+//   try {
+//     const response = await axios.post(mega888APIURL, payload);
+//     if (response.data.error) {
+//       return res.status(500).json({
+//         success: false,
+//         error: response.data.error.message,
+//       });
+//     }
+//     console.log(response.data);
+//     const results = response.data.result;
+
+//     const playerSummaries = {};
+
+//     for (const entry of results) {
+//       const { loginId, bet, win } = entry;
+
+//       const user = await User.findOne({ mega888GameID: loginId });
+
+//       if (user) {
+//         const username = user.username;
+
+//         if (!playerSummaries[username]) {
+//           playerSummaries[username] = {
+//             turnover: 0,
+//             winloss: 0,
+//           };
+//         }
+
+//         playerSummaries[username].turnover += parseFloat(bet || 0);
+//         playerSummaries[username].winloss -= parseFloat(win || 0);
+//       }
+//     }
+
+//     Object.keys(playerSummaries).forEach((username) => {
+//       playerSummaries[username].turnover = Number(
+//         playerSummaries[username].turnover.toFixed(2)
+//       );
+//       playerSummaries[username].winloss = Number(
+//         playerSummaries[username].winloss.toFixed(2)
+//       );
+//     });
+
+//     return res.status(200).json({
+//       success: true,
+//       summary: {
+//         gamename: "MEGA888",
+//         gamecategory: "Slot Games",
+//         users: playerSummaries,
+//       },
+//     });
+//   } catch (error) {
+//     console.log("MEGA888: Failed to fetch win/loss report:", error.message);
+//     return res.status(500).json({
+//       success: false,
+//       message: {
+//         en: "MEGA888: Failed to fetch win/loss report",
+//         zh: "MEGA888: 获取盈亏报告失败",
+//       },
+//     });
+//   }
+// });
+
+// router.get("/admin/api/mega888/:userId/dailygamedata", async (req, res) => {
+//   try {
+//     const { startDate, endDate } = req.query;
+//     const userId = req.params.userId;
+
+//     // Validate inputs
+//     if (!startDate || !endDate) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Start date and end date are required",
+//       });
+//     }
+
+//     const user = await User.findById(userId, {
+//       username: 1,
+//       mega888GameID: 1,
+//     }).lean();
+
+//     if (!user || !user.mega888GameID) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "User not found or no Mega888 account",
+//       });
+//     }
+
+//     const loginId = user.mega888GameID;
+
+//     // Format dates
+//     const start = moment
+//       .utc(new Date(startDate))
+//       .add(8, "hours")
+//       .format("YYYY-MM-DD HH:mm:ss");
+//     const end = moment
+//       .utc(new Date(endDate))
+//       .add(8, "hours")
+//       .format("YYYY-MM-DD HH:mm:ss");
+
+//     console.log(
+//       `[Mega888 Daily Data] Fetching for ${user.username} from ${start} to ${end}`
+//     );
+
+//     // Function to fetch a single page
+//     const fetchPage = async (pageIndex) => {
+//       const random = String(Date.now() + pageIndex);
+//       const digest = generateMD5Hash(
+//         random + mega888SN + loginId + mega888Secret
+//       );
+
+//       const payload = buildParams(
+//         {
+//           sn: mega888SN,
+//           random: random,
+//           loginId: loginId,
+//           digest: digest,
+//           startTime: start,
+//           endTime: end,
+//           pageIndex: pageIndex,
+//           pageSize: 100,
+//         },
+//         "open.mega.game.order.page"
+//       );
+//       console.log(payload);
+//       const response = await axios.post(mega888APIURL, payload);
+//       if (response.data.error) {
+//         throw new Error(response.data.error.message);
+//       }
+
+//       return response.data.result;
+//     };
+
+//     // Fetch first page
+//     const firstPage = await fetchPage(1);
+
+//     if (!firstPage?.items?.length) {
+//       return res.status(200).json({
+//         success: true,
+//         summary: {
+//           gamename: "MEGA888",
+//           gamecategory: "Slot Games",
+//           user: {
+//             username: user.username,
+//             turnover: 0,
+//             winloss: 0,
+//           },
+//         },
+//       });
+//     }
+
+//     let allItems = [...firstPage.items];
+
+//     // Fetch remaining pages in parallel if multiple pages exist
+//     if (firstPage.hasNextPage && firstPage.totalPage > 1) {
+//       const totalPages = Math.min(firstPage.totalPage, 100); // Safety limit
+//       const pagePromises = [];
+
+//       for (let page = 2; page <= totalPages; page++) {
+//         pagePromises.push(fetchPage(page));
+//       }
+
+//       const results = await Promise.allSettled(pagePromises);
+
+//       results.forEach((result, index) => {
+//         if (result.status === "fulfilled" && result.value?.items?.length) {
+//           allItems = allItems.concat(result.value.items);
+//           console.log(
+//             `[Mega888 Daily Data] Page ${index + 2}/${totalPages} - ${
+//               result.value.items.length
+//             } items`
+//           );
+//         }
+//       });
+//     }
+
+//     // Calculate totals
+//     const { totalTurnover, totalWinLoss } = allItems.reduce(
+//       (acc, item) => ({
+//         totalTurnover: acc.totalTurnover + parseFloat(item.bet || 0),
+//         totalWinLoss:
+//           acc.totalWinLoss +
+//           parseFloat(item.win || 0) -
+//           parseFloat(item.bet || 0),
+//       }),
+//       { totalTurnover: 0, totalWinLoss: 0 }
+//     );
+
+//     return res.status(200).json({
+//       success: true,
+//       summary: {
+//         gamename: "MEGA888",
+//         gamecategory: "Slot Games",
+//         user: {
+//           username: user.username,
+//           turnover: Number(totalTurnover.toFixed(2)),
+//           winloss: Number(totalWinLoss.toFixed(2)),
+//         },
+//       },
+//     });
+//   } catch (error) {
+//     console.error("MEGA888: Failed to fetch daily game data:", error.message);
+//     return res.status(500).json({
+//       success: false,
+//       message: {
+//         en: "MEGA888: Failed to fetch daily game data",
+//         zh: "MEGA888: 获取每日游戏数据失败",
+//       },
+//       error: error.message,
+//     });
+//   }
+// });
+
 router.post("/api/mega888/getturnoverforrebate", async (req, res) => {
-  const today = moment.utc().add(8, "hours").format("YYYY-MM-DD");
-  const yesterday = moment
-    .utc()
-    .add(8, "hours")
-    .subtract(1, "days")
-    .format("YYYY-MM-DD");
-
-  const { date } = req.body;
-  let start, end;
-
-  if (date === "today") {
-    start = moment(today)
-      .utc()
-      .add(8, "hours")
-      .startOf("day")
-      .format("YYYY-MM-DD HH:mm:ss");
-    end = moment(today)
-      .utc()
-      .add(8, "hours")
-      .endOf("day")
-      .format("YYYY-MM-DD HH:mm:ss");
-  } else if (date === "yesterday") {
-    start = moment(yesterday)
-      .utc()
-      .add(8, "hours")
-      .startOf("day")
-      .format("YYYY-MM-DD HH:mm:ss");
-    end = moment(yesterday)
-      .utc()
-      .add(8, "hours")
-      .endOf("day")
-      .format("YYYY-MM-DD HH:mm:ss");
-  }
-
-  const random = String(Date.now());
-  // Generate digest using MD5 hash
-  const digest = generateMD5Hash(
-    random + mega888SN + mega888AgentId + mega888Secret
-  );
-
-  // Build request payload
-  const payload = buildParams(
-    {
-      sn: mega888SN,
-      random: random,
-      agentLoginId: mega888AgentId,
-      digest: digest,
-      type: 1,
-      startTime: start,
-      endTime: end,
-    },
-    "open.mega.player.total.report"
-  );
-
   try {
-    const response = await axios.post(mega888APIURL, payload);
-    console.log(response.data);
-    if (response.data.error) {
-      return res.status(500).json({
-        success: false,
-        error: response.data.error.message,
-      });
+    const { date } = req.body;
+
+    let startDate, endDate;
+    if (date === "today") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    } else if (date === "yesterday") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
     }
 
-    const results = response.data.result;
+    console.log("MEGA888 QUERYING TIME", startDate, endDate);
 
-    // Sum up the total turnover (bet) and win/loss
-    const playerSummaries = {};
-
-    // Loop through each result entry
-    for (const entry of results) {
-      const { loginId, bet, win } = entry;
-
-      // Find the user in the database by the mega888GameId
-      const user = await User.findOne({ mega888GameID: loginId });
-
-      if (user) {
-        const username = user.username;
-
-        // If the user is not yet in the playerSummaries object, initialize their summary
-        if (!playerSummaries[username]) {
-          playerSummaries[username] = {
-            turnover: 0,
-            winloss: 0,
-          };
-        }
-
-        // Update the user's turnover and win/loss
-        playerSummaries[username].turnover += parseFloat(bet || 0);
-        playerSummaries[username].winloss -= parseFloat(win || 0);
-      }
-    }
-
-    Object.keys(playerSummaries).forEach((username) => {
-      playerSummaries[username].turnover = Number(
-        playerSummaries[username].turnover.toFixed(2)
-      );
-      playerSummaries[username].winloss = Number(
-        playerSummaries[username].winloss.toFixed(2)
-      );
+    const records = await slotMega888Modal.find({
+      betTime: {
+        $gte: startDate,
+        $lt: endDate,
+      },
     });
 
+    let playerSummary = {};
+
+    records.forEach((record) => {
+      const username = record.username;
+
+      if (!playerSummary[username]) {
+        playerSummary[username] = { turnover: 0, winloss: 0 };
+      }
+
+      playerSummary[username].turnover += record.betamount || 0;
+
+      playerSummary[username].winloss +=
+        (record.settleamount || 0) - (record.betamount || 0);
+    });
+
+    Object.keys(playerSummary).forEach((playerId) => {
+      playerSummary[playerId].turnover = Number(
+        playerSummary[playerId].turnover.toFixed(2)
+      );
+      playerSummary[playerId].winloss = Number(
+        playerSummary[playerId].winloss.toFixed(2)
+      );
+    });
     return res.status(200).json({
       success: true,
       summary: {
         gamename: "MEGA888",
         gamecategory: "Slot Games",
-        users: playerSummaries,
+        users: playerSummary,
       },
     });
   } catch (error) {
@@ -1305,80 +1537,38 @@ router.post("/api/mega888/getturnoverforrebate", async (req, res) => {
   }
 });
 
-router.get("/admin/api/mega888/:userId/dailygamedata", async (req, res) => {
-  try {
-    const { startDate, endDate } = req.query;
-    const userId = req.params.userId;
+router.get(
+  "/admin/api/mega888/:userId/dailygamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
 
-    // Validate inputs
-    if (!startDate || !endDate) {
-      return res.status(400).json({
-        success: false,
-        message: "Start date and end date are required",
-      });
-    }
+      const userId = req.params.userId;
 
-    const user = await User.findById(userId, {
-      username: 1,
-      mega888GameID: 1,
-    }).lean();
+      const user = await User.findById(userId);
 
-    if (!user || !user.mega888GameID) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found or no Mega888 account",
-      });
-    }
-
-    const loginId = user.mega888GameID;
-
-    // Format dates
-    const start = moment
-      .utc(new Date(startDate))
-      .add(8, "hours")
-      .format("YYYY-MM-DD HH:mm:ss");
-    const end = moment
-      .utc(new Date(endDate))
-      .add(8, "hours")
-      .format("YYYY-MM-DD HH:mm:ss");
-
-    console.log(
-      `[Mega888 Daily Data] Fetching for ${user.username} from ${start} to ${end}`
-    );
-
-    // Function to fetch a single page
-    const fetchPage = async (pageIndex) => {
-      const random = String(Date.now() + pageIndex);
-      const digest = generateMD5Hash(
-        random + mega888SN + loginId + mega888Secret
-      );
-
-      const payload = buildParams(
-        {
-          sn: mega888SN,
-          random: random,
-          loginId: loginId,
-          digest: digest,
-          startTime: start,
-          endTime: end,
-          pageIndex: pageIndex,
-          pageSize: 100,
+      const records = await slotMega888Modal.find({
+        username: user.username,
+        betTime: {
+          $gte: startDate,
+          $lt: endDate,
         },
-        "open.mega.game.order.page"
-      );
-      console.log(payload);
-      const response = await axios.post(mega888APIURL, payload);
-      if (response.data.error) {
-        throw new Error(response.data.error.message);
-      }
+      });
 
-      return response.data.result;
-    };
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
 
-    // Fetch first page
-    const firstPage = await fetchPage(1);
+      records.forEach((record) => {
+        totalTurnover += record.betamount || 0;
 
-    if (!firstPage?.items?.length) {
+        totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
+      });
+
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+
+      // Return the aggregated results
       return res.status(200).json({
         success: true,
         summary: {
@@ -1386,74 +1576,23 @@ router.get("/admin/api/mega888/:userId/dailygamedata", async (req, res) => {
           gamecategory: "Slot Games",
           user: {
             username: user.username,
-            turnover: 0,
-            winloss: 0,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
           },
         },
       });
-    }
-
-    let allItems = [...firstPage.items];
-
-    // Fetch remaining pages in parallel if multiple pages exist
-    if (firstPage.hasNextPage && firstPage.totalPage > 1) {
-      const totalPages = Math.min(firstPage.totalPage, 100); // Safety limit
-      const pagePromises = [];
-
-      for (let page = 2; page <= totalPages; page++) {
-        pagePromises.push(fetchPage(page));
-      }
-
-      const results = await Promise.allSettled(pagePromises);
-
-      results.forEach((result, index) => {
-        if (result.status === "fulfilled" && result.value?.items?.length) {
-          allItems = allItems.concat(result.value.items);
-          console.log(
-            `[Mega888 Daily Data] Page ${index + 2}/${totalPages} - ${
-              result.value.items.length
-            } items`
-          );
-        }
+    } catch (error) {
+      console.log("MEGA888: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "MEGA888: Failed to fetch win/loss report",
+          zh: "MEGA888: 获取盈亏报告失败",
+        },
       });
     }
-
-    // Calculate totals
-    const { totalTurnover, totalWinLoss } = allItems.reduce(
-      (acc, item) => ({
-        totalTurnover: acc.totalTurnover + parseFloat(item.bet || 0),
-        totalWinLoss:
-          acc.totalWinLoss +
-          parseFloat(item.win || 0) -
-          parseFloat(item.bet || 0),
-      }),
-      { totalTurnover: 0, totalWinLoss: 0 }
-    );
-
-    return res.status(200).json({
-      success: true,
-      summary: {
-        gamename: "MEGA888",
-        gamecategory: "Slot Games",
-        user: {
-          username: user.username,
-          turnover: Number(totalTurnover.toFixed(2)),
-          winloss: Number(totalWinLoss.toFixed(2)),
-        },
-      },
-    });
-  } catch (error) {
-    console.error("MEGA888: Failed to fetch daily game data:", error.message);
-    return res.status(500).json({
-      success: false,
-      message: {
-        en: "MEGA888: Failed to fetch daily game data",
-        zh: "MEGA888: 获取每日游戏数据失败",
-      },
-      error: error.message,
-    });
   }
-});
+);
 
 router.get(
   "/admin/api/mega888/:userId/gamedata",
@@ -1534,6 +1673,79 @@ router.get(
   }
 );
 
+// router.get(
+//   "/admin/api/mega888/dailykioskreport",
+//   authenticateAdminToken,
+//   async (req, res) => {
+//     try {
+//       const { startDate, endDate } = req.query;
+
+//       let startD = moment.utc(new Date(startDate).toISOString());
+//       let endD = moment.utc(new Date(endDate).toISOString());
+
+//       const start = startD.format("YYYY-MM-DD HH:mm:ss");
+//       const end = endD.format("YYYY-MM-DD HH:mm:ss");
+
+//       const random = String(Date.now());
+
+//       // Generate digest using MD5 hash
+//       const digest = generateMD5Hash(
+//         random + mega888SN + mega888AgentId + mega888Secret
+//       );
+
+//       const payload = buildParams(
+//         {
+//           sn: mega888SN,
+//           random: random,
+//           agentLoginId: mega888AgentId,
+//           digest: digest,
+//           type: 1,
+//           startTime: start,
+//           endTime: end,
+//         },
+//         "open.mega.player.total.report"
+//       );
+//       const response = await axios.post(mega888APIURL, payload);
+
+//       if (response.data.error) {
+//         return res.status(500).json({
+//           success: false,
+//           error: response.data.error.message,
+//         });
+//       }
+
+//       // Calculate totals for all records
+//       const totals = response.data.result.reduce(
+//         (acc, entry) => {
+//           acc.turnover += parseFloat(entry.bet || 0);
+//           acc.winloss -= parseFloat(entry.win || 0); // Negative of win
+//           return acc;
+//         },
+//         { turnover: 0, winloss: 0 }
+//       );
+
+//       return res.status(200).json({
+//         success: true,
+//         summary: {
+//           gamename: "MEGA888",
+//           gamecategory: "Slot Games",
+//           totalturnover: Number(totals.turnover.toFixed(2)),
+//           totalwinloss: Number(totals.winloss.toFixed(2)),
+//         },
+//       });
+//     } catch (error) {
+//       console.error("MEGA888: Failed to fetch win/loss report:", error);
+//       return res.status(500).json({
+//         success: false,
+//         message: {
+//           en: "MEGA888: Failed to fetch win/loss report",
+//           zh: "MEGA888: 获取盈亏报告失败",
+//         },
+//       });
+//     }
+//   }
+// );
+
 router.get(
   "/admin/api/mega888/dailykioskreport",
   authenticateAdminToken,
@@ -1541,57 +1753,29 @@ router.get(
     try {
       const { startDate, endDate } = req.query;
 
-      let startD = moment.utc(new Date(startDate).toISOString());
-      let endD = moment.utc(new Date(endDate).toISOString());
-
-      const start = startD.format("YYYY-MM-DD HH:mm:ss");
-      const end = endD.format("YYYY-MM-DD HH:mm:ss");
-
-      const random = String(Date.now());
-
-      // Generate digest using MD5 hash
-      const digest = generateMD5Hash(
-        random + mega888SN + mega888AgentId + mega888Secret
-      );
-
-      const payload = buildParams(
-        {
-          sn: mega888SN,
-          random: random,
-          agentLoginId: mega888AgentId,
-          digest: digest,
-          type: 1,
-          startTime: start,
-          endTime: end,
+      const records = await slotMega888Modal.find({
+        betTime: {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
         },
-        "open.mega.player.total.report"
-      );
-      const response = await axios.post(mega888APIURL, payload);
+      });
 
-      if (response.data.error) {
-        return res.status(500).json({
-          success: false,
-          error: response.data.error.message,
-        });
-      }
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
 
-      // Calculate totals for all records
-      const totals = response.data.result.reduce(
-        (acc, entry) => {
-          acc.turnover += parseFloat(entry.bet || 0);
-          acc.winloss -= parseFloat(entry.win || 0); // Negative of win
-          return acc;
-        },
-        { turnover: 0, winloss: 0 }
-      );
+      records.forEach((record) => {
+        totalTurnover += record.betamount || 0;
+
+        totalWinLoss += (record.betamount || 0) - (record.settleamount || 0);
+      });
 
       return res.status(200).json({
         success: true,
         summary: {
           gamename: "MEGA888",
           gamecategory: "Slot Games",
-          totalturnover: Number(totals.turnover.toFixed(2)),
-          totalwinloss: Number(totals.winloss.toFixed(2)),
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
         },
       });
     } catch (error) {
@@ -1672,77 +1856,146 @@ router.get(
   }
 );
 
-const fetchAndStoreMega888GameHistory = async (username) => {
+const getLastSyncTime = async () => {
+  const syncLog = await GameSyncLog.findOne({ provider: "mega888" })
+    .sort({ syncTime: -1 })
+    .lean();
+  return syncLog?.syncTime || null;
+};
+
+const updateLastSyncTime = async (time) => {
+  await GameSyncLog.create({
+    provider: "mega888",
+    syncTime: time.toDate(),
+  });
+};
+
+// Fetch total report from Mega888 API
+const fetchMega888TotalReport = async (start, end) => {
+  const random = String(Date.now());
+  const digest = generateMD5Hash(
+    random + mega888SN + mega888AgentId + mega888Secret
+  );
+
+  const payload = buildParams(
+    {
+      sn: mega888SN,
+      random: random,
+      agentLoginId: mega888AgentId,
+      digest: digest,
+      type: 1,
+      startTime: start,
+      endTime: end,
+    },
+    "open.mega.player.total.report"
+  );
+
+  console.log(`[Mega888 API] Fetching total report: ${start} to ${end}`);
+
+  const response = await axios.post(mega888APIURL, payload);
+
+  if (response.data.error) {
+    throw new Error(response.data.error.message);
+  }
+
+  const results = response.data.result || [];
+  console.log(`[Mega888 API] Total report returned ${results.length} entries`);
+
+  const playerTotals = {};
+
+  // Convert loginId to username and aggregate
+  for (const entry of results) {
+    const { loginId, bet, win } = entry;
+
+    const user = await User.findOne(
+      { mega888GameID: loginId },
+      { username: 1 }
+    ).lean();
+
+    if (user) {
+      const username = user.username;
+
+      if (!playerTotals[username]) {
+        playerTotals[username] = {
+          turnover: 0,
+          winloss: 0,
+        };
+      }
+
+      playerTotals[username].turnover += parseFloat(bet || 0);
+      playerTotals[username].winloss += parseFloat(win || 0);
+    }
+  }
+
+  // Round to 2 decimal places
+  Object.keys(playerTotals).forEach((username) => {
+    playerTotals[username].turnover = Number(
+      playerTotals[username].turnover.toFixed(2)
+    );
+    playerTotals[username].winloss = Number(
+      playerTotals[username].winloss.toFixed(2)
+    );
+  });
+
+  return playerTotals;
+};
+
+// Get totals from database for specific period
+const getDbTotalsForPeriod = async (start, end) => {
+  const startDate = moment(start, "YYYY-MM-DD HH:mm:ss").toDate();
+  const endDate = moment(end, "YYYY-MM-DD HH:mm:ss").toDate();
+
+  console.log(`[Mega888 DB] Querying totals from ${start} to ${end}`);
+
+  const aggregation = await slotMega888Modal.aggregate([
+    {
+      $match: {
+        betTime: {
+          $gte: startDate,
+          $lte: endDate,
+        },
+      },
+    },
+    {
+      $group: {
+        _id: "$username",
+        turnover: { $sum: "$betamount" },
+        winloss: { $sum: "$settleamount" },
+      },
+    },
+  ]);
+
+  const dbTotals = {};
+  aggregation.forEach((item) => {
+    dbTotals[item._id] = {
+      turnover: Number(item.turnover.toFixed(2)),
+      winloss: Number(item.winloss.toFixed(2)),
+    };
+  });
+
+  console.log(
+    `[Mega888 DB] Found ${Object.keys(dbTotals).length} players in database`
+  );
+
+  return dbTotals;
+};
+
+// Fetch detailed game history for specific user and time range (SAME DAY ONLY)
+const fetchAndStoreDetailedGameHistory = async (username, start, end) => {
   try {
-    console.log(`[Mega888 Game History] Fetching for ${username}`);
+    console.log(`[Mega888 Detail] Fetching ${username}: ${start} to ${end}`);
 
-    // Parallel execution - fetch user and latest record simultaneously
-    const [user, latestRecord] = await Promise.all([
-      User.findOne({ username }, { mega888GameID: 1 }).lean(),
-      slotMega888ClaimRebateModal
-        .findOne({ username })
-        .sort({ startDate: -1 })
-        .select("startDate")
-        .lean(),
-    ]);
-
+    const user = await User.findOne({ username }, { mega888GameID: 1 }).lean();
     if (!user || !user.mega888GameID) {
       throw new Error("User not found or no Mega888 account");
     }
+
     const loginId = user.mega888GameID;
-    const currentTime = moment().utc().add(8, "hours");
 
-    // Calculate initial date range
-    const startMoment = latestRecord?.startDate
-      ? moment(latestRecord.startDate).add(1, "second")
-      : moment().utc().add(8, "hours").subtract(7, "days"); // Default: last 7 days
-
-    const endMoment = currentTime;
-    if (startMoment.isSameOrAfter(endMoment)) {
-      console.log(`[Mega888 Game History] No new data for ${username}`);
-      return {
-        success: true,
-        message: "No new data to fetch",
-        totalBet: 0,
-        totalWin: 0,
-        totalRecords: 0,
-      };
-    }
-
-    // ✅ NEW: Split date range into daily chunks
-    const dateChunks = [];
-    let currentDate = startMoment.clone().startOf("day");
-    const finalDate = endMoment.clone().endOf("day");
-
-    while (currentDate.isBefore(finalDate)) {
-      const chunkStart = currentDate.clone();
-      const chunkEnd = currentDate.clone().endOf("day");
-
-      // Don't go beyond the final end date
-      if (chunkEnd.isAfter(finalDate)) {
-        chunkEnd.set({
-          hour: finalDate.hour(),
-          minute: finalDate.minute(),
-          second: finalDate.second(),
-        });
-      }
-
-      dateChunks.push({
-        start: chunkStart.format("YYYY-MM-DD HH:mm:ss"),
-        end: chunkEnd.format("YYYY-MM-DD HH:mm:ss"),
-      });
-
-      currentDate.add(1, "day");
-    }
-
-    console.log(
-      `[Mega888 Game History] Split into ${dateChunks.length} daily chunks`
-    );
-
-    // Fetch page function with delay
-    const fetchPage = async (pageIndex, dateRange, addDelay = false) => {
-      // Add 200ms delay before each call (except the first one)
-      if (addDelay) {
+    // Fetch all pages for this time range
+    const fetchPage = async (pageIndex) => {
+      // Add delay for rate limiting (except first page)
+      if (pageIndex > 1) {
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
 
@@ -1757,8 +2010,8 @@ const fetchAndStoreMega888GameHistory = async (username) => {
           random: random,
           loginId: loginId,
           digest: digest,
-          startTime: dateRange.start,
-          endTime: dateRange.end,
+          startTime: start,
+          endTime: end,
           pageIndex: pageIndex,
           pageSize: 100,
         },
@@ -1773,395 +2026,322 @@ const fetchAndStoreMega888GameHistory = async (username) => {
       return response.data.result;
     };
 
-    // ✅ NEW: Fetch data for each date chunk
-    let allItems = [];
-    let totalInserted = 0;
-    let totalSkipped = 0;
+    // Fetch first page
+    const firstPage = await fetchPage(1);
 
-    for (const [index, dateChunk] of dateChunks.entries()) {
-      console.log(
-        `[Mega888 Game History] Processing chunk ${index + 1}/${
-          dateChunks.length
-        }: ${dateChunk.start} to ${dateChunk.end}`
-      );
+    if (!firstPage?.items?.length) {
+      console.log(`[Mega888 Detail] No records for ${username}`);
+      return { totalRecords: 0, newRecords: 0, skipped: 0 };
+    }
 
-      try {
-        // Fetch first page for this date range (no delay for first page)
-        const firstPage = await fetchPage(1, dateChunk, false);
+    let allItems = [...firstPage.items];
 
-        if (!firstPage?.items?.length) {
+    // Fetch remaining pages if exists
+    if (firstPage.hasNextPage && firstPage.totalPage > 1) {
+      const totalPages = Math.min(firstPage.totalPage, 50); // Safety limit
+
+      console.log(`[Mega888 Detail] ${username}: ${totalPages} pages total`);
+
+      for (let page = 2; page <= totalPages; page++) {
+        const pageResult = await fetchPage(page);
+        if (pageResult?.items?.length) {
+          allItems = allItems.concat(pageResult.items);
           console.log(
-            `[Mega888 Game History] No records for chunk ${index + 1}`
-          );
-          continue;
-        }
-
-        let chunkItems = [...firstPage.items];
-
-        // If multiple pages, fetch remaining pages sequentially with delays
-        if (firstPage.hasNextPage && firstPage.totalPage > 1) {
-          const totalPages = Math.min(firstPage.totalPage, 100); // Safety limit
-
-          console.log(
-            `[Mega888 Game History] Chunk ${index + 1}: ${totalPages} pages`
-          );
-
-          for (let page = 2; page <= totalPages; page++) {
-            try {
-              const pageResult = await fetchPage(page, dateChunk, true); // addDelay = true
-
-              if (pageResult?.items?.length) {
-                chunkItems = chunkItems.concat(pageResult.items);
-                console.log(
-                  `[Mega888 Game History] Chunk ${
-                    index + 1
-                  }, Page ${page}/${totalPages} - ${
-                    pageResult.items.length
-                  } items`
-                );
-              }
-            } catch (error) {
-              console.error(
-                `[Mega888 Game History] Chunk ${
-                  index + 1
-                }, Failed to fetch page ${page}:`,
-                error.message
-              );
-              // Continue with next page
-            }
-          }
-        }
-
-        console.log(
-          `[Mega888 Game History] Chunk ${index + 1}: Fetched ${
-            chunkItems.length
-          } items`
-        );
-
-        // Check for existing betIds for this chunk
-        const betIds = chunkItems.map((item) => String(item.id));
-        const existingBetIds = new Set(
-          (
-            await slotMega888ClaimRebateModal
-              .find({ betId: { $in: betIds } })
-              .select("betId")
-              .lean()
-          ).map((r) => r.betId)
-        );
-
-        // Filter and prepare new records
-        const startDateObj = new Date(dateChunk.start);
-        const endDateObj = new Date(dateChunk.end);
-
-        const newRecords = chunkItems
-          .filter((item) => !existingBetIds.has(String(item.id)))
-          .map((item) => ({
-            betId: String(item.id),
-            username: username,
-            betamount: parseFloat(item.bet || 0),
-            settleamount: parseFloat(item.win || 0),
-            bet: true,
-            settle: true,
-            startDate: startDateObj,
-            endDate: endDateObj,
-            claimed: false,
-
-            betTime: item.CreateTime
-              ? moment(item.CreateTime, "YYYY-MM-DD HH:mm:ss")
-                  .subtract(8, "hours")
-                  .toDate()
-              : new Date(),
-          }));
-
-        console.log(
-          `[Mega888 Game History] Chunk ${index + 1}: New records: ${
-            newRecords.length
-          }, Skipped: ${chunkItems.length - newRecords.length}`
-        );
-
-        // Batch insert new records
-        if (newRecords.length > 0) {
-          await slotMega888ClaimRebateModal.insertMany(newRecords, {
-            ordered: false,
-          });
-          console.log(
-            `[Mega888 Game History] Chunk ${index + 1}: Inserted ${
-              newRecords.length
-            } records`
+            `[Mega888 Detail] ${username}: Page ${page}/${totalPages} - ${pageResult.items.length} items`
           );
         }
-
-        totalInserted += newRecords.length;
-        totalSkipped += chunkItems.length - newRecords.length;
-
-        // Add to all items for final calculation
-        allItems = allItems.concat(chunkItems);
-
-        // Add delay between chunks to avoid rate limiting
-        if (index < dateChunks.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 200)); // 200ms delay
-        }
-      } catch (error) {
-        console.error(
-          `[Mega888 Game History] Error processing chunk ${index + 1}:`,
-          error.message
-        );
-        // Continue with next chunk even if this one fails
-        continue;
       }
     }
 
     console.log(
-      `[Mega888 Game History] Total items fetched: ${allItems.length}`
+      `[Mega888 Detail] ${username}: Fetched ${allItems.length} total items`
     );
 
+    // Check for existing records to prevent duplicates
+    const betIds = allItems.map((item) => String(item.id));
+    const existingBetIds = new Set(
+      (
+        await slotMega888Modal
+          .find({ betId: { $in: betIds } })
+          .select("betId")
+          .lean()
+      ).map((r) => r.betId)
+    );
+
+    // Filter out existing records
+    const startDateObj = moment(start, "YYYY-MM-DD HH:mm:ss").toDate();
+    const endDateObj = moment(end, "YYYY-MM-DD HH:mm:ss").toDate();
+    const newRecords = allItems
+      .filter((item) => !existingBetIds.has(String(item.id)))
+      .map((item) => ({
+        betId: String(item.id),
+        username: username,
+        betamount: parseFloat(item.bet || 0),
+        settleamount: parseFloat(item.win || 0),
+        bet: true,
+        settle: true,
+        startDate: startDateObj,
+        endDate: endDateObj,
+        claimed: false,
+        betTime: item.createTime
+          ? moment
+              .tz(item.createTime, "YYYY-MM-DD HH:mm:ss", "Asia/Kuala_Lumpur")
+              .utc()
+              .toDate()
+          : moment.utc().toDate(),
+      }));
+
+    console.log(
+      `[Mega888 Detail] ${username}: New=${newRecords.length}, Skipped=${
+        allItems.length - newRecords.length
+      }`
+    );
+
+    // Batch insert new records
+    if (newRecords.length > 0) {
+      await slotMega888Modal.insertMany(newRecords, {
+        ordered: false,
+      });
+      console.log(
+        `[Mega888 Detail] ${username}: Inserted ${newRecords.length} records`
+      );
+    }
+
     return {
-      success: true,
-      username: username,
-      dateRange: {
-        start: startMoment.format("YYYY-MM-DD HH:mm:ss"),
-        end: endMoment.format("YYYY-MM-DD HH:mm:ss"),
-      },
+      totalRecords: allItems.length,
+      newRecords: newRecords.length,
+      skipped: allItems.length - newRecords.length,
     };
   } catch (error) {
-    console.error(
-      `[Mega888 Game History] Error for ${username}:`,
-      error.message
-    );
+    console.error(`[Mega888 Detail] Error for ${username}:`, error.message);
     throw error;
   }
 };
 
-// const syncMega888Data = async () => {
-//   try {
-//     console.log("[Mega888 Sync] Starting sync process...");
-
-//     // Find the latest endDate from existing records
-//     const latestRecord = await slotMega888TransferModal
-//       .findOne()
-//       .sort({ endDate: -1 })
-//       .select("endDate")
-//       .lean();
-
-//     let startTime;
-//     const currentTime = moment().utc().add(8, "hours");
-//     const endTime = currentTime.format("YYYY-MM-DD HH:mm:ss");
-
-//     if (latestRecord && latestRecord.endDate) {
-//       startTime = moment(latestRecord.endDate)
-//         .add(1, "second")
-//         .format("YYYY-MM-DD HH:mm:ss");
-//     } else {
-//       startTime = moment()
-//         .utc()
-//         .add(8, "hours")
-//         .subtract(24, "hours")
-//         .format("YYYY-MM-DD HH:mm:ss");
-//     }
-
-//     if (moment(startTime).isSameOrAfter(moment(endTime))) {
-//       console.log("[Mega888 Sync] No new data to sync");
-//       return;
-//     }
-
-//     console.log(`[Mega888 Sync] Syncing from ${startTime} to ${endTime}`);
-
-//     // Build API request
-//     const random = String(Date.now());
-//     const digest = generateMD5Hash(
-//       random + mega888SN + mega888AgentId + mega888Secret
-//     );
-
-//     const payload = buildParams(
-//       {
-//         sn: mega888SN,
-//         random: random,
-//         agentLoginId: mega888AgentId,
-//         digest: digest,
-//         type: 1,
-//         startTime: startTime,
-//         endTime: endTime,
-//       },
-//       "open.mega.player.total.report"
-//     );
-//     console.log(payload);
-//     // Call API
-//     const response = await axios.post(mega888APIURL, payload);
-//     console.log(response.data);
-//     if (response.data.error) {
-//       throw new Error(response.data.error.message);
-//     }
-
-//     const results = response.data.result || [];
-
-//     if (results.length === 0) {
-//       console.log("[Mega888 Sync] No new records received");
-//       return;
-//     }
-
-//     console.log(`[Mega888 Sync] Processing ${results.length} records...`);
-
-//     // Fetch all users at once for efficiency
-//     const loginIds = results.map((r) => r.loginId).filter(Boolean);
-//     const users = await User.find(
-//       { mega888GameID: { $in: loginIds } },
-//       { username: 1, mega888GameID: 1 }
-//     ).lean();
-
-//     // Create lookup map
-//     const userMap = {};
-//     users.forEach((user) => {
-//       userMap[user.mega888GameID] = user.username;
-//     });
-
-//     // Store start and end dates
-//     const startDateObj = new Date(startTime);
-//     const endDateObj = new Date(endTime);
-
-//     // Prepare bulk operations
-//     const bulkOps = [];
-
-//     for (const entry of results) {
-//       const { loginId, bet, win } = entry;
-//       const username = userMap[loginId];
-
-//       if (!username) {
-//         console.log(`[Mega888 Sync] User not found for loginId: ${loginId}`);
-//         continue;
-//       }
-
-//       bulkOps.push({
-//         updateOne: {
-//           filter: {
-//             username: username,
-//             startDate: startDateObj,
-//             endDate: endDateObj,
-//           },
-//           update: {
-//             $set: {
-//               betamount: parseFloat(bet || 0),
-//               settleamount: parseFloat(-win || 0),
-//               bet: true,
-//               settle: true,
-//               claimed: false,
-//             },
-//           },
-//           upsert: true,
-//         },
-//       });
-//     }
-
-//     // Execute bulk operations
-//     if (bulkOps.length > 0) {
-//       const result = await slotMega888TransferModal.bulkWrite(bulkOps, {
-//         ordered: false,
-//       });
-
-//       console.log(
-//         `[Mega888 Sync] Successfully synced - Inserted: ${result.upsertedCount}, Updated: ${result.modifiedCount}`
-//       );
-//     }
-
-//     console.log("[Mega888 Sync] Sync completed successfully");
-//   } catch (error) {
-//     console.error("[Mega888 Sync] Error:", error.message);
-
-//     // Log the error but don't crash - will retry on next cron run
-//     if (error.code === 11000) {
-//       console.log("[Mega888 Sync] Duplicate entry detected, skipping...");
-//     }
-//   }
-// };
-
-const getMega888TurnoverForRebate = async (startDate, endDate) => {
+const syncMega888ForSingleDay = async (date) => {
   try {
+    // Create start and end for the entire day
+    const start = moment(date)
+      .utc()
+      .add(8, "hours")
+      .startOf("day")
+      .format("YYYY-MM-DD HH:mm:ss");
+    const end = moment(date)
+      .utc()
+      .add(8, "hours")
+      .endOf("day")
+      .format("YYYY-MM-DD HH:mm:ss");
+
+    console.log(`[Mega888 Sync Day] Syncing ${date}: ${start} to ${end}`);
+
+    // Step 1: Get total report from Mega888 API for this day
+    const apiTotals = await fetchMega888TotalReport(start, end);
+
+    if (!apiTotals || Object.keys(apiTotals).length === 0) {
+      console.log(`[Mega888 Sync Day] No data from API for ${date}`);
+      return {
+        date: date,
+        totalPlayers: 0,
+        successful: 0,
+        failed: 0,
+        playerDetails: [],
+      };
+    }
+
     console.log(
-      `[Mega888 Rebate] Fetching data from ${startDate} to ${endDate}`
+      `[Mega888 Sync Day] API returned ${
+        Object.keys(apiTotals).length
+      } players for ${date}`
     );
 
-    const random = String(Date.now());
-    const digest = generateMD5Hash(
-      random + mega888SN + mega888AgentId + mega888Secret
-    );
+    // Step 2: Get totals from our database for the same day
+    const dbTotals = await getDbTotalsForPeriod(start, end);
 
-    const payload = buildParams(
-      {
-        sn: mega888SN,
-        random: random,
-        agentLoginId: mega888AgentId,
-        digest: digest,
-        type: 1,
-        startTime: startDate,
-        endTime: endDate,
-      },
-      "open.mega.player.total.report"
-    );
+    // Step 3: Compare and identify players with discrepancies
+    const playersToSync = [];
+    for (const [username, apiData] of Object.entries(apiTotals)) {
+      const dbData = dbTotals[username] || { turnover: 0, winloss: 0 };
 
-    const response = await axios.post(mega888APIURL, payload);
+      // Allow 0.01 difference for floating point precision
+      const turnoverDiff = Math.abs(apiData.turnover - dbData.turnover);
 
-    if (response.data.error) {
-      throw new Error(response.data.error.message);
-    }
-
-    const results = response.data.result || [];
-
-    if (results.length === 0) {
-      console.log("[Mega888 Rebate] No records found");
-      return {};
-    }
-
-    const loginIds = results.map((r) => r.loginId).filter(Boolean);
-    const users = await User.find(
-      { mega888GameID: { $in: loginIds } },
-      { username: 1, mega888GameID: 1 }
-    ).lean();
-
-    const userMap = {};
-    users.forEach((user) => {
-      userMap[user.mega888GameID] = user.username;
-    });
-
-    const playerSummaries = {};
-
-    results.forEach((entry) => {
-      const { loginId, bet, win } = entry;
-      const username = userMap[loginId];
-
-      if (username) {
-        if (!playerSummaries[username]) {
-          playerSummaries[username] = {
-            turnover: 0,
-            winloss: 0,
-          };
-        }
-
-        playerSummaries[username].turnover += parseFloat(bet || 0);
-        playerSummaries[username].winloss -= parseFloat(win || 0);
+      if (turnoverDiff > 0.01) {
+        playersToSync.push({
+          username,
+          apiTurnover: apiData.turnover,
+          dbTurnover: dbData.turnover,
+          difference: turnoverDiff,
+        });
+        console.log(
+          `[Mega888 Sync Day] ${date} - Discrepancy for ${username}: API=${
+            apiData.turnover
+          }, DB=${dbData.turnover}, Diff=${turnoverDiff.toFixed(2)}`
+        );
       }
-    });
-
-    Object.keys(playerSummaries).forEach((username) => {
-      playerSummaries[username].turnover = Number(
-        playerSummaries[username].turnover.toFixed(2)
-      );
-      playerSummaries[username].winloss = Number(
-        playerSummaries[username].winloss.toFixed(2)
-      );
-    });
+    }
 
     console.log(
-      `[Mega888 Rebate] Processed ${Object.keys(playerSummaries).length} users`
+      `[Mega888 Sync Day] ${date} - Found ${playersToSync.length} players with discrepancies`
     );
 
-    return playerSummaries;
+    // Step 4: Fetch detailed game history for players with discrepancies
+    let syncResults = {
+      date: date,
+      totalPlayers: playersToSync.length,
+      successful: 0,
+      failed: 0,
+      playerDetails: [],
+    };
+
+    // Process players sequentially with rate limiting
+    for (const player of playersToSync) {
+      try {
+        console.log(`[Mega888 Sync Day] ${date} - Syncing ${player.username}`);
+
+        const result = await fetchAndStoreDetailedGameHistory(
+          player.username,
+          start,
+          end
+        );
+
+        syncResults.successful++;
+        syncResults.playerDetails.push({
+          username: player.username,
+          status: "success",
+          ...result,
+        });
+
+        // Rate limiting: 500ms delay between players
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      } catch (error) {
+        console.error(
+          `[Mega888 Sync Day] ${date} - Failed ${player.username}:`,
+          error.message
+        );
+        syncResults.failed++;
+        syncResults.playerDetails.push({
+          username: player.username,
+          status: "failed",
+          error: error.message,
+        });
+      }
+    }
+
+    console.log(
+      `[Mega888 Sync Day] ${date} - Completed: ${syncResults.successful} successful, ${syncResults.failed} failed`
+    );
+
+    return syncResults;
   } catch (error) {
-    console.error("[Mega888 Rebate] Error:", error.message);
-    // Return empty object instead of throwing - allows other games to continue
-    return {};
+    console.error(`[Mega888 Sync Day] Error for ${date}:`, error.message);
+    throw error;
   }
 };
+
+const syncMega888GameHistory = async () => {
+  try {
+    console.log(
+      `[Mega888 Sync] Starting sync at ${moment().format(
+        "YYYY-MM-DD HH:mm:ss"
+      )}`
+    );
+
+    const now = moment().utc().add(8, "hours");
+
+    const daysToSync = [];
+
+    // Get last sync time
+    const lastSyncTime = await getLastSyncTime();
+
+    if (!lastSyncTime) {
+      // First run: sync last 7 days
+      for (let i = 0; i < 7; i++) {
+        const date = now.clone().subtract(i, "days").format("YYYY-MM-DD");
+        daysToSync.push(date);
+      }
+    } else {
+      const lastSyncMoment = moment(lastSyncTime).utc().add(8, "hours");
+      const daysSinceLastSync = now.diff(lastSyncMoment, "days");
+
+      // Sync today + any missed days (max 7 days back)
+      const daysBack = Math.min(daysSinceLastSync + 1, 7);
+      for (let i = 0; i < daysBack; i++) {
+        const date = now.clone().subtract(i, "days").format("YYYY-MM-DD");
+        daysToSync.push(date);
+      }
+    }
+
+    console.log(`[Mega888 Sync] Days to sync: ${daysToSync.join(", ")}`);
+
+    let totalSyncResults = {
+      totalDays: daysToSync.length,
+      daysProcessed: 0,
+      totalPlayers: 0,
+      successful: 0,
+      failed: 0,
+      details: [],
+    };
+
+    for (const date of daysToSync) {
+      try {
+        console.log(`\n[Mega888 Sync] ======== Processing ${date} ========`);
+
+        const dayResult = await syncMega888ForSingleDay(date);
+
+        totalSyncResults.daysProcessed++;
+        totalSyncResults.totalPlayers += dayResult.totalPlayers;
+        totalSyncResults.successful += dayResult.successful;
+        totalSyncResults.failed += dayResult.failed;
+        totalSyncResults.details.push({
+          date: date,
+          ...dayResult,
+        });
+
+        if (daysToSync.indexOf(date) < daysToSync.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      } catch (error) {
+        console.error(`[Mega888 Sync] Failed to sync ${date}:`, error.message);
+        totalSyncResults.details.push({
+          date: date,
+          status: "failed",
+          error: error.message,
+        });
+      }
+    }
+
+    await updateLastSyncTime(now);
+
+    console.log(`\n[Mega888 Sync] ======== SUMMARY ========`);
+    console.log(
+      `Days processed: ${totalSyncResults.daysProcessed}/${totalSyncResults.totalDays}`
+    );
+    console.log(
+      `Players synced: ${totalSyncResults.successful} successful, ${totalSyncResults.failed} failed`
+    );
+
+    return {
+      success: true,
+      syncTime: now.format("YYYY-MM-DD HH:mm:ss"),
+      ...totalSyncResults,
+    };
+  } catch (error) {
+    console.error("[Mega888 Sync] Fatal error:", error.message);
+    throw error;
+  }
+};
+
+if (process.env.NODE_ENV !== "development") {
+  cron.schedule("*/10 * * * *", async () => {
+    console.log("[Cron] Starting Mega888 sync job");
+    try {
+      await syncMega888GameHistory();
+      console.log("[Cron] Mega888 sync completed successfully");
+    } catch (error) {
+      console.error("[Cron] Mega888 sync failed:", error.message);
+    }
+  });
+}
+
 module.exports = router;
-module.exports.fetchAndStoreMega888GameHistory =
-  fetchAndStoreMega888GameHistory;
-module.exports.getMega888TurnoverForRebate = getMega888TurnoverForRebate;
 module.exports.mega888CheckBalance = mega888CheckBalance;
