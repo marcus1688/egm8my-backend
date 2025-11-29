@@ -23,7 +23,7 @@ function roundToTwoDecimals(num) {
 
 const GAME_BALANCE_CHECKERS = [
   {
-    name: "mnega888",
+    name: "Mega888",
     key: "mega888Balance",
     checker: (user) => mega888CheckBalance(user),
     extractBalance: (result) => Number(result.balance),
@@ -75,12 +75,14 @@ router.post(
           if (result.success) {
             return {
               key: game.key,
+              game: game.name,
               balance: game.extractBalance(result),
             };
           } else {
             console.error(`${game.name} balance check error:`, result);
             return {
               key: game.key,
+              game: game.name,
               balance: 0,
             };
           }
@@ -88,6 +90,7 @@ router.post(
           console.error(`${game.name} balance check exception:`, error.message);
           return {
             key: game.key,
+            game: game.name,
             balance: 0,
           };
         }
@@ -100,6 +103,11 @@ router.post(
         return acc;
       }, {});
 
+      const games = balanceResults.map((result) => ({
+        game: result.game,
+        balance: roundToTwoDecimals(result.balance),
+      }));
+
       const totalBalance = Object.values(balances).reduce(
         (total, balance) => total + balance,
         0
@@ -107,7 +115,7 @@ router.post(
 
       return res.status(200).json({
         success: true,
-        ...balances,
+        games,
         totalBalance: roundToTwoDecimals(totalBalance),
         accountsChecked: availableGames.length,
         message: {
@@ -174,12 +182,14 @@ router.post(
           if (result.success) {
             return {
               key: game.key,
+              game: game.name,
               balance: game.extractBalance(result),
             };
           } else {
             console.error(`${game.name} balance check error:`, result);
             return {
               key: game.key,
+              game: game.name,
               balance: 0,
             };
           }
@@ -187,6 +197,7 @@ router.post(
           console.error(`${game.name} balance check exception:`, error.message);
           return {
             key: game.key,
+            game: game.name,
             balance: 0,
           };
         }
@@ -199,6 +210,11 @@ router.post(
         return acc;
       }, {});
 
+      const games = balanceResults.map((result) => ({
+        game: result.game,
+        balance: roundToTwoDecimals(result.balance),
+      }));
+
       const totalBalance = Object.values(balances).reduce(
         (total, balance) => total + balance,
         0
@@ -206,6 +222,7 @@ router.post(
 
       return res.status(200).json({
         success: true,
+        games,
         ...balances,
         totalBalance: roundToTwoDecimals(totalBalance),
         accountsChecked: availableGames.length,
