@@ -87,7 +87,7 @@ async function getFPayAuth(paymentMethod) {
       username: merchantName,
       api_key: apiKey,
     };
-
+    console.log(payload);
     const response = await axios.post(`${fpayAPIURL}auth`, payload, {
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -298,7 +298,7 @@ router.post("/api/fpay/getpaymentlink", authenticateToken, async (req, res) => {
       bank_code: bankCode,
       customer_bank_holder_name: user.fullname,
     };
-
+    console.log(payload, "hi");
     const response = await axios.post(`${fpayAPIURL}generate_orders`, payload, {
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
