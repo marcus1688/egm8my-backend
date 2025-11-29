@@ -388,7 +388,7 @@ const getCleanPlayerName = (player) => {
 };
 
 router.get(
-  "/api/allbet/GetBalance/:player",
+  "/api/allbe/GetBalance/:player",
   verifyAllBetAuth,
   async (req, res) => {
     try {
