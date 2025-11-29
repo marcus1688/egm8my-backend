@@ -54,7 +54,7 @@ function generateTransactionId(prefix = "") {
   return prefix ? `${prefix}${uuid}` : uuid;
 }
 
-function generateFpayCallbackToken(currency, secretKey) {
+function generateFpayCallbackToken(orderid, secretKey) {
   const string = `${secretKey}${orderid}`;
   return crypto.createHash("md5").update(string).digest("hex");
 }
@@ -378,6 +378,396 @@ router.post("/api/fpay/getpaymentlink", authenticateToken, async (req, res) => {
   }
 });
 
+const FPAY_CONFIG = {
+  statusMapping: {
+    fail: "Reject",
+    completed: "Success",
+  },
+  typeMapping: {
+    deposit: "deposit",
+    withdrawal: "withdraw",
+  },
+  secretKeyMap: {
+    bank: fpayBankSecret,
+    duitnow: fpayDuitnowSecret,
+    ewallet: fpayEWalletSecret,
+  },
+};
+
+async function validateFpayCallback(req) {
+  const { order_id, amount, currency, order_status, payment_type, token } =
+    req.body;
+
+  if (
+    !order_id ||
+    !currency ||
+    amount === undefined ||
+    order_status === undefined
+  ) {
+    return { valid: false, status: 400, error: "Missing required parameters" };
+  }
+
+  // Find existing transaction
+  const existingTrx = await fpayModal
+    .findOne(
+      { ourRefNo: order_id },
+      {
+        _id: 1,
+        username: 1,
+        status: 1,
+        createdAt: 1,
+        promotionId: 1,
+        paymenttype: 1,
+      }
+    )
+    .lean();
+
+  if (!existingTrx) {
+    return {
+      valid: false,
+      status: 404,
+      error: "Transaction not found",
+      existingTrx: null,
+    };
+  }
+
+  // Validate token
+  const paymentTypeToUse = payment_type || existingTrx.paymenttype;
+  const secretKey =
+    FPAY_CONFIG.secretKeyMap[paymentTypeToUse] || fpayBankSecret;
+  const ourToken = generateFpayCallbackToken(order_id, secretKey);
+
+  if (ourToken !== token) {
+    return { valid: false, status: 403, error: "Token validation failed" };
+  }
+
+  return { valid: true, existingTrx };
+}
+
+async function createMissingTransaction(
+  order_id,
+  roundedAmount,
+  transactionType,
+  statusText,
+  platformCharge
+) {
+  await fpayModal.create({
+    username: "N/A",
+    transfername: "N/A",
+    ourRefNo: order_id,
+    paymentGatewayRefNo: order_id,
+    amount: roundedAmount,
+    transactiontype: transactionType,
+    status: statusText,
+    platformCharge: platformCharge,
+    remark: `No transaction found with reference: ${order_id}. Created from callback.`,
+  });
+}
+
+async function updateLiveTransactions(username, amount) {
+  const count = await LiveTransaction.countDocuments({ type: "deposit" });
+
+  if (count >= 5) {
+    await LiveTransaction.findOneAndUpdate(
+      { type: "deposit" },
+      {
+        $set: {
+          username,
+          amount,
+          time: new Date(),
+        },
+      },
+      { sort: { time: 1 } }
+    );
+  } else {
+    await LiveTransaction.create({
+      type: "deposit",
+      username,
+      amount,
+      time: new Date(),
+      status: "completed",
+    });
+  }
+}
+
+// ============================================
+// DEPOSIT HANDLERS
+// ============================================
+
+async function handleDepositApproval(
+  existingTrx,
+  order_id,
+  roundedAmount,
+  platformCharge,
+  statusText
+) {
+  const [user, gateway, kioskSettings, bank] = await Promise.all([
+    User.findOne(
+      { username: existingTrx.username },
+      {
+        _id: 1,
+        username: 1,
+        fullname: 1,
+        wallet: 1,
+        totaldeposit: 1,
+        firstDepositDate: 1,
+        duplicateIP: 1,
+        duplicateBank: 1,
+      }
+    ).lean(),
+    paymentgateway
+      .findOne({ name: { $regex: /^fpay$/i } }, { _id: 1, name: 1, balance: 1 })
+      .lean(),
+    kioskbalance.findOne({}, { status: 1 }).lean(),
+    BankList.findById(bankIDPG, {
+      _id: 1,
+      bankname: 1,
+      ownername: 1,
+      bankaccount: 1,
+      qrimage: 1,
+      currentbalance: 1,
+    }).lean(),
+  ]);
+
+  if (!user)
+    throw { status: 404, message: `User not found: ${existingTrx.username}` };
+  if (!bank) throw { status: 404, message: `Bank not found: ${bankIDPG}` };
+
+  const isNewDeposit = !user.firstDepositDate;
+  const oldGatewayBalance = gateway?.balance || 0;
+  const oldBankBalance = bank.currentbalance || 0;
+
+  const [updatedUser, newDeposit, , , updatedGateway, updatedBank] =
+    await Promise.all([
+      User.findByIdAndUpdate(
+        user._id,
+        {
+          $inc: { wallet: roundedAmount, totaldeposit: roundedAmount },
+          $set: {
+            lastdepositdate: new Date(),
+            ...(isNewDeposit && { firstDepositDate: existingTrx.createdAt }),
+          },
+        },
+        { new: true, projection: { wallet: 1 } }
+      ).lean(),
+
+      Deposit.create({
+        userId: user._id,
+        username: user.username,
+        fullname: user.fullname || "unknown",
+        bankname: "FPAY",
+        ownername: "Payment Gateway",
+        transfernumber: order_id,
+        walletType: "Main",
+        transactionType: "deposit",
+        method: "auto",
+        processBy: "admin",
+        amount: roundedAmount,
+        walletamount: user.wallet,
+        remark: "-",
+        status: "approved",
+        processtime: "00:00:00",
+        newDeposit: isNewDeposit,
+        transactionId: order_id,
+        duplicateIP: user.duplicateIP,
+        duplicateBank: user.duplicateBank,
+      }),
+
+      fpayModal.findByIdAndUpdate(existingTrx._id, {
+        $set: { status: statusText, platformCharge: platformCharge },
+      }),
+
+      UserWalletLog.create({
+        userId: user._id,
+        transactionid: order_id,
+        transactiontime: new Date(),
+        transactiontype: "deposit",
+        amount: roundedAmount,
+        status: "approved",
+      }),
+
+      paymentgateway.findOneAndUpdate(
+        { name: { $regex: /^fpay$/i } },
+        { $inc: { balance: roundedAmount } },
+        { new: true, projection: { _id: 1, name: 1, balance: 1 } }
+      ),
+
+      BankList.findByIdAndUpdate(
+        bankIDPG,
+        [
+          {
+            $set: {
+              totalDeposits: { $add: ["$totalDeposits", roundedAmount] },
+              currentbalance: {
+                $subtract: [
+                  {
+                    $add: [
+                      "$startingbalance",
+                      { $add: ["$totalDeposits", roundedAmount] },
+                      "$totalCashIn",
+                    ],
+                  },
+                  { $add: ["$totalWithdrawals", "$totalCashOut"] },
+                ],
+              },
+            },
+          },
+        ],
+        { new: true, projection: { currentbalance: 1 } }
+      ).lean(),
+    ]);
+
+  // Create bank transaction log
+  await BankTransactionLog.create({
+    bankName: bank.bankname,
+    ownername: bank.ownername,
+    bankAccount: bank.bankaccount,
+    remark: "-",
+    lastBalance: oldBankBalance,
+    currentBalance:
+      updatedBank?.currentbalance || oldBankBalance + roundedAmount,
+    processby: "admin",
+    qrimage: bank.qrimage,
+    playerusername: user.username,
+    playerfullname: user.fullname,
+    transactiontype: "deposit",
+    amount: roundedAmount,
+  });
+
+  await updateLiveTransactions("deposit", user.username, roundedAmount);
+
+  if (kioskSettings?.status) {
+    await updateKioskBalance("subtract", roundedAmount, {
+      username: user.username,
+      transactionType: "deposit approval",
+      remark: `Deposit ID: ${newDeposit._id}`,
+      processBy: "admin",
+    });
+  }
+
+  setImmediate(() => {
+    checkAndUpdateVIPLevel(user._id).catch((err) =>
+      console.error(`VIP level update error for user ${user._id}:`, err.message)
+    );
+    updateUserGameLocks(user._id);
+  });
+
+  await PaymentGatewayTransactionLog.create({
+    gatewayId: gateway?._id,
+    gatewayName: gateway?.name || "FPAY",
+    transactiontype: "deposit",
+    amount: roundedAmount,
+    lastBalance: oldGatewayBalance,
+    currentBalance:
+      updatedGateway?.balance || oldGatewayBalance + roundedAmount,
+    remark: `Deposit from ${user.username}`,
+    playerusername: user.username,
+    processby: "system",
+    depositId: newDeposit._id,
+  });
+
+  if (existingTrx.promotionId) {
+    await handleDepositBonus(
+      existingTrx,
+      user,
+      updatedUser,
+      newDeposit,
+      roundedAmount,
+      kioskSettings
+    );
+  }
+}
+
+async function handleDepositBonus(
+  existingTrx,
+  user,
+  updatedUser,
+  newDeposit,
+  depositAmount,
+  kioskSettings
+) {
+  try {
+    const promotion = await Promotion.findById(existingTrx.promotionId, {
+      claimtype: 1,
+      bonuspercentage: 1,
+      bonusexact: 1,
+      maxbonus: 1,
+      maintitle: 1,
+      maintitleEN: 1,
+    }).lean();
+
+    if (!promotion) {
+      console.log("FPAY, couldn't find promotion");
+      return;
+    }
+
+    let bonusAmount = 0;
+
+    if (promotion.claimtype === "Percentage") {
+      bonusAmount =
+        (Number(depositAmount) * parseFloat(promotion.bonuspercentage)) / 100;
+      if (promotion.maxbonus > 0 && bonusAmount > promotion.maxbonus) {
+        bonusAmount = promotion.maxbonus;
+      }
+    } else if (promotion.claimtype === "Exact") {
+      bonusAmount = parseFloat(promotion.bonusexact);
+      if (promotion.maxbonus > 0 && bonusAmount > promotion.maxbonus) {
+        bonusAmount = promotion.maxbonus;
+      }
+    }
+
+    if (bonusAmount <= 0) return;
+
+    bonusAmount = roundToTwoDecimals(bonusAmount);
+    const bonusTransactionId = uuidv4();
+
+    const [, newBonus] = await Promise.all([
+      User.findByIdAndUpdate(user._id, { $inc: { wallet: bonusAmount } }),
+
+      Bonus.create({
+        transactionId: bonusTransactionId,
+        userId: user._id,
+        username: user.username,
+        fullname: user.fullname || "unknown",
+        transactionType: "bonus",
+        processBy: "admin",
+        amount: bonusAmount,
+        walletamount: updatedUser?.wallet || user.wallet,
+        status: "approved",
+        method: "manual",
+        remark: "-",
+        promotionname: promotion.maintitle,
+        promotionnameEN: promotion.maintitleEN,
+        promotionId: existingTrx.promotionId,
+        depositId: newDeposit._id,
+        duplicateIP: user.duplicateIP,
+      }),
+
+      UserWalletLog.create({
+        userId: user._id,
+        transactionid: bonusTransactionId,
+        transactiontime: new Date(),
+        transactiontype: "bonus",
+        amount: bonusAmount,
+        status: "approved",
+        promotionnameCN: promotion.maintitle,
+        promotionnameEN: promotion.maintitleEN,
+      }),
+    ]);
+
+    if (kioskSettings?.status) {
+      await updateKioskBalance("subtract", bonusAmount, {
+        username: user.username,
+        transactionType: "bonus approval",
+        remark: `Bonus ID: ${newBonus._id}`,
+        processBy: "admin",
+      });
+    }
+  } catch (error) {
+    console.error("Error processing promotion:", error);
+  }
+}
+
 async function handleRejectedWithdrawalApproval(
   existingTrx,
   order_id,
@@ -522,98 +912,205 @@ async function handleApprovedWithdrawalReject(
   );
 }
 
+// ============================================
+// WITHDRAW HANDLERS
+// ============================================
+
+async function handleWithdrawApproval(
+  existingTrx,
+  order_id,
+  roundedAmount,
+  statusText
+) {
+  const [user, gateway] = await Promise.all([
+    User.findOne(
+      { username: existingTrx.username },
+      {
+        _id: 1,
+        username: 1,
+        fullname: 1,
+        wallet: 1,
+        duplicateIP: 1,
+        duplicateBank: 1,
+      }
+    ).lean(),
+    paymentgateway
+      .findOne({ name: { $regex: /^fpay$/i } }, { _id: 1, name: 1, balance: 1 })
+      .lean(),
+  ]);
+
+  if (!user)
+    throw { status: 404, message: `User not found: ${existingTrx.username}` };
+
+  if (existingTrx.status === "Reject") {
+    await handleRejectedWithdrawalApproval(
+      existingTrx,
+      order_id,
+      roundedAmount,
+      user
+    );
+  }
+
+  const oldGatewayBalance = gateway?.balance || 0;
+
+  const [, updatedGateway] = await Promise.all([
+    fpayModal.findByIdAndUpdate(existingTrx._id, {
+      $set: { status: statusText },
+    }),
+    paymentgateway.findOneAndUpdate(
+      { name: { $regex: /^fpay$/i } },
+      { $inc: { balance: -roundedAmount } },
+      { new: true, projection: { _id: 1, name: 1, balance: 1 } }
+    ),
+  ]);
+
+  await PaymentGatewayTransactionLog.create({
+    gatewayId: gateway?._id,
+    gatewayName: gateway?.name || "FPAY",
+    transactiontype: "withdraw",
+    amount: roundedAmount,
+    lastBalance: oldGatewayBalance,
+    currentBalance:
+      updatedGateway?.balance || oldGatewayBalance - roundedAmount,
+    remark: `Withdraw from ${user.username}`,
+    playerusername: user.username,
+    processby: "system",
+  });
+}
+
+async function handleWithdrawReject(
+  existingTrx,
+  order_id,
+  roundedAmount,
+  statusText
+) {
+  const [, , withdraw, updatedUser] = await Promise.all([
+    fpayModal.findByIdAndUpdate(existingTrx._id, {
+      $set: { status: statusText },
+    }),
+    UserWalletLog.findOneAndUpdate(
+      { transactionid: order_id },
+      { $set: { status: "cancel" } }
+    ),
+    Withdraw.findOneAndUpdate(
+      { transactionId: order_id },
+      {
+        $set: {
+          status: "reverted",
+          processBy: "admin",
+          processtime: "00:00:00",
+        },
+      },
+      {
+        new: false,
+        projection: { _id: 1, amount: 1, withdrawbankid: 1, remark: 1 },
+      }
+    ).lean(),
+    User.findOneAndUpdate(
+      { username: existingTrx.username },
+      { $inc: { wallet: roundedAmount } },
+      {
+        new: true,
+        projection: { _id: 1, username: 1, fullname: 1, wallet: 1 },
+      }
+    ).lean(),
+  ]);
+
+  // Handle approved withdrawal reject
+  if (existingTrx.status === "Success") {
+    await handleApprovedWithdrawalReject(
+      existingTrx,
+      order_id,
+      roundedAmount,
+      updatedUser
+    );
+  }
+
+  if (!withdraw)
+    throw {
+      status: 404,
+      message: `Withdraw not found for order_id: ${order_id}`,
+    };
+
+  const [kioskSettings, bank] = await Promise.all([
+    kioskbalance.findOne({}, { status: 1 }).lean(),
+    BankList.findById(withdraw.withdrawbankid, {
+      _id: 1,
+      bankname: 1,
+      ownername: 1,
+      bankaccount: 1,
+      qrimage: 1,
+      currentbalance: 1,
+    }).lean(),
+  ]);
+
+  if (!bank) throw { status: 404, message: "Invalid bank fpay callback" };
+
+  if (kioskSettings?.status) {
+    await updateKioskBalance("subtract", withdraw.amount, {
+      username: existingTrx.username,
+      transactionType: "withdraw reverted",
+      remark: `Withdraw ID: ${withdraw._id}`,
+      processBy: "admin",
+    });
+  }
+
+  await Promise.all([
+    BankList.findByIdAndUpdate(withdraw.withdrawbankid, {
+      $inc: {
+        currentbalance: withdraw.amount,
+        totalWithdrawals: -withdraw.amount,
+      },
+    }),
+    BankTransactionLog.create({
+      bankName: bank.bankname,
+      ownername: bank.ownername,
+      bankAccount: bank.bankaccount,
+      remark: withdraw.remark || "-",
+      lastBalance: bank.currentbalance,
+      currentBalance: bank.currentbalance + withdraw.amount,
+      processby: "admin",
+      transactiontype: "reverted withdraw",
+      amount: withdraw.amount,
+      qrimage: bank.qrimage,
+      playerusername: updatedUser?.username || existingTrx.username,
+      playerfullname: updatedUser?.fullname || "N/A",
+    }),
+  ]);
+
+  console.log(
+    `Transaction rejected: ${order_id}, User ${existingTrx.username} refunded ${roundedAmount}, New wallet: ${updatedUser?.wallet}`
+  );
+}
+
 router.post("/api/fpaymy", async (req, res) => {
   try {
-    const {
-      order_id,
-      amount,
-      currency,
-      order_status,
-      status,
-      charge,
-      token,
-      name,
-      type,
-      payment_type,
-    } = req.body;
+    const { order_id, amount, order_status, charge, type } = req.body;
 
-    if (
-      !order_id ||
-      !currency ||
-      amount === undefined ||
-      order_status === undefined
-    ) {
-      console.log("Missing required parameters:", {
-        order_id,
-        amount,
-        order_status,
-      });
-      return res.status(400).json();
-    }
-
-    const statusMapping = {
-      fail: "Reject",
-      completed: "Success",
-    };
-
-    const typeMapping = {
-      deposit: "deposit",
-      withdrawal: "withdraw",
-    };
-
-    const statusCode = String(order_status);
-    const statusText = statusMapping[statusCode] || "Unknown";
     const roundedAmount = roundToTwoDecimals(amount);
     const platformCharge = roundToTwoDecimals(charge || 0);
-    const transactionType = typeMapping[type] || "Unknown";
+    const statusText =
+      FPAY_CONFIG.statusMapping[String(order_status)] || "Unknown";
+    const transactionType = FPAY_CONFIG.typeMapping[type] || "Unknown";
 
-    const existingTrx = await fpayModal
-      .findOne(
-        { ourRefNo: order_id },
-        {
-          _id: 1,
-          username: 1,
-          status: 1,
-          createdAt: 1,
-          promotionId: 1,
-          paymenttype: 1,
-        }
-      )
-      .lean();
-
-    if (!existingTrx) {
-      console.log(`Transaction not found: ${order_id}, creating record`);
-      await fpayModal.create({
-        username: "N/A",
-        transfername: "N/A",
-        ourRefNo: order_id,
-        paymentGatewayRefNo: order_id,
-        amount: roundedAmount,
-        transactiontype: transactionType,
-        status: statusText,
-        platformCharge: platformCharge,
-        remark: `No transaction found with reference: ${order_id}. Created from callback.`,
-      });
-
-      return res.status(200).json();
+    // Validate callback
+    const validation = await validateFpayCallback(req);
+    if (!validation.valid) {
+      if (validation.status === 404) {
+        await createMissingTransaction(
+          order_id,
+          roundedAmount,
+          transactionType,
+          statusText,
+          platformCharge
+        );
+        return res.status(200).json();
+      }
+      console.log(validation.error);
+      return res.status(validation.status).json();
     }
 
-    const paymentTypeToUse = payment_type || existingTrx.paymenttype;
-
-    const SECRET_KEY_MAP = {
-      bank: fpayBankSecret,
-      duitnow: fpayDuitnowSecret,
-      ewallet: fpayEWalletSecret,
-    };
-
-    const secretKey = SECRET_KEY_MAP[paymentTypeToUse] || fpayBankSecret;
-
-    const ourToken = generateFpayCallbackToken(currency, secretKey);
-
-    if (ourToken !== token) {
-      console.log("token validate fail");
-      return res.status(403).json();
-    }
+    const { existingTrx } = validation;
 
     if (order_status === "completed" && existingTrx.status === "Success") {
       console.log("Transaction already processed successfully, skipping");
@@ -622,329 +1119,13 @@ router.post("/api/fpaymy", async (req, res) => {
 
     if (transactionType === "deposit") {
       if (order_status === "completed" && existingTrx.status !== "Success") {
-        const [user, gateway, kioskSettings, bank] = await Promise.all([
-          User.findOne(
-            { username: existingTrx.username },
-            {
-              _id: 1,
-              username: 1,
-              fullname: 1,
-              wallet: 1,
-              totaldeposit: 1,
-              firstDepositDate: 1,
-              duplicateIP: 1,
-              duplicateBank: 1,
-            }
-          ).lean(),
-
-          paymentgateway
-            .findOne(
-              { name: { $regex: /^fpay$/i } },
-              { _id: 1, name: 1, balance: 1 }
-            )
-            .lean(),
-
-          kioskbalance.findOne({}, { status: 1 }).lean(),
-
-          BankList.findById(bankIDPG, {
-            _id: 1,
-            bankname: 1,
-            ownername: 1,
-            bankaccount: 1,
-            qrimage: 1,
-            currentbalance: 1,
-          }).lean(),
-        ]);
-
-        if (!user) {
-          console.error(`User not found: ${existingTrx.username}`);
-          return res.status(404).json();
-        }
-
-        if (!bank) {
-          console.error(`Bank not found: ${bankIDPG}`);
-          return res.status(404).json();
-        }
-
-        const isNewDeposit = !user.firstDepositDate;
-        const oldGatewayBalance = gateway?.balance || 0;
-        const oldBankBalance = bank.currentbalance || 0;
-
-        const [
-          updatedUser,
-          newDeposit,
-          ,
-          walletLog,
-          updatedGateway,
-          updatedBank,
-        ] = await Promise.all([
-          User.findByIdAndUpdate(
-            user._id,
-            {
-              $inc: {
-                wallet: roundedAmount,
-                totaldeposit: roundedAmount,
-              },
-              $set: {
-                lastdepositdate: new Date(),
-                ...(isNewDeposit && {
-                  firstDepositDate: existingTrx.createdAt,
-                }),
-              },
-            },
-            { new: true, projection: { wallet: 1 } }
-          ).lean(),
-
-          Deposit.create({
-            userId: user._id,
-            username: user.username,
-            fullname: user.fullname || "unknown",
-            bankname: "FPAY",
-            ownername: "Payment Gateway",
-            transfernumber: order_id,
-            walletType: "Main",
-            transactionType: "deposit",
-            method: "auto",
-            processBy: "admin",
-            amount: roundedAmount,
-            walletamount: user.wallet,
-            remark: "-",
-            status: "approved",
-            processtime: "00:00:00",
-            newDeposit: isNewDeposit,
-            transactionId: order_id,
-            duplicateIP: user.duplicateIP,
-            duplicateBank: user.duplicateBank,
-          }),
-
-          fpayModal.findByIdAndUpdate(existingTrx._id, {
-            $set: { status: statusText, platformCharge: platformCharge },
-          }),
-
-          UserWalletLog.create({
-            userId: user._id,
-            transactionid: order_id,
-            transactiontime: new Date(),
-            transactiontype: "deposit",
-            amount: roundedAmount,
-            status: "approved",
-          }),
-
-          paymentgateway.findOneAndUpdate(
-            { name: { $regex: /^fpay$/i } },
-            { $inc: { balance: roundedAmount } },
-            { new: true, projection: { _id: 1, name: 1, balance: 1 } }
-          ),
-
-          BankList.findByIdAndUpdate(
-            bankIDPG,
-            [
-              {
-                $set: {
-                  totalDeposits: { $add: ["$totalDeposits", roundedAmount] },
-                  currentbalance: {
-                    $subtract: [
-                      {
-                        $add: [
-                          "$startingbalance",
-                          { $add: ["$totalDeposits", roundedAmount] },
-                          "$totalCashIn",
-                        ],
-                      },
-                      {
-                        $add: ["$totalWithdrawals", "$totalCashOut"],
-                      },
-                    ],
-                  },
-                },
-              },
-            ],
-            { new: true, projection: { currentbalance: 1 } }
-          ).lean(),
-        ]);
-
-        await BankTransactionLog.create({
-          bankName: bank.bankname,
-          ownername: bank.ownername,
-          bankAccount: bank.bankaccount,
-          remark: "-",
-          lastBalance: oldBankBalance,
-          currentBalance:
-            updatedBank?.currentbalance || oldBankBalance + roundedAmount,
-          processby: "admin",
-          qrimage: bank.qrimage,
-          playerusername: user.username,
-          playerfullname: user.fullname,
-          transactiontype: "deposit",
-          amount: roundedAmount,
-        });
-
-        const depositCount = await LiveTransaction.countDocuments({
-          type: "deposit",
-        });
-
-        if (depositCount >= 5) {
-          await LiveTransaction.findOneAndUpdate(
-            { type: "deposit" },
-            {
-              $set: {
-                username: user.username,
-                amount: roundedAmount,
-                time: new Date(),
-              },
-            },
-            { sort: { time: 1 } }
-          );
-        } else {
-          await LiveTransaction.create({
-            type: "deposit",
-            username: user.username,
-            amount: roundedAmount,
-            time: new Date(),
-            status: "completed",
-          });
-        }
-
-        if (kioskSettings?.status) {
-          const kioskResult = await updateKioskBalance(
-            "subtract",
-            roundedAmount,
-            {
-              username: user.username,
-              transactionType: "deposit approval",
-              remark: `Deposit ID: ${newDeposit._id}`,
-              processBy: "admin",
-            }
-          );
-          if (!kioskResult.success) {
-            console.error("Failed to update kiosk balance for deposit");
-          }
-        }
-
-        setImmediate(() => {
-          checkAndUpdateVIPLevel(user._id).catch((error) => {
-            console.error(
-              `VIP level update error for user ${user._id}:`,
-              error.message
-            );
-          });
-          updateUserGameLocks(user._id);
-        });
-
-        await PaymentGatewayTransactionLog.create({
-          gatewayId: gateway?._id,
-          gatewayName: gateway?.name || "FPAY",
-          transactiontype: "deposit",
-          amount: roundedAmount,
-          lastBalance: oldGatewayBalance,
-          currentBalance:
-            updatedGateway?.balance || oldGatewayBalance + roundedAmount,
-          remark: `Deposit from ${user.username}`,
-          playerusername: user.username,
-          processby: "system",
-          depositId: newDeposit._id,
-        });
-
-        if (existingTrx.promotionId) {
-          try {
-            const promotion = await Promotion.findById(
-              existingTrx.promotionId,
-              {
-                claimtype: 1,
-                bonuspercentage: 1,
-                bonusexact: 1,
-                maxbonus: 1,
-                maintitle: 1,
-                maintitleEN: 1,
-              }
-            ).lean();
-
-            if (!promotion) {
-              console.log("FPAY, couldn't find promotion");
-            } else {
-              let bonusAmount = 0;
-
-              if (promotion.claimtype === "Percentage") {
-                bonusAmount =
-                  (Number(amount) * parseFloat(promotion.bonuspercentage)) /
-                  100;
-                if (
-                  promotion.maxbonus > 0 &&
-                  bonusAmount > promotion.maxbonus
-                ) {
-                  bonusAmount = promotion.maxbonus;
-                }
-              } else if (promotion.claimtype === "Exact") {
-                bonusAmount = parseFloat(promotion.bonusexact);
-                if (
-                  promotion.maxbonus > 0 &&
-                  bonusAmount > promotion.maxbonus
-                ) {
-                  bonusAmount = promotion.maxbonus;
-                }
-              }
-
-              if (bonusAmount > 0) {
-                bonusAmount = roundToTwoDecimals(bonusAmount);
-                const bonusTransactionId = uuidv4();
-
-                const [, newBonus] = await Promise.all([
-                  User.findByIdAndUpdate(user._id, {
-                    $inc: { wallet: bonusAmount },
-                  }),
-
-                  Bonus.create({
-                    transactionId: bonusTransactionId,
-                    userId: user._id,
-                    username: user.username,
-                    fullname: user.fullname || "unknown",
-                    transactionType: "bonus",
-                    processBy: "admin",
-                    amount: bonusAmount,
-                    walletamount: updatedUser?.wallet || user.wallet,
-                    status: "approved",
-                    method: "manual",
-                    remark: "-",
-                    promotionname: promotion.maintitle,
-                    promotionnameEN: promotion.maintitleEN,
-                    promotionId: existingTrx.promotionId,
-                    depositId: newDeposit._id,
-                    duplicateIP: user.duplicateIP,
-                  }),
-
-                  UserWalletLog.create({
-                    userId: user._id,
-                    transactionid: bonusTransactionId,
-                    transactiontime: new Date(),
-                    transactiontype: "bonus",
-                    amount: bonusAmount,
-                    status: "approved",
-                    promotionnameCN: promotion.maintitle,
-                    promotionnameEN: promotion.maintitleEN,
-                  }),
-                ]);
-
-                if (kioskSettings?.status) {
-                  const kioskResult = await updateKioskBalance(
-                    "subtract",
-                    bonusAmount,
-                    {
-                      username: user.username,
-                      transactionType: "bonus approval",
-                      remark: `Bonus ID: ${newBonus._id}`,
-                      processBy: "admin",
-                    }
-                  );
-                  if (!kioskResult.success) {
-                    console.error("Failed to update kiosk balance for bonus");
-                  }
-                }
-              }
-            }
-          } catch (promotionError) {
-            console.error("Error processing promotion:", promotionError);
-          }
-        }
+        await handleDepositApproval(
+          existingTrx,
+          order_id,
+          roundedAmount,
+          platformCharge,
+          statusText
+        );
       } else {
         await fpayModal.findByIdAndUpdate(existingTrx._id, {
           $set: { status: statusText, remark: "Payment failed" },
@@ -952,186 +1133,33 @@ router.post("/api/fpaymy", async (req, res) => {
       }
     } else if (transactionType === "withdraw") {
       if (order_status === "completed" && existingTrx.status !== "Success") {
-        const [user, gateway] = await Promise.all([
-          User.findOne(
-            { username: existingTrx.username },
-            {
-              _id: 1,
-              username: 1,
-              fullname: 1,
-              wallet: 1,
-              duplicateIP: 1,
-              duplicateBank: 1,
-            }
-          ).lean(),
-
-          paymentgateway
-            .findOne(
-              { name: { $regex: /^fpay$/i } },
-              { _id: 1, name: 1, balance: 1 }
-            )
-            .lean(),
-        ]);
-
-        if (!user) {
-          console.error(`User not found: ${existingTrx.username}`);
-          return res.status(200).json({ status: -1 });
-        }
-
-        if (existingTrx.status === "Reject") {
-          await handleRejectedWithdrawalApproval(
-            existingTrx,
-            order_id,
-            roundedAmount,
-            user
-          );
-        }
-
-        const oldGatewayBalance = gateway?.balance || 0;
-
-        const [, updatedGateway] = await Promise.all([
-          fpayModal.findByIdAndUpdate(existingTrx._id, {
-            $set: { status: statusText },
-          }),
-
-          paymentgateway.findOneAndUpdate(
-            { name: { $regex: /^fpay$/i } },
-            { $inc: { balance: -roundedAmount } },
-            { new: true, projection: { _id: 1, name: 1, balance: 1 } }
-          ),
-        ]);
-
-        await PaymentGatewayTransactionLog.create({
-          gatewayId: gateway?._id,
-          gatewayName: gateway?.name || "FPAY",
-          transactiontype: "withdraw",
-          amount: roundedAmount,
-          lastBalance: oldGatewayBalance,
-          currentBalance:
-            updatedGateway?.balance || oldGatewayBalance - roundedAmount,
-          remark: `Withdraw from ${user.username}`,
-          playerusername: user.username,
-          processby: "system",
-        });
+        await handleWithdrawApproval(
+          existingTrx,
+          order_id,
+          roundedAmount,
+          statusText
+        );
       } else if (order_status === "fail" && existingTrx.status !== "Reject") {
-        const [, , withdraw, updatedUser] = await Promise.all([
-          fpayModal.findByIdAndUpdate(existingTrx._id, {
-            $set: { status: statusText },
-          }),
-
-          UserWalletLog.findOneAndUpdate(
-            { transactionid: order_id },
-            { $set: { status: "cancel" } }
-          ),
-
-          Withdraw.findOneAndUpdate(
-            { transactionId: order_id },
-            {
-              $set: {
-                status: "reverted",
-                processBy: "admin",
-                processtime: "00:00:00",
-              },
-            },
-            {
-              new: false,
-              projection: { _id: 1, amount: 1, withdrawbankid: 1, remark: 1 },
-            }
-          ).lean(),
-
-          User.findOneAndUpdate(
-            { username: existingTrx.username },
-            { $inc: { wallet: roundedAmount } },
-            {
-              new: true,
-              projection: { _id: 1, username: 1, fullname: 1, wallet: 1 },
-            }
-          ).lean(),
-        ]);
-
-        if (existingTrx.status === "Success") {
-          await handleApprovedWithdrawalReject(
-            existingTrx,
-            order_id,
-            roundedAmount,
-            updatedUser
-          );
-        }
-
-        if (!withdraw) {
-          console.log(`Withdraw not found for order_id: ${order_id}`);
-          return res.status(200).json({ status: 1 });
-        }
-
-        const [kioskSettings, bank] = await Promise.all([
-          kioskbalance.findOne({}, { status: 1 }).lean(),
-          BankList.findById(withdraw.withdrawbankid, {
-            _id: 1,
-            bankname: 1,
-            ownername: 1,
-            bankaccount: 1,
-            qrimage: 1,
-            currentbalance: 1,
-          }).lean(),
-        ]);
-
-        if (!bank) {
-          console.log("Invalid bank fpay callback");
-          return res.status(200).json({ status: 1 });
-        }
-
-        if (kioskSettings?.status) {
-          const kioskResult = await updateKioskBalance(
-            "subtract",
-            withdraw.amount,
-            {
-              username: existingTrx.username,
-              transactionType: "withdraw reverted",
-              remark: `Withdraw ID: ${withdraw._id}`,
-              processBy: "admin",
-            }
-          );
-          if (!kioskResult.success) {
-            console.error("Failed to update kiosk balance for withdraw revert");
-          }
-        }
-
-        await Promise.all([
-          BankList.findByIdAndUpdate(withdraw.withdrawbankid, {
-            $inc: {
-              currentbalance: withdraw.amount,
-              totalWithdrawals: -withdraw.amount,
-            },
-          }),
-
-          BankTransactionLog.create({
-            bankName: bank.bankname,
-            ownername: bank.ownername,
-            bankAccount: bank.bankaccount,
-            remark: withdraw.remark || "-",
-            lastBalance: bank.currentbalance,
-            currentBalance: bank.currentbalance + withdraw.amount,
-            processby: "admin",
-            transactiontype: "reverted withdraw",
-            amount: withdraw.amount,
-            qrimage: bank.qrimage,
-            playerusername: updatedUser?.username || existingTrx.username,
-            playerfullname: updatedUser?.fullname || "N/A",
-          }),
-        ]);
-
-        console.log(
-          `Transaction rejected: ${order_id}, User ${existingTrx.username} refunded ${roundedAmount}, New wallet: ${updatedUser?.wallet}`
+        await handleWithdrawReject(
+          existingTrx,
+          order_id,
+          roundedAmount,
+          statusText
         );
       } else {
         await fpayModal.findByIdAndUpdate(existingTrx._id, {
-          $set: { status: statusText, remark: "Payment  failed" },
+          $set: { status: statusText, remark: "Payment failed" },
         });
       }
     }
 
     return res.status(200).json();
   } catch (error) {
+    if (error.status) {
+      console.error(error.message);
+      return res.status(error.status).json();
+    }
+
     console.error("Payment callback processing error:", {
       error: error.message,
       body: req.body,
