@@ -1606,7 +1606,7 @@ router.get(
       const user = await User.findById(userId);
 
       const records = await GameDataLog.find({
-        username: user.username.toLowerCase(),
+        username: user.username,
         date: {
           $gte: moment(new Date(startDate))
             .utc()
