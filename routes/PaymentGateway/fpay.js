@@ -269,6 +269,8 @@ router.post("/api/fpay/getpaymentlink", authenticateToken, async (req, res) => {
       GrabPay: "duitnow",
       Boost: "duitnow",
     };
+
+    console.log(PAYMENT_METHOD[bankCode], "lololl");
     const fpayAuth = await getFPayAuth(PAYMENT_METHOD[bankCode]);
 
     if (!fpayAuth.success) {
