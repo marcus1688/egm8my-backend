@@ -32,7 +32,9 @@ const BankList = require("../../models/banklist.model");
 const LiveTransaction = require("../../models/transaction.model");
 
 require("dotenv").config();
-const merchantName = "BM8MYG_inf";
+const merchantNameOnlineBanking = "BM8MYG_inf";
+const merchantNameDuitnow = "BM8MYD_inf";
+const merchantNameEWallet = "BM8MYE_inf";
 const fpayBankAPIKEY = process.env.FPAYBANK_APIKEY;
 const fpayBankSecret = process.env.FPAYBANK_SECRETKEY;
 const fpayDuitnowAPIKEY = process.env.FPAYDUITNOW_APIKEY;
@@ -61,20 +63,24 @@ function generateFpayCallbackToken(orderid, amount, currency, secretKey) {
 
 async function getFPayAuth(paymentMethod) {
   try {
-    let apiKey, secretKey;
-
+    let apiKey, secretKey, merchantName;
+    console.log(paymentMethod);
     if (paymentMethod === "bank") {
       apiKey = fpayBankAPIKEY;
       secretKey = fpayBankSecret;
+      merchantName = merchantNameOnlineBanking;
     } else if (paymentMethod === "duitnow") {
       apiKey = fpayDuitnowAPIKEY;
       secretKey = fpayDuitnowSecret;
+      merchantName = merchantNameDuitnow;
     } else if (paymentMethod === "ewallet") {
       apiKey = fpayEWalletAPIKEY;
       secretKey = fpayEWalletSecret;
+      merchantName = merchantNameEWallet;
     } else {
       apiKey = fpayBankAPIKEY;
       secretKey = fpayBankSecret;
+      merchantName = merchantNameOnlineBanking;
     }
 
     const payload = {
@@ -95,7 +101,8 @@ async function getFPayAuth(paymentMethod) {
       };
     }
 
-    console.log("Error Getting FPay Auth Token:", response.data);
+    console.log("Error Getting FPay Auth Token:");
+    console.log(response.data);
     return {
       success: false,
       error: response.data?.message || "Failed to get auth token",
