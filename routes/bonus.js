@@ -11,11 +11,6 @@ const UserWalletLog = require("../models/userwalletlog.model");
 const Promotion = require("../models/promotion.model");
 const vip = require("../models/vip.model");
 const { checkSportPendingMatch } = require("../helpers/turnoverHelper");
-const {
-  checkGW99Balance,
-  checkAlipayBalance,
-  checkLionKingBalance,
-} = require("../services/game");
 
 //this need change useing createdAt time
 const calculateCountdown = (createdAt) => {

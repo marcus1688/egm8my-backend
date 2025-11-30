@@ -19,11 +19,7 @@ const { User } = require("../models/users.model");
 const UserWalletLog = require("../models/userwalletlog.model");
 const Promotion = require("../models/promotion.model");
 const moment = require("moment");
-const {
-  checkGW99Balance,
-  checkAlipayBalance,
-  checkLionKingBalance,
-} = require("../services/game");
+
 const Withdraw = require("../models/withdraw.model");
 
 require("dotenv").config();

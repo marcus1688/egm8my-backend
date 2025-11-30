@@ -13,11 +13,7 @@ const moment = require("moment");
 const Deposit = require("../models/deposit.model");
 const Bonus = require("../models/bonus.model");
 const promotion = require("../models/promotion.model");
-const {
-  checkGW99Balance,
-  checkAlipayBalance,
-  checkLionKingBalance,
-} = require("../services/game");
+
 const axios = require("axios");
 
 // Check Turnover Requirement
