@@ -43,6 +43,9 @@ const slotrsgSchema = new mongoose.Schema(
     gametype: {
       type: String,
     },
+    betTime: {
+      type: Date,
+    },
     depositamount: {
       type: Number,
     },

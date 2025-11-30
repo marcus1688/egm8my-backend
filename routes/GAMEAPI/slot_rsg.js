@@ -1446,17 +1446,14 @@ router.post("/api/rsgprodmy/CheckTransaction", async (req, res) => {
   }
 });
 
-router.post("/api/rsgprodmy/getGameMinReport", async (req, res) => {
+async function syncRSGGameData() {
   try {
-    const gameType = 2;
-
     const now = moment.utc().add(8, "hours");
-    const end = now.clone().subtract(70, "minutes");
+    const end = now.clone().subtract(3, "minutes");
     const start = end.clone().subtract(14, "minutes");
 
     const formattedTimeStart = start.format("YYYY-MM-DD HH:mm");
     const formattedTimeEnd = end.format("YYYY-MM-DD HH:mm");
-
     const timestamp = Math.floor(Date.now() / 1000);
 
     const payload = {
@@ -1476,12 +1473,6 @@ router.post("/api/rsgprodmy/getGameMinReport", async (req, res) => {
       encryptedData
     );
 
-    console.log("RSG Get Game Report Request:", {
-      gameType,
-      timeStart: formattedTimeStart,
-      timeEnd: formattedTimeEnd,
-    });
-
     // Make API request
     const response = await axios.post(
       `${rsgAPIURL}/Report/GetGameMinReport`,
@@ -1495,6 +1486,7 @@ router.post("/api/rsgprodmy/getGameMinReport", async (req, res) => {
           "User-Agent":
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         },
+        timeout: 30000, // 30 second timeout
       }
     );
 
@@ -1502,55 +1494,823 @@ router.post("/api/rsgprodmy/getGameMinReport", async (req, res) => {
     const decryptedResponse = decryptDES(response.data, rsgDesKey, rsgDesIV);
     const responseData = JSON.parse(decryptedResponse);
 
-    console.log("RSG Get Game Report Response:", responseData);
-
-    // Handle errors
+    // Check for errors
     if (responseData.ErrorCode !== 0) {
-      let errorMessage = {
-        en: "Failed to retrieve game report",
-        zh: "获取游戏报告失败",
-      };
-
-      if (responseData.ErrorCode === 3011) {
-        errorMessage = {
-          en: "Permission denied for system",
-          zh: "系统权限不足",
-        };
-      } else if (responseData.ErrorCode === 3015) {
-        errorMessage = {
-          en: "Time is not in the allowed range",
-          zh: "时间不在允许的范围内",
-        };
-      }
-
-      return res.status(200).json({
+      return {
         success: false,
-        message: errorMessage,
-        error: responseData.ErrorMessage,
-      });
+        error: `API Error ${responseData.ErrorCode}: ${responseData.ErrorMessage}`,
+      };
     }
 
+    const gameReports = responseData.Data?.GameReport || [];
+
+    if (gameReports.length === 0) {
+      return {
+        success: true,
+        newRecords: 0,
+        skippedRecords: 0,
+        totalRecords: 0,
+      };
+    }
+
+    const sequenceNumbers = gameReports.map((r) => r.SequenNumber.toString());
+    const existingRecords = await SlotRSGModal.find(
+      { betId: { $in: sequenceNumbers } },
+      { betId: 1 }
+    ).lean();
+
+    const existingBetIds = new Set(existingRecords.map((r) => r.betId));
+
+    const newReports = gameReports.filter(
+      (report) => !existingBetIds.has(report.SequenNumber.toString())
+    );
+
+    if (newReports.length === 0) {
+      return {
+        success: true,
+        newRecords: 0,
+        skippedRecords: gameReports.length,
+        totalRecords: gameReports.length,
+      };
+    }
+
+    const recordsToInsert = newReports.map((report) => ({
+      betId: report.SequenNumber.toString(),
+      username: report.UserId,
+      betamount: report.BetSum,
+      settleamount: report.WinSum,
+      bet: true,
+      settle: true,
+      betTime: report.TimeMinute
+        ? moment
+            .tz(report.TimeMinute, "YYYY-MM-DD HH:mm", "Asia/Kuala_Lumpur")
+            .utc()
+            .toDate()
+        : moment.utc().toDate(),
+      gametype: "FISH",
+    }));
+
+    await SlotRSGModal.insertMany(recordsToInsert, { ordered: false });
+
+    return {
+      success: true,
+      newRecords: newReports.length,
+      skippedRecords: gameReports.length - newReports.length,
+      totalRecords: gameReports.length,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
+
+router.post("/api/rsgslot/getturnoverforrebate", async (req, res) => {
+  try {
+    const { date } = req.body;
+
+    let startDate, endDate;
+    if (date === "today") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    } else if (date === "yesterday") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    }
+
+    console.log("RSG SLOT QUERYING TIME", startDate, endDate);
+
+    const records = await SlotRSGModal.find({
+      createdAt: {
+        $gte: startDate,
+        $lt: endDate,
+      },
+      gametype: "SLOT",
+      cancel: { $ne: true },
+      settle: true,
+    });
+
+    const uniqueGameIds = [
+      ...new Set(records.map((record) => record.username)),
+    ];
+
+    const users = await User.find(
+      { gameId: { $in: uniqueGameIds } },
+      { gameId: 1, username: 1 }
+    ).lean();
+
+    const gameIdToUsername = {};
+    users.forEach((user) => {
+      gameIdToUsername[user.gameId] = user.username;
+    });
+
+    // Aggregate turnover and win/loss for each player
+    let playerSummary = {};
+
+    records.forEach((record) => {
+      const gameId = record.username;
+      const actualUsername = gameIdToUsername[gameId];
+
+      if (!actualUsername) {
+        console.warn(`RSG User not found for gameId: ${gameId}`);
+        return;
+      }
+
+      if (!playerSummary[actualUsername]) {
+        playerSummary[actualUsername] = { turnover: 0, winloss: 0 };
+      }
+
+      playerSummary[actualUsername].turnover += record.betamount || 0;
+
+      playerSummary[actualUsername].winloss +=
+        (record.settleamount || 0) - (record.betamount || 0);
+    });
+    Object.keys(playerSummary).forEach((playerId) => {
+      playerSummary[playerId].turnover = Number(
+        playerSummary[playerId].turnover.toFixed(2)
+      );
+      playerSummary[playerId].winloss = Number(
+        playerSummary[playerId].winloss.toFixed(2)
+      );
+    });
     return res.status(200).json({
       success: true,
-      data: {
-        responseData,
-      },
-      message: {
-        en: "Game report retrieved successfully",
-        zh: "游戏报告检索成功",
+      summary: {
+        gamename: "RSG",
+        gamecategory: "Slot Games",
+        users: playerSummary,
       },
     });
   } catch (error) {
-    console.error("RSG Get Game Report error:", error);
+    console.log("RSG: Failed to fetch win/loss report:", error.message);
     return res.status(500).json({
       success: false,
       message: {
-        en: "Failed to retrieve game report. Please try again.",
-        zh: "获取游戏报告失败，请重试。",
+        en: "RSG: Failed to fetch win/loss report",
+        zh: "RSG: 获取盈亏报告失败",
       },
-      error: error.message,
     });
   }
 });
+
+router.get(
+  "/admin/api/rsgslot/:userId/dailygamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      const records = await SlotRSGModal.find({
+        username: user.gameId,
+        createdAt: {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        },
+        gametype: "SLOT",
+        cancel: { $ne: true },
+        settle: true,
+      });
+
+      // Aggregate turnover and win/loss for each player
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        totalTurnover += record.betamount || 0;
+        totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
+      });
+
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+      // Return the aggregated results
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "RSG",
+          gamecategory: "Slot Games",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("RSG: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "RSG: Failed to fetch win/loss report",
+          zh: "RSG: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/rsgslot/:userId/gamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      const records = await GameDataLog.find({
+        username: user.username,
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      // Sum up the values for EVOLUTION under Live Casino
+      records.forEach((record) => {
+        // Convert Mongoose Map to Plain Object
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
+
+        if (
+          gameCategories &&
+          gameCategories["Slot Games"] &&
+          gameCategories["Slot Games"] instanceof Map
+        ) {
+          const gameCat = Object.fromEntries(gameCategories["Slot Games"]);
+
+          if (gameCat["RSG"]) {
+            totalTurnover += gameCat["RSG"].turnover || 0;
+            totalWinLoss += gameCat["RSG"].winloss || 0;
+          }
+        }
+      });
+
+      // Format the total values to two decimal places
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "RSG",
+          gamecategory: "Slot Games",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("RSG: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "RSG: Failed to fetch win/loss report",
+          zh: "RSG: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/rsgslot/dailykioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const records = await SlotRSGModal.find({
+        createdAt: {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        },
+        gametype: "SLOT",
+        cancel: { $ne: true },
+        settle: true,
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        totalTurnover += record.betamount || 0;
+
+        totalWinLoss += (record.betamount || 0) - (record.settleamount || 0);
+      });
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "RSG",
+          gamecategory: "Slot Games",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("RSG: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "RSG: Failed to fetch win/loss report",
+          zh: "RSG: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/rsgslot/kioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const records = await GameDataLog.find({
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
+
+        if (
+          gameCategories &&
+          gameCategories["Slot Games"] &&
+          gameCategories["Slot Games"] instanceof Map
+        ) {
+          const gameCat = Object.fromEntries(gameCategories["Slot Games"]);
+
+          if (gameCat["RSG"]) {
+            totalTurnover += Number(gameCat["RSG"].turnover || 0);
+            totalWinLoss += Number(gameCat["RSG"].winloss || 0) * -1;
+          }
+        }
+      });
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "RSG",
+          gamecategory: "Slot Games",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("RSG: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "RSG: Failed to fetch win/loss report",
+          zh: "RSG: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+// ----------------
+router.post("/api/rsgfish/getturnoverforrebate", async (req, res) => {
+  try {
+    const { date } = req.body;
+
+    let startDate, endDate;
+    if (date === "today") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    } else if (date === "yesterday") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    }
+
+    console.log("RSG FISH QUERYING TIME", startDate, endDate);
+
+    const records = await SlotRSGModal.find({
+      betTime: {
+        $gte: startDate,
+        $lt: endDate,
+      },
+      gametype: "FISH",
+      cancel: { $ne: true },
+      settle: true,
+    });
+
+    const uniqueGameIds = [
+      ...new Set(records.map((record) => record.username)),
+    ];
+
+    const users = await User.find(
+      { gameId: { $in: uniqueGameIds } },
+      { gameId: 1, username: 1 }
+    ).lean();
+
+    const gameIdToUsername = {};
+    users.forEach((user) => {
+      gameIdToUsername[user.gameId] = user.username;
+    });
+    // Aggregate turnover and win/loss for each player
+    let playerSummary = {};
+
+    records.forEach((record) => {
+      const gameId = record.username;
+      const actualUsername = gameIdToUsername[gameId];
+
+      if (!playerSummary[actualUsername]) {
+        playerSummary[actualUsername] = { turnover: 0, winloss: 0 };
+      }
+
+      playerSummary[actualUsername].turnover += record.betamount || 0;
+
+      playerSummary[actualUsername].winloss +=
+        (record.withdrawamount || 0) - (record.depositamount || 0);
+    });
+    // Format the turnover and win/loss for each player to two decimal places
+    Object.keys(playerSummary).forEach((playerId) => {
+      playerSummary[playerId].turnover = Number(
+        playerSummary[playerId].turnover.toFixed(2)
+      );
+      playerSummary[playerId].winloss = Number(
+        playerSummary[playerId].winloss.toFixed(2)
+      );
+    });
+    // Return the aggregated results
+    return res.status(200).json({
+      success: true,
+      summary: {
+        gamename: "RSG",
+        gamecategory: "Fishing",
+        users: playerSummary,
+      },
+    });
+  } catch (error) {
+    console.log("RSG: Failed to fetch win/loss report:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: {
+        en: "RSG: Failed to fetch win/loss report",
+        zh: "RSG: 获取盈亏报告失败",
+      },
+    });
+  }
+});
+
+router.get(
+  "/admin/api/rsgfish/:userId/dailygamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      const records = await SlotRSGModal.find({
+        username: user.gameId,
+        betTime: {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        },
+        gametype: "FISH",
+        cancel: { $ne: true },
+        settle: true,
+      });
+
+      // Aggregate turnover and win/loss for each player
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        totalTurnover += record.betamount || 0;
+        totalWinLoss +=
+          (record.withdrawamount || 0) - (record.depositamount || 0);
+      });
+
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+      // Return the aggregated results
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "RSG",
+          gamecategory: "Fishing",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("RSG: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "RSG: Failed to fetch win/loss report",
+          zh: "RSG: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/rsgfish/:userId/gamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      const records = await GameDataLog.find({
+        username: user.username,
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      // Sum up the values for EVOLUTION under Live Casino
+      records.forEach((record) => {
+        // Convert Mongoose Map to Plain Object
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
+
+        if (
+          gameCategories &&
+          gameCategories["Fishing"] &&
+          gameCategories["Fishing"] instanceof Map
+        ) {
+          const gameCat = Object.fromEntries(gameCategories["Fishing"]);
+
+          if (gameCat["RSG"]) {
+            totalTurnover += gameCat["RSG"].turnover || 0;
+            totalWinLoss += gameCat["RSG"].winloss || 0;
+          }
+        }
+      });
+
+      // Format the total values to two decimal places
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "RSG",
+          gamecategory: "Fishing",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("RSG: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "RSG: Failed to fetch win/loss report",
+          zh: "RSG: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/rsgfish/dailykioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const records = await SlotRSGModal.find({
+        betTime: {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        },
+        gametype: "FISH",
+        cancel: { $ne: true },
+        settle: true,
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        totalTurnover += record.betamount || 0;
+
+        totalWinLoss +=
+          (record.depositamount || 0) - (record.withdrawamount || 0);
+      });
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "RSG",
+          gamecategory: "Fishing",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("RSG: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "RSG: Failed to fetch win/loss report",
+          zh: "RSG: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/rsgfish/kioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const records = await GameDataLog.find({
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
+
+        if (
+          gameCategories &&
+          gameCategories["Fishing"] &&
+          gameCategories["Fishing"] instanceof Map
+        ) {
+          const gameCat = Object.fromEntries(gameCategories["Fishing"]);
+
+          if (gameCat["RSG"]) {
+            totalTurnover += Number(gameCat["RSG"].turnover || 0);
+            totalWinLoss += Number(gameCat["RSG"].winloss || 0) * -1;
+          }
+        }
+      });
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "RSG",
+          gamecategory: "Fishing",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("RSG: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "RSG: Failed to fetch win/loss report",
+          zh: "RSG: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+if (process.env.NODE_ENV !== "development") {
+  cron.schedule("*/10 * * * *", async () => {
+    try {
+      console.log(
+        `[${moment().format(
+          "YYYY-MM-DD HH:mm:ss"
+        )}] Starting RSG game data sync...`
+      );
+
+      const result = await syncRSGGameData();
+
+      if (result.success) {
+        console.log(
+          `[RSG Sync] ✅ Completed: ${result.newRecords} new, ${result.skippedRecords} skipped, ${result.totalRecords} total`
+        );
+      } else {
+        console.error(`[RSG Sync] ❌ Failed: ${result.error}`);
+      }
+    } catch (error) {
+      console.error("[RSG Cron] Fatal error:", error.message);
+    }
+  });
+}
 
 module.exports = router;

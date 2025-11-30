@@ -484,6 +484,22 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    kiss918GameID: {
+      type: String,
+      default: null,
+    },
+    kiss918GamePW: {
+      type: String,
+      default: null,
+    },
+    pastKiss918GameID: {
+      type: [String],
+      default: [],
+    },
+    pastKiss918GamePW: {
+      type: [String],
+      default: [],
+    },
   },
   {
     toJSON: { getters: true },
