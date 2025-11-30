@@ -13,8 +13,40 @@ const moment = require("moment");
 const Deposit = require("../models/deposit.model");
 const Bonus = require("../models/bonus.model");
 const promotion = require("../models/promotion.model");
-
+const { mega888CheckBalance } = require("./GAMEAPI/slot_mega888");
 const axios = require("axios");
+
+async function getTotalGameBalance(user) {
+  const GAME_CHECKERS = [{ name: "MEGA888", checker: mega888CheckBalance }];
+
+  const results = await Promise.all(
+    GAME_CHECKERS.map(({ name, checker }) =>
+      checker(user)
+        .then((result) => ({ name, success: true, ...result }))
+        .catch((error) => ({
+          name,
+          success: false,
+          error: error.message || "Connection failed",
+          balance: 0,
+        }))
+    )
+  );
+
+  const errors = {};
+  const totalBalance = results.reduce((total, result) => {
+    if (result.success && result.balance != null) {
+      return total + (Number(result.balance) || 0);
+    }
+
+    console.error(`${result.name} balance check error:`, result);
+    errors[result.name.toLowerCase()] = {
+      error: result.error || "Failed to fetch balance",
+    };
+    return total;
+  }, 0);
+
+  return { totalBalance, errors };
+}
 
 // Check Turnover Requirement
 // const checkTurnoverRequirements = async (userId) => {
@@ -904,56 +936,11 @@ router.post("/api/withdraw", authenticateToken, async (req, res) => {
     }
     const transactionId = uuidv4();
 
-    const [GW99Result, AlipayResult, LionKingResult] = await Promise.all([
-      checkGW99Balance(user.username).catch((error) => ({
-        success: false,
-        error: error.message || "Connection failed",
-        balance: 0,
-      })),
-      checkAlipayBalance(user.username).catch((error) => ({
-        success: false,
-        error: error.message || "Connection failed",
-        balance: 0,
-      })),
-      checkLionKingBalance(user.username).catch((error) => ({
-        success: false,
-        error: error.message || "Connection failed",
-        balance: 0,
-      })),
-    ]);
+    const { totalBalance: totalGameBalance, errors: balanceFetchErrors } =
+      await getTotalGameBalance(user);
 
-    const balanceFetchErrors = {};
-
-    let totalGameBalance = 0;
-
-    if (GW99Result.success && GW99Result.balance != null) {
-      totalGameBalance += Number(GW99Result.balance) || 0;
-    } else {
-      console.error("GW99 balance check error:", GW99Result);
-      balanceFetchErrors.gw99 = {
-        error: GW99Result.error || "Failed to fetch balance",
-        // timestamp: new Date().toISOString(),
-      };
-    }
-
-    if (AlipayResult.success && AlipayResult.balance != null) {
-      totalGameBalance += Number(AlipayResult.balance) || 0;
-    } else {
-      console.error("Alipay balance check error:", AlipayResult);
-      balanceFetchErrors.alipay = {
-        error: AlipayResult.error || "Failed to fetch balance",
-        // timestamp: new Date().toISOString(),
-      };
-    }
-
-    if (LionKingResult.success && LionKingResult.balance != null) {
-      totalGameBalance += Number(LionKingResult.balance) || 0;
-    } else {
-      console.error("LionKing balance check error:", LionKingResult);
-      balanceFetchErrors.lionking = {
-        error: LionKingResult.error || "Failed to fetch balance",
-        // timestamp: new Date().toISOString(),
-      };
+    if (Object.keys(balanceFetchErrors).length > 0) {
+      console.log("Some game balance checks failed:", balanceFetchErrors);
     }
 
     const totalWalletAmount = Number(user.wallet || 0) + totalGameBalance;
@@ -1142,56 +1129,11 @@ router.post("/admin/api/withdraw", authenticateAdminToken, async (req, res) => {
       console.error("Error checking last deposit name:", error);
     }
 
-    const [GW99Result, AlipayResult, LionKingResult] = await Promise.all([
-      checkGW99Balance(user.username).catch((error) => ({
-        success: false,
-        error: error.message || "Connection failed",
-        balance: 0,
-      })),
-      checkAlipayBalance(user.username).catch((error) => ({
-        success: false,
-        error: error.message || "Connection failed",
-        balance: 0,
-      })),
-      checkLionKingBalance(user.username).catch((error) => ({
-        success: false,
-        error: error.message || "Connection failed",
-        balance: 0,
-      })),
-    ]);
+    const { totalBalance: totalGameBalance, errors: balanceFetchErrors } =
+      await getTotalGameBalance(user);
 
-    const balanceFetchErrors = {};
-
-    let totalGameBalance = 0;
-
-    if (GW99Result.success && GW99Result.balance != null) {
-      totalGameBalance += Number(GW99Result.balance) || 0;
-    } else {
-      console.error("GW99 balance check error:", GW99Result);
-      balanceFetchErrors.gw99 = {
-        error: GW99Result.error || "Failed to fetch balance",
-        // timestamp: new Date().toISOString(),
-      };
-    }
-
-    if (AlipayResult.success && AlipayResult.balance != null) {
-      totalGameBalance += Number(AlipayResult.balance) || 0;
-    } else {
-      console.error("Alipay balance check error:", AlipayResult);
-      balanceFetchErrors.alipay = {
-        error: AlipayResult.error || "Failed to fetch balance",
-        // timestamp: new Date().toISOString(),
-      };
-    }
-
-    if (LionKingResult.success && LionKingResult.balance != null) {
-      totalGameBalance += Number(LionKingResult.balance) || 0;
-    } else {
-      console.error("LionKing balance check error:", LionKingResult);
-      balanceFetchErrors.lionking = {
-        error: LionKingResult.error || "Failed to fetch balance",
-        // timestamp: new Date().toISOString(),
-      };
+    if (Object.keys(balanceFetchErrors).length > 0) {
+      console.log("Some game balance checks failed:", balanceFetchErrors);
     }
 
     const totalWalletAmount = Number(user.wallet || 0) + totalGameBalance;
