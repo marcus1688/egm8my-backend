@@ -67,6 +67,7 @@ const SlotBTGamingModal = require("../models/slot_btgaming.model");
 const SlotAceWinModal = require("../models/slot_acewin.model");
 const SlotSpadeGamingModal = require("../models/slot_spadegaming.model");
 const slotMega888Modal = require("../models/slot_mega888.model");
+const SlotRSGModal = require("../models/slot_rsg.model");
 
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
@@ -6089,6 +6090,11 @@ router.get(
           }),
 
           getAllUsersTurnover(slotMega888Modal, {}),
+
+          getAllUsersTurnover(SlotRSGModal, {
+            cancel: { $ne: true },
+            settle: true,
+          }),
         ];
 
         const todayGameResults = await Promise.allSettled(todayGamePromises);
