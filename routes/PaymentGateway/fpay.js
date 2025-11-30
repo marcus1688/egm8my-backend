@@ -1349,4 +1349,91 @@ router.post("/admin/api/fpay/requesttransfer/:userId", async (req, res) => {
     });
   }
 });
+
+router.post("/api/fpaymypayout", async (req, res) => {
+  try {
+    const { order_id, amount, order_status, charge, type } = req.body;
+
+    const roundedAmount = roundToTwoDecimals(amount);
+    const platformCharge = roundToTwoDecimals(charge || 0);
+    const statusText =
+      FPAY_CONFIG.statusMapping[String(order_status)] || "Unknown";
+    const transactionType = FPAY_CONFIG.typeMapping[type] || "Unknown";
+
+    // Validate callback
+    const validation = await validateFpayCallback(req);
+    if (!validation.valid) {
+      if (validation.status === 404) {
+        await createMissingTransaction(
+          order_id,
+          roundedAmount,
+          transactionType,
+          statusText,
+          platformCharge
+        );
+        return res.status(200).json();
+      }
+      console.log(validation.error);
+      return res.status(validation.status).json();
+    }
+
+    const { existingTrx } = validation;
+
+    if (order_status === "completed" && existingTrx.status === "Success") {
+      console.log("Transaction already processed successfully, skipping");
+      return res.status(200).json();
+    }
+
+    if (transactionType === "deposit") {
+      if (order_status === "completed" && existingTrx.status !== "Success") {
+        await handleDepositApproval(
+          existingTrx,
+          order_id,
+          roundedAmount,
+          platformCharge,
+          statusText
+        );
+      } else {
+        await fpayModal.findByIdAndUpdate(existingTrx._id, {
+          $set: { status: statusText, remark: "Payment failed" },
+        });
+      }
+    } else if (transactionType === "withdraw") {
+      if (order_status === "completed" && existingTrx.status !== "Success") {
+        await handleWithdrawApproval(
+          existingTrx,
+          order_id,
+          roundedAmount,
+          statusText
+        );
+      } else if (order_status === "fail" && existingTrx.status !== "Reject") {
+        await handleWithdrawReject(
+          existingTrx,
+          order_id,
+          roundedAmount,
+          statusText
+        );
+      } else {
+        await fpayModal.findByIdAndUpdate(existingTrx._id, {
+          $set: { status: statusText, remark: "Payment failed" },
+        });
+      }
+    }
+
+    return res.status(200).json();
+  } catch (error) {
+    if (error.status) {
+      console.error(error.message);
+      return res.status(error.status).json();
+    }
+
+    console.error("Payment callback processing error:", {
+      error: error.message,
+      body: req.body,
+      timestamp: moment().utc().format(),
+      stack: error.stack,
+    });
+    return res.status(500).json();
+  }
+});
 module.exports = router;
