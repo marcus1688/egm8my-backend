@@ -34,7 +34,7 @@ require("dotenv").config();
 const merchantCheck = "egmsoft1919@gmail.com";
 const skl99SecretServer1 = process.env.SKL99_SECRET_SERVER;
 const webURL = "https://www.bm8my.vip/";
-const skl99APIURL = "https://staging-api.skl99.net";
+const skl99APIURL = "https://apiv1.skl99.net";
 const callbackUrl = "https://api.egm8my.vip/api/skl99/receivedcalled158291";
 
 function roundToTwoDecimals(num) {
