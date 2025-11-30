@@ -826,7 +826,7 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
       ),
       getGameDataSummary(
         SlotRSGModal,
-        user.username,
+        user.gameId,
         start,
         end,
         aggregations.rsg
