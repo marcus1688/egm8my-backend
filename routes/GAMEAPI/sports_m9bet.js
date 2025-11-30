@@ -399,7 +399,8 @@ router.post("/api/m9bet/launchGame", authenticateToken, async (req, res) => {
       const registeredData = await registerM9BetUser(user);
 
       if (!registeredData.success) {
-        console.log(`M9BET error in registering account ${registeredData}`);
+        console.log(`M9BET error in registering account`);
+        console.log(registeredData);
 
         if (registeredData.maintenance) {
           return res.status(200).json({
@@ -439,7 +440,8 @@ router.post("/api/m9bet/launchGame", authenticateToken, async (req, res) => {
     if (!user.m9betDeposited) {
       const depositData = await depositM9BetUser(user);
       if (!depositData.success) {
-        console.log(`M9BET error in depositing account ${registeredData}`);
+        console.log(`M9BET error in depositing account `);
+        console.log(depositData);
 
         if (depositData.maintenance) {
           return res.status(200).json({
