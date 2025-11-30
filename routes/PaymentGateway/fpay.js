@@ -1200,4 +1200,153 @@ router.get("/admin/api/fpaydata", authenticateAdminToken, async (req, res) => {
     });
   }
 });
+
+router.post("/admin/api/fpay/requesttransfer/:userId", async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "User not found. Please try again or contact customer service for assistance.",
+          zh: "用户未找到，请重试或联系客服以获取帮助。",
+          ms: "Pengguna tidak ditemui, sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          zh_hk: "用戶未找到，請重試或聯絡客服以獲取幫助。",
+          id: "Pengguna tidak ditemukan. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+        },
+      });
+    }
+
+    const {
+      amount,
+      bankCode,
+      accountHolder,
+      accountNumber,
+      bankName,
+      transactionId,
+    } = req.body;
+
+    if (!amount || !bankCode || !accountHolder || !accountNumber) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "Please complete all required fields",
+          zh: "请完成所有必填项",
+          zh_hk: "麻煩完成所有必填項目",
+          ms: "Sila lengkapkan semua medan yang diperlukan",
+          id: "Silakan lengkapi semua kolom yang diperlukan",
+        },
+      });
+    }
+
+    const fpayAuth = await getFPayAuth("bank");
+
+    if (!fpayAuth.success) {
+      console.log(`FPAY API Error: `);
+      console.log(fpayAuth);
+
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "Payout request failed",
+          zh: "申请代付失败",
+          zh_hk: "申請代付失敗",
+          ms: "Permintaan pembayaran gagal",
+          id: "Permintaan pembayaran gagal",
+        },
+      });
+    }
+
+    const formattedAmount = Number(amount).toFixed(2);
+
+    const requestBody = {
+      auth: fpayAuth.data.auth,
+      amount: formattedAmount,
+      currency: "MYR",
+      orderid: transactionId,
+      bank_id: bankCode,
+      account_no: accountNumber,
+      holder_name: accountHolder,
+    };
+
+    const response = await axios.post(
+      `${fpayAPIURL}withdraw_orders`,
+      requestBody,
+      {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      }
+    );
+
+    if (response?.data?.status !== true) {
+      console.log(`FPAY API Error:`);
+      console.log(response.data);
+
+      if (response.data.message === "Bank Maintenance.") {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "This bank is currently under maintenance. Please try again later or use an alternative payment method.",
+            zh: "该银行目前正在维护中，请稍后再试或使用其他支付方式。",
+            zh_hk: "該銀行目前正在維護中，請稍後再試或使用其他支付方式。",
+            ms: "Bank ini sedang dalam penyelenggaraan. Sila cuba lagi kemudian atau gunakan kaedah pembayaran alternatif.",
+            id: "Bank ini sedang dalam pemeliharaan. Silakan coba lagi nanti atau gunakan metode pembayaran alternatif.",
+          },
+        });
+      }
+
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "Payout request failed",
+          zh: "申请代付失败",
+          zh_hk: "申請代付失敗",
+          ms: "Permintaan pembayaran gagal",
+          id: "Permintaan pembayaran gagal",
+        },
+      });
+    }
+
+    await Promise.all([
+      fpayModal.create({
+        ourRefNo: transactionId,
+        paymentGatewayRefNo: response.data.withdraw_order_id,
+        transfername: "N/A",
+        username: user.username,
+        amount: Number(formattedAmount),
+        transferType: bankName || bankCode,
+        transactiontype: "withdraw",
+        status: "Pending",
+        platformCharge: 0,
+        remark: "-",
+        promotionId: null,
+      }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: {
+        en: "Payout request submitted successfully",
+        zh: "提交申请代付成功",
+        zh_hk: "提交申請代付成功",
+        ms: "Permintaan pembayaran berjaya diserahkan",
+        id: "Permintaan pembayaran berhasil diajukan",
+      },
+    });
+  } catch (error) {
+    console.log("error in withdraw fpay", error);
+
+    return res.status(200).json({
+      success: false,
+      message: {
+        en: "Payout request failed",
+        zh: "申请代付失败",
+        zh_hk: "申請代付失敗",
+        ms: "Permintaan pembayaran gagal",
+        id: "Permintaan pembayaran gagal",
+      },
+    });
+  }
+});
 module.exports = router;
