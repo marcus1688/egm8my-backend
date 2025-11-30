@@ -241,7 +241,7 @@ async function fetchAndProcessResult() {
 
     // Process each ticket
     for (const ticket of tickets) {
-      const { ventransid, res, w, u, id, fid } = ticket;
+      const { ventransid, res, b, w, u, id, fid } = ticket;
 
       // STEP 1: Skip if match is pending (res === 'P')
       if (res === "P") {
@@ -280,10 +280,8 @@ async function fetchAndProcessResult() {
           continue;
         }
 
-        // STEP 4: Calculate win amount (w can be positive or negative)
-        const winAmount = roundToTwoDecimals(Math.abs(w) || 0);
+        const winAmount = roundToTwoDecimals(b + w);
 
-        // STEP 5: Update user balance and bet record in parallel
         const [updatedUser, updatedBet] = await Promise.all([
           // Update user balance
           User.findOneAndUpdate(
@@ -363,6 +361,7 @@ async function fetchAndProcessResult() {
     };
   }
 }
+
 router.post("/api/m9bet/launchGame", authenticateToken, async (req, res) => {
   try {
     const { gameLang, clientPlatform } = req.body;
@@ -796,18 +795,18 @@ router.get("/api/m9bet", async (req, res) => {
   }
 });
 
-// if (process.env.NODE_ENV !== "development") {
-//   cron.schedule("*/5 * * * *", async () => {
-//     const result = await fetchAndProcessResult();
+if (process.env.NODE_ENV !== "development") {
+  cron.schedule("*/5 * * * *", async () => {
+    const result = await fetchAndProcessResult();
 
-//     if (!result.success) {
-//       console.error("M9BET processor failed:", result.error);
-//     } else {
-//       console.log(
-//         `✅ Completed: ${result.processed} processed, ${result.skipped} skipped, ${result.markedFetched} marked as fetched`
-//       );
-//     }
-//   });
-// }
+    if (!result.success) {
+      console.error("M9BET processor failed:", result.error);
+    } else {
+      console.log(
+        `✅ Completed: ${result.processed} processed, ${result.skipped} skipped, ${result.markedFetched} marked as fetched`
+      );
+    }
+  });
+}
 
 module.exports = router;
