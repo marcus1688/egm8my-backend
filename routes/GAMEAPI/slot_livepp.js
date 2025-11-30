@@ -756,11 +756,12 @@ router.post("/api/ppslot/launchGame", authenticateToken, async (req, res) => {
       lang = "id";
     }
 
+    const token = `${user.gameId}:${generateRandomCode()}`;
     const launchFields = {
       secureLogin: ppSecureLogin,
       symbol: gameCode,
       language: lang,
-      token: `${user.gameId}:${generateRandomCode()}`,
+      token: token,
       externalPlayerId: normalisedUsername,
       currency: "MYR",
       cashierUrl: cashierURL,
