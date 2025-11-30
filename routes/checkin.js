@@ -319,16 +319,7 @@ router.post("/api/checkin", authenticateToken, async (req, res) => {
         },
       });
     }
-    if (!user.firstDepositDate) {
-      return res.status(200).json({
-        success: false,
-        message: {
-          en: "You need to make a deposit before checking in",
-          zh: "您需要先充值才能签到",
-          ms: "Anda perlu membuat deposit sebelum mendaftar masuk",
-        },
-      });
-    }
+
     const todayTurnover = await getUserDailyTurnover(userId);
     if (todayTurnover < 100) {
       return res.status(200).json({
