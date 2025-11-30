@@ -249,6 +249,8 @@ router.post(
 
       // After: Catches errors but continues process
 
+      const [imageUrl] = await Promise.all([uploadFileToS3(req.file)]);
+
       const { totalBalance: totalGameBalance, errors: balanceFetchErrors } =
         await getTotalGameBalance(user);
 
