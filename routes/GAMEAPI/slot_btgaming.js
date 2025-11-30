@@ -648,7 +648,7 @@ router.post("/api/btgaming/launchGame", authenticateToken, async (req, res) => {
   }
 });
 
-router.post("/api/directbtgstag//get_user_balance", async (req, res) => {
+router.post("/api/directbtgprod/get_user_balance", async (req, res) => {
   try {
     const { tran_id, username, currency } = req.body;
     const isAuthValid = verifyAuthorization(req.body, btGamingMD5);
@@ -733,7 +733,7 @@ router.post("/api/directbtgstag//get_user_balance", async (req, res) => {
   }
 });
 
-router.post("/api/directbtgstag//transfer", async (req, res) => {
+router.post("/api/directbtgprod/transfer", async (req, res) => {
   try {
     const {
       tran_id,
