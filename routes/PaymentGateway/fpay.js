@@ -634,7 +634,7 @@ async function handleDepositApproval(
     amount: roundedAmount,
   });
 
-  await updateLiveTransactions("deposit", user.username, roundedAmount);
+  await updateLiveTransactions(user.username, roundedAmount);
 
   if (kioskSettings?.status) {
     await updateKioskBalance("subtract", roundedAmount, {
