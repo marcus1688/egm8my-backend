@@ -796,18 +796,18 @@ router.get("/api/m9bet", async (req, res) => {
   }
 });
 
-if (process.env.NODE_ENV !== "development") {
-  cron.schedule("*/5 * * * *", async () => {
-    const result = await fetchAndProcessResult();
+// if (process.env.NODE_ENV !== "development") {
+//   cron.schedule("*/5 * * * *", async () => {
+//     const result = await fetchAndProcessResult();
 
-    if (!result.success) {
-      console.error("M9BET processor failed:", result.error);
-    } else {
-      console.log(
-        `✅ Completed: ${result.processed} processed, ${result.skipped} skipped, ${result.markedFetched} marked as fetched`
-      );
-    }
-  });
-}
+//     if (!result.success) {
+//       console.error("M9BET processor failed:", result.error);
+//     } else {
+//       console.log(
+//         `✅ Completed: ${result.processed} processed, ${result.skipped} skipped, ${result.markedFetched} marked as fetched`
+//       );
+//     }
+//   });
+// }
 
 module.exports = router;
