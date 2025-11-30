@@ -25,7 +25,7 @@ const bngSecret = process.env.BNG_SECRET;
 const bngProjectName = "egm8myr";
 const cashierURL = "https://www.bm8my.vip/myaccount/deposit";
 const brandName = "egm8my";
-const bngTitle = "EGM8MY";
+const bngTitle = "BM8MY";
 
 function roundToTwoDecimals(num) {
   return Math.round(num * 100) / 100;
