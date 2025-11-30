@@ -21,12 +21,12 @@ const GamePPGameModal = require("../../models/slot_live_ppDatabase.model");
 
 require("dotenv").config();
 
-const ppSecureLogin = "jh_ezwin9";
+const ppSecureLogin = "jh_egm8myr";
 const ppSecret = process.env.PP_SECRET;
-const webURL = "https://www.ezwin9.com/";
+const webURL = "https://www.bm8my.vip/";
 const ppAPIURL =
   "https://api-2133.ppgames.net/IntegrationService/v3/http/CasinoGameAPI";
-const cashierURL = "https://www.ezwin9.com/deposit";
+const cashierURL = "https://www.bm8my.vip/myaccount/deposit";
 
 function roundToTwoDecimals(num) {
   return Math.round(num * 100) / 100;
@@ -342,7 +342,7 @@ router.post("/api/pp/register", authenticateToken, async (req, res) => {
   const fields = {
     secureLogin: ppSecureLogin,
     externalPlayerId: normalisedUsername,
-    currency: "HKD",
+    currency: "MYR",
   };
 
   const hash = generateSignature(fields, ppSecret);
@@ -480,7 +480,7 @@ router.post("/api/pplive/launchGame", authenticateToken, async (req, res) => {
       });
     }
 
-    if (user.gameLock.pp.lock) {
+    if (user.gameLock.pplive.lock) {
       return res.status(200).json({
         success: false,
         message: {
@@ -499,7 +499,7 @@ router.post("/api/pplive/launchGame", authenticateToken, async (req, res) => {
     const registrationFields = {
       secureLogin: ppSecureLogin,
       externalPlayerId: normalisedUsername,
-      currency: "HKD",
+      currency: "MYR",
     };
 
     const registrationHash = generateSignature(registrationFields, ppSecret);
@@ -572,7 +572,7 @@ router.post("/api/pplive/launchGame", authenticateToken, async (req, res) => {
       language: lang,
       token: token,
       externalPlayerId: normalisedUsername,
-      currency: "HKD",
+      currency: "MYR",
       cashierUrl: cashierURL,
       lobbyUrl: webURL,
     };
@@ -655,7 +655,7 @@ router.post("/api/pplive/launchGame", authenticateToken, async (req, res) => {
 router.post("/api/ppslot/launchGame", authenticateToken, async (req, res) => {
   try {
     //en zh
-    const { gameLang, gameCode, isDouble } = req.body;
+    const { gameLang, gameCode } = req.body;
     const user = await User.findById(req.user.userId);
 
     if (!user) {
@@ -671,7 +671,7 @@ router.post("/api/ppslot/launchGame", authenticateToken, async (req, res) => {
       });
     }
 
-    if (user.gameLock.pp.lock) {
+    if (user.gameLock.ppslot.lock) {
       return res.status(200).json({
         success: false,
         message: {
@@ -690,7 +690,7 @@ router.post("/api/ppslot/launchGame", authenticateToken, async (req, res) => {
     const registrationFields = {
       secureLogin: ppSecureLogin,
       externalPlayerId: normalisedUsername,
-      currency: "HKD",
+      currency: "MYR",
     };
 
     const registrationHash = generateSignature(registrationFields, ppSecret);
@@ -756,20 +756,13 @@ router.post("/api/ppslot/launchGame", authenticateToken, async (req, res) => {
       lang = "id";
     }
 
-    let token;
-    if (isDouble === true) {
-      token = `${user.gameId}2x:${generateRandomCode()}`;
-    } else {
-      token = `${user.gameId}:${generateRandomCode()}`;
-    }
-
     const launchFields = {
       secureLogin: ppSecureLogin,
       symbol: gameCode,
       language: lang,
-      token: token,
+      token: `${user.gameId}:${generateRandomCode()}`,
       externalPlayerId: normalisedUsername,
-      currency: "HKD",
+      currency: "MYR",
       cashierUrl: cashierURL,
       lobbyUrl: webURL,
     };
@@ -815,14 +808,12 @@ router.post("/api/ppslot/launchGame", authenticateToken, async (req, res) => {
       { new: true }
     );
 
-    const gameName = isDouble === true ? "PRAGMATIC PLAY 2X" : "PRAGMATIC PLAY";
-
     await GameWalletLogAttempt(
       user.username,
       "Transfer In",
       "Seamless",
       roundToTwoDecimals(user.wallet),
-      gameName
+      "PRAGMATIC PLAY"
     );
 
     return res.status(200).json({
@@ -877,11 +868,8 @@ router.post("/api/pragmaticplay/auth", async (req, res) => {
 
     const username = token.split(":")[0];
 
-    const isDoubleBetting = username.endsWith("2x");
-    const actualGameId = isDoubleBetting ? username.slice(0, -2) : username;
-
     const user = await User.findOne(
-      { gameId: actualGameId },
+      { gameId: username },
       { username: 1, wallet: 1, gameId: 1, ppGameToken: 1 }
     ).lean();
 
@@ -892,17 +880,13 @@ router.post("/api/pragmaticplay/auth", async (req, res) => {
       });
     }
 
-    const actualAmount = isDoubleBetting ? user.wallet * 0.5 : user.wallet;
-
-    const returnedUserId = isDoubleBetting ? `${user.gameId}2x` : user.gameId;
-
     return res.status(200).json({
-      userId: returnedUserId,
-      currency: "HKD",
-      cash: roundToTwoDecimals(actualAmount),
+      userId: user.gameId,
+      currency: "MYR",
+      cash: roundToTwoDecimals(user.wallet),
       bonus: 0,
       token: token,
-      country: "HK",
+      country: "MY",
       error: 0,
       description: "Success",
     });
@@ -942,11 +926,8 @@ router.post("/api/pragmaticplay/balance", async (req, res) => {
       });
     }
 
-    const isDoubleBetting = userId.endsWith("2x");
-    const actualGameId = isDoubleBetting ? userId.slice(0, -2) : userId;
-
     const currentUser = await User.findOne(
-      { gameId: actualGameId },
+      { gameId: userId },
       { wallet: 1, gameId: 1 }
     ).lean();
 
@@ -957,13 +938,9 @@ router.post("/api/pragmaticplay/balance", async (req, res) => {
       });
     }
 
-    const actualAmount = isDoubleBetting
-      ? currentUser.wallet * 0.5
-      : currentUser.wallet;
-
     return res.status(200).json({
-      currency: "HKD",
-      cash: roundToTwoDecimals(actualAmount),
+      currency: "MYR",
+      cash: roundToTwoDecimals(currentUser.wallet),
       bonus: 0,
       error: 0,
       description: "Success",
@@ -1032,23 +1009,20 @@ router.post("/api/pragmaticplay/bet", async (req, res) => {
       });
     }
 
-    const isDoubleBetting = userId.endsWith("2x");
-    const actualGameId = isDoubleBetting ? userId.slice(0, -2) : userId;
-    const betMultiplier = isDoubleBetting ? 2 : 1;
-    const balanceMultiplier = isDoubleBetting ? 0.5 : 1;
-    const actualUpdateBalance = roundToTwoDecimals(
-      parseFloat(amount) * betMultiplier
-    );
+    const actualUpdateBalance = roundToTwoDecimals(parseFloat(amount));
     const gameType = gameId.startsWith("v")
       ? "Slot"
       : /^\d/.test(gameId)
       ? "Live"
       : "Slot";
 
+    const lockField =
+      gameType === "Live" ? "gameLock.pplive.lock" : "gameLock.ppslot.lock";
+
     const [currentUser, existingBet] = await Promise.all([
       User.findOne(
-        { gameId: actualGameId },
-        { wallet: 1, "gameLock.pp.lock": 1, gameId: 1 }
+        { gameId: userId },
+        { wallet: 1, [lockField]: 1, gameId: 1 }
       ).lean(),
 
       SlotLivePPModal.exists({
@@ -1064,7 +1038,12 @@ router.post("/api/pragmaticplay/bet", async (req, res) => {
       });
     }
 
-    if (currentUser.gameLock?.pp?.lock) {
+    const isLocked =
+      gameType === "Live"
+        ? currentUser.gameLock?.pplive?.lock
+        : currentUser.gameLock?.ppslot?.lock;
+
+    if (isLocked) {
       return res.status(200).json({
         error: 6,
         description: "Player is banned",
@@ -1072,14 +1051,10 @@ router.post("/api/pragmaticplay/bet", async (req, res) => {
     }
 
     if (existingBet) {
-      const actualAmount = roundToTwoDecimals(
-        (currentUser.wallet || 0) * balanceMultiplier
-      );
-
       return res.status(200).json({
         transactionId: reference,
-        currency: "HKD",
-        cash: actualAmount,
+        currency: "MYR",
+        cash: roundToTwoDecimals(currentUser.wallet || 0),
         bonus: 0,
         usedPromo: 0,
         error: 0,
@@ -1090,16 +1065,14 @@ router.post("/api/pragmaticplay/bet", async (req, res) => {
     const [updatedUserBalance, createdBet] = await Promise.all([
       User.findOneAndUpdate(
         {
-          gameId: actualGameId,
+          gameId: userId,
           wallet: { $gte: actualUpdateBalance },
         },
         { $inc: { wallet: -actualUpdateBalance } },
         { new: true, projection: { wallet: 1 } }
       ).lean(),
       SlotLivePPModal.create({
-        username: isDoubleBetting
-          ? `${currentUser.gameId}2x`
-          : currentUser.gameId,
+        username: currentUser.gameId,
         betamount: actualUpdateBalance,
         betId: roundId,
         betreferenceId: reference,
@@ -1122,14 +1095,10 @@ router.post("/api/pragmaticplay/bet", async (req, res) => {
       });
     }
 
-    const actualAmount = roundToTwoDecimals(
-      (updatedUserBalance.wallet || 0) * balanceMultiplier
-    );
-
     return res.status(200).json({
       transactionId: reference,
-      currency: "HKD",
-      cash: actualAmount,
+      currency: "MYR",
+      cash: roundToTwoDecimals(updatedUserBalance.wallet || 0),
       bonus: 0,
       usedPromo: 0,
       error: 0,
@@ -1209,17 +1178,13 @@ router.post("/api/pragmaticplay/result", async (req, res) => {
       });
     }
 
-    const isDoubleBetting = userId.endsWith("2x");
-    const actualGameId = isDoubleBetting ? userId.slice(0, -2) : userId;
-    const betMultiplier = isDoubleBetting ? 2 : 1;
-    const balanceMultiplier = isDoubleBetting ? 0.5 : 1;
     const toUpdateBalance = roundToTwoDecimals(
       (Number(amount) || 0) + (Number(promoWinAmount) || 0)
     );
-    const actualUpdateBalance = parseFloat(toUpdateBalance) * betMultiplier;
+    const actualUpdateBalance = parseFloat(toUpdateBalance);
 
     const [currentUser, existingBet, existingResult] = await Promise.all([
-      User.findOne({ gameId: actualGameId }, { wallet: 1, gameId: 1 }).lean(),
+      User.findOne({ gameId: userId }, { wallet: 1, gameId: 1 }).lean(),
       SlotLivePPModal.exists({ betId: roundId }),
       SlotLivePPModal.exists({ settlereferenceId: reference }),
     ]);
@@ -1232,12 +1197,10 @@ router.post("/api/pragmaticplay/result", async (req, res) => {
     }
 
     if (!existingBet) {
-      const actualAmount = currentUser.wallet * balanceMultiplier;
-
       return res.status(200).json({
         transactionId: reference,
-        currency: "HKD",
-        cash: roundToTwoDecimals(actualAmount),
+        currency: "MYR",
+        cash: roundToTwoDecimals(currentUser.wallet),
         bonus: 0,
         error: 0,
         description: "Success",
@@ -1245,12 +1208,10 @@ router.post("/api/pragmaticplay/result", async (req, res) => {
     }
 
     if (existingResult) {
-      const actualAmount = currentUser.wallet * balanceMultiplier;
-
       return res.status(200).json({
         transactionId: reference,
-        currency: "HKD",
-        cash: roundToTwoDecimals(actualAmount),
+        currency: "MYR",
+        cash: roundToTwoDecimals(currentUser.wallet),
         bonus: 0,
         error: 0,
         description: "Success",
@@ -1259,7 +1220,7 @@ router.post("/api/pragmaticplay/result", async (req, res) => {
 
     const [updatedUserBalance] = await Promise.all([
       User.findOneAndUpdate(
-        { gameId: actualGameId },
+        { gameId: userId },
         { $inc: { wallet: actualUpdateBalance } },
         { new: true, projection: { wallet: 1 } }
       ).lean(),
@@ -1276,12 +1237,10 @@ router.post("/api/pragmaticplay/result", async (req, res) => {
       ),
     ]);
 
-    const actualAmount = updatedUserBalance.wallet * balanceMultiplier;
-
     return res.status(200).json({
       transactionId: reference,
-      currency: "HKD",
-      cash: roundToTwoDecimals(actualAmount),
+      currency: "MYR",
+      cash: roundToTwoDecimals(updatedUserBalance.wallet),
       bonus: 0,
       error: 0,
       description: "Success",
@@ -1325,11 +1284,8 @@ router.post("/api/pragmaticplay/endRound", async (req, res) => {
       });
     }
 
-    const isDoubleBetting = userId.endsWith("2x");
-    const actualGameId = isDoubleBetting ? userId.slice(0, -2) : userId;
-
     const [currentUser, existingRecord] = await Promise.all([
-      User.findOne({ gameId: actualGameId }, { wallet: 1, gameId: 1 }).lean(),
+      User.findOne({ gameId: userId }, { wallet: 1, gameId: 1 }).lean(),
       SlotLivePPModal.findOne(
         { betId: roundId, ended: true },
         { _id: 1 }
@@ -1343,13 +1299,9 @@ router.post("/api/pragmaticplay/endRound", async (req, res) => {
       });
     }
 
-    const actualAmount = isDoubleBetting
-      ? currentUser.wallet * 0.5
-      : currentUser.wallet;
-
     if (existingRecord) {
       return res.status(200).json({
-        cash: roundToTwoDecimals(actualAmount),
+        cash: roundToTwoDecimals(currentUser.wallet),
         bonus: 0,
         error: 0,
         description: "Success",
@@ -1363,7 +1315,7 @@ router.post("/api/pragmaticplay/endRound", async (req, res) => {
     );
 
     return res.status(200).json({
-      cash: roundToTwoDecimals(actualAmount),
+      cash: roundToTwoDecimals(currentUser.wallet),
       bonus: 0,
       error: 0,
       description: "Success",
@@ -1405,11 +1357,8 @@ router.post("/api/pragmaticplay/refund", async (req, res) => {
       });
     }
 
-    const isDoubleBetting = userId.endsWith("2x");
-    const actualGameId = isDoubleBetting ? userId.slice(0, -2) : userId;
-
     const [currentUser, existingBet] = await Promise.all([
-      User.findOne({ gameId: actualGameId }, { wallet: 1 }).lean(),
+      User.findOne({ gameId: userId }, { wallet: 1 }).lean(),
       SlotLivePPModal.findOne(
         { betreferenceId: reference },
         { betamount: 1, refunded: 1 }
@@ -1441,7 +1390,7 @@ router.post("/api/pragmaticplay/refund", async (req, res) => {
 
     const [updatedUserBalance] = await Promise.all([
       User.findOneAndUpdate(
-        { gameId: actualGameId },
+        { gameId: userId },
         { $inc: { wallet: roundToTwoDecimals(existingBet.betamount) } },
         { new: true, projection: { wallet: 1 } }
       ).lean(),
@@ -1518,11 +1467,8 @@ router.post("/api/pragmaticplay/bonusWin", async (req, res) => {
       });
     }
 
-    const isDoubleBetting = userId.endsWith("2x");
-    const actualGameId = isDoubleBetting ? userId.slice(0, -2) : userId;
-
     const currentUser = await User.findOne(
-      { gameId: actualGameId },
+      { gameId: userId },
       { username: 1, wallet: 1, gameId: 1 }
     ).lean();
 
@@ -1535,34 +1481,28 @@ router.post("/api/pragmaticplay/bonusWin", async (req, res) => {
 
     const existingTrans = await SlotLivePPModal.findOne(
       {
-        username: { $in: [currentUser.gameId, `${currentUser.gameId}2x`] },
+        username: { $in: [currentUser.gameId] },
         bonusreferenceId: reference,
       },
       { _id: 1 }
     ).lean();
 
-    const actualAmount = isDoubleBetting
-      ? currentUser.wallet * 0.5
-      : currentUser.wallet;
-
     if (existingTrans) {
       return res.status(200).json({
         transactionId: reference,
-        currency: "HKD",
-        cash: roundToTwoDecimals(actualAmount),
+        currency: "MYR",
+        cash: roundToTwoDecimals(currentUser.wallet),
         bonus: 0,
         error: 0,
         description: "Success",
       });
     }
 
-    const actualUpdateBalance = isDoubleBetting
-      ? parseFloat(amount) * 2
-      : parseFloat(amount);
+    const actualUpdateBalance = parseFloat(amount);
 
     await SlotLivePPModal.findOneAndUpdate(
       {
-        username: { $in: [currentUser.gameId, `${currentUser.gameId}2x`] },
+        username: { $in: [currentUser.gameId] },
         bonuscode: bonusCode,
       },
       {
@@ -1575,8 +1515,8 @@ router.post("/api/pragmaticplay/bonusWin", async (req, res) => {
 
     return res.status(200).json({
       transactionId: reference,
-      currency: "HKD",
-      cash: roundToTwoDecimals(actualAmount),
+      currency: "MYR",
+      cash: roundToTwoDecimals(currentUser.wallet),
       bonus: 0,
       error: 0,
       description: "Success",
@@ -1641,11 +1581,8 @@ router.post("/api/pragmaticplay/jackpotWin", async (req, res) => {
       });
     }
 
-    const isDoubleBetting = userId.endsWith("2x");
-    const actualGameId = isDoubleBetting ? userId.slice(0, -2) : userId;
-
     const currentUser = await User.findOne(
-      { gameId: actualGameId },
+      { gameId: userId },
       { username: 1, wallet: 1, gameId: 1 }
     ).lean();
 
@@ -1658,21 +1595,17 @@ router.post("/api/pragmaticplay/jackpotWin", async (req, res) => {
 
     const existingTrans = await SlotLivePPModal.findOne(
       {
-        username: { $in: [currentUser.gameId, `${currentUser.gameId}2x`] },
+        username: { $in: [currentUser.gameId] },
         jackpotreferenceId: reference,
       },
       { _id: 1 }
     ).lean();
 
     if (existingTrans) {
-      const actualAmount = isDoubleBetting
-        ? currentUser.wallet * 0.5
-        : currentUser.wallet;
-
       return res.status(200).json({
         transactionId: reference,
-        currency: "HKD",
-        cash: roundToTwoDecimals(actualAmount),
+        currency: "MYR",
+        cash: roundToTwoDecimals(currentUser.wallet),
         bonus: 0,
         error: 0,
         description: "Success",
@@ -1681,9 +1614,7 @@ router.post("/api/pragmaticplay/jackpotWin", async (req, res) => {
 
     const formattedAmount = roundToTwoDecimals(amount);
 
-    const actualUpdateBalance = isDoubleBetting
-      ? parseFloat(formattedAmount) * 2
-      : parseFloat(formattedAmount);
+    const actualUpdateBalance = parseFloat(formattedAmount);
 
     const gameType = gameId.startsWith("v")
       ? "Slot"
@@ -1693,14 +1624,14 @@ router.post("/api/pragmaticplay/jackpotWin", async (req, res) => {
 
     const [updatedUserBalance] = await Promise.all([
       User.findOneAndUpdate(
-        { gameId: actualGameId },
+        { gameId: userId },
         { $inc: { wallet: actualUpdateBalance } },
         { new: true, projection: { wallet: 1 } }
       ).lean(),
 
       SlotLivePPModal.updateOne(
         {
-          username: { $in: [currentUser.gameId, `${currentUser.gameId}2x`] },
+          username: { $in: [currentUser.gameId] },
           betId: roundId,
         },
         {
@@ -1713,14 +1644,10 @@ router.post("/api/pragmaticplay/jackpotWin", async (req, res) => {
       ),
     ]);
 
-    const actualAmount = isDoubleBetting
-      ? updatedUserBalance.wallet * 0.5
-      : updatedUserBalance.wallet;
-
     return res.status(200).json({
       transactionId: reference,
-      currency: "HKD",
-      cash: roundToTwoDecimals(actualAmount),
+      currency: "MYR",
+      cash: roundToTwoDecimals(updatedUserBalance.wallet),
       bonus: 0,
       error: 0,
       description: "Success",
@@ -1794,11 +1721,8 @@ router.post("/api/pragmaticplay/promoWin", async (req, res) => {
       });
     }
 
-    const isDoubleBetting = userId.endsWith("2x");
-    const actualGameId = isDoubleBetting ? userId.slice(0, -2) : userId;
-
     const currentUser = await User.findOne(
-      { gameId: actualGameId },
+      { gameId: userId },
       { username: 1, wallet: 1, gameId: 1 }
     ).lean();
 
@@ -1811,21 +1735,17 @@ router.post("/api/pragmaticplay/promoWin", async (req, res) => {
 
     const existingTrans = await SlotLivePPModal.findOne(
       {
-        username: { $in: [currentUser.gameId, `${currentUser.gameId}2x`] },
+        username: { $in: [currentUser.gameId] },
         promoreferenceId: reference,
       },
       { _id: 1 }
     ).lean();
 
     if (existingTrans) {
-      const actualAmount = isDoubleBetting
-        ? currentUser.wallet * 0.5
-        : currentUser.wallet;
-
       return res.status(200).json({
         transactionId: reference,
-        currency: "HKD",
-        cash: roundToTwoDecimals(actualAmount),
+        currency: "MYR",
+        cash: roundToTwoDecimals(currentUser.wallet),
         bonus: 0,
         error: 0,
         description: "Success",
@@ -1834,20 +1754,18 @@ router.post("/api/pragmaticplay/promoWin", async (req, res) => {
 
     const formattedAmount = roundToTwoDecimals(amount);
 
-    const actualUpdateBalance = isDoubleBetting
-      ? parseFloat(formattedAmount) * 2
-      : parseFloat(formattedAmount);
+    const actualUpdateBalance = parseFloat(formattedAmount);
 
     const [updatedUserBalance] = await Promise.all([
       User.findOneAndUpdate(
-        { gameId: actualGameId },
+        { gameId: userId },
         { $inc: { wallet: actualUpdateBalance } },
         { new: true, projection: { wallet: 1 } }
       ).lean(),
 
       SlotLivePPModal.updateOne(
         {
-          username: { $in: [currentUser.gameId, `${currentUser.gameId}2x`] },
+          username: { $in: [currentUser.gameId] },
           betId: roundId,
         },
         {
@@ -1859,14 +1777,10 @@ router.post("/api/pragmaticplay/promoWin", async (req, res) => {
       ),
     ]);
 
-    const actualAmount = isDoubleBetting
-      ? updatedUserBalance.wallet * 0.5
-      : updatedUserBalance.wallet;
-
     return res.status(200).json({
       transactionId: reference,
-      currency: "HKD",
-      cash: roundToTwoDecimals(actualAmount),
+      currency: "MYR",
+      cash: roundToTwoDecimals(updatedUserBalance.wallet),
       bonus: 0,
       error: 0,
       description: "Success",
@@ -1929,11 +1843,9 @@ router.post("/api/pragmaticplay/adjustment", async (req, res) => {
         description: "Invalid hash",
       });
     }
-    const isDoubleBetting = userId.endsWith("2x");
-    const actualGameId = isDoubleBetting ? userId.slice(0, -2) : userId;
 
     const currentUser = await User.findOne(
-      { gameId: actualGameId },
+      { gameId: userId },
       { username: 1, wallet: 1, gameId: 1 }
     ).lean();
 
@@ -1946,34 +1858,28 @@ router.post("/api/pragmaticplay/adjustment", async (req, res) => {
 
     const existingTrans = await SlotLivePPModal.findOne(
       {
-        username: { $in: [currentUser.gameId, `${currentUser.gameId}2x`] },
+        username: { $in: [currentUser.gameId] },
         adjustmentreferenceId: reference,
       },
       { _id: 1 }
     ).lean();
 
     if (existingTrans) {
-      const actualAmount = isDoubleBetting
-        ? currentUser.wallet * 0.5
-        : currentUser.wallet;
-
       return res.status(200).json({
         transactionId: reference,
-        currency: "HKD",
-        cash: roundToTwoDecimals(actualAmount),
+        currency: "MYR",
+        cash: roundToTwoDecimals(currentUser.wallet),
         bonus: 0,
         error: 0,
         description: "Success",
       });
     }
 
-    const actualUpdateBalance = isDoubleBetting
-      ? parseFloat(amount) * 2
-      : parseFloat(amount);
+    const actualUpdateBalance = parseFloat(amount);
 
     const updatedUserBalance = await User.findOneAndUpdate(
       {
-        gameId: actualGameId,
+        gameId: userId,
         ...(actualUpdateBalance < 0 && {
           wallet: { $gte: Math.abs(actualUpdateBalance) },
         }),
@@ -1989,13 +1895,11 @@ router.post("/api/pragmaticplay/adjustment", async (req, res) => {
       });
     }
 
-    const actualValidBet = isDoubleBetting
-      ? parseFloat(validBetAmount) * 2
-      : parseFloat(validBetAmount);
+    const actualValidBet = parseFloat(validBetAmount);
 
     await SlotLivePPModal.updateOne(
       {
-        username: { $in: [currentUser.gameId, `${currentUser.gameId}2x`] },
+        username: { $in: [currentUser.gameId] },
         betId: roundId,
       },
       {
@@ -2006,14 +1910,10 @@ router.post("/api/pragmaticplay/adjustment", async (req, res) => {
       }
     );
 
-    const actualAmount = isDoubleBetting
-      ? updatedUserBalance.wallet * 0.5
-      : updatedUserBalance.wallet;
-
     return res.status(200).json({
       transactionId: reference,
-      currency: "HKD",
-      cash: roundToTwoDecimals(actualAmount),
+      currency: "MYR",
+      cash: roundToTwoDecimals(updatedUserBalance.wallet),
       bonus: 0,
       error: 0,
       description: "Success",
@@ -2076,7 +1976,6 @@ router.post("/api/ppslot/getturnoverforrebate", async (req, res) => {
       refunded: false,
       ended: true,
       gameType: "Slot",
-      username: { $not: /2x$/ },
     });
 
     const uniqueGameIds = [
@@ -2129,120 +2028,6 @@ router.post("/api/ppslot/getturnoverforrebate", async (req, res) => {
       success: true,
       summary: {
         gamename: "PRAGMATIC PLAY SLOT",
-        gamecategory: "Slot Games",
-        users: playerSummary, // Return player summary for each user
-      },
-    });
-  } catch (error) {
-    console.log("PP SLOT: Failed to fetch win/loss report:", error.message);
-    return res.status(500).json({
-      success: false,
-      message: {
-        en: "PP SLOT: Failed to fetch win/loss report",
-        zh: "PP SLOT: 获取盈亏报告失败",
-      },
-    });
-  }
-});
-
-router.post("/api/ppslot2x/getturnoverforrebate", async (req, res) => {
-  try {
-    const { date } = req.body;
-
-    let startDate, endDate;
-    if (date === "today") {
-      startDate = moment
-        .utc()
-        .add(8, "hours")
-        .startOf("day")
-        .subtract(8, "hours")
-        .toDate();
-      endDate = moment
-        .utc()
-        .add(8, "hours")
-        .endOf("day")
-        .subtract(8, "hours")
-        .toDate();
-    } else if (date === "yesterday") {
-      startDate = moment
-        .utc()
-        .add(8, "hours")
-        .subtract(1, "days")
-        .startOf("day")
-        .subtract(8, "hours")
-        .toDate();
-
-      endDate = moment
-        .utc()
-        .add(8, "hours")
-        .subtract(1, "days")
-        .endOf("day")
-        .subtract(8, "hours")
-        .toDate();
-    }
-
-    console.log("PP SLOT QUERYING TIME", startDate, endDate);
-
-    const records = await SlotLivePPModal.find({
-      createdAt: {
-        $gte: startDate,
-        $lt: endDate,
-      },
-      refunded: false,
-      ended: true,
-      gameType: "Slot",
-      username: /2x$/,
-    });
-
-    const uniqueGameIds = [
-      ...new Set(records.map((record) => record.username.slice(0, -2))),
-    ];
-
-    const users = await User.find(
-      { gameId: { $in: uniqueGameIds } },
-      { gameId: 1, username: 1 }
-    ).lean();
-
-    const gameIdToUsername = {};
-    users.forEach((user) => {
-      gameIdToUsername[user.gameId] = user.username;
-    });
-    // Aggregate turnover and win/loss for each player
-    let playerSummary = {};
-
-    records.forEach((record) => {
-      const gameId = record.username.slice(0, -2);
-      const actualUsername = gameIdToUsername[gameId];
-
-      if (!actualUsername) {
-        console.warn(`User not found for gameId: ${gameId}`);
-        return;
-      }
-
-      if (!playerSummary[actualUsername]) {
-        playerSummary[actualUsername] = { turnover: 0, winloss: 0 };
-      }
-
-      playerSummary[actualUsername].turnover += record.betamount || 0;
-
-      playerSummary[actualUsername].winloss +=
-        (record.settleamount || 0) - (record.betamount || 0);
-    });
-
-    // Format the turnover and win/loss for each player to two decimal places
-    Object.keys(playerSummary).forEach((playerId) => {
-      playerSummary[playerId].turnover = Number(
-        playerSummary[playerId].turnover.toFixed(2)
-      );
-      playerSummary[playerId].winloss = Number(
-        playerSummary[playerId].winloss.toFixed(2)
-      );
-    });
-    // Return the aggregated results
-    return res.status(200).json({
-      success: true,
-      summary: {
-        gamename: "PRAGMATIC PLAY SLOT 2X",
         gamecategory: "Slot Games",
         users: playerSummary, // Return player summary for each user
       },
@@ -2367,126 +2152,6 @@ router.post("/api/pplive/getturnoverforrebate", async (req, res) => {
     });
   }
 });
-
-// router.get(
-//   "/admin/api/pplive/:userId/dailygamedata",
-//   authenticateAdminToken,
-//   async (req, res) => {
-//     try {
-//       const { startDate, endDate } = req.query;
-
-//       const userId = req.params.userId;
-
-//       const user = await User.findById(userId);
-
-//       let startD = moment.utc(new Date(startDate).toISOString());
-//       let endD = moment.utc(new Date(endDate).toISOString());
-//       // Get the timestamps
-//       let start = startD.startOf("day").subtract(8, "hours").valueOf();
-//       let end = endD.endOf("day").subtract(8, "hours").valueOf();
-
-//       const interval = 10 * 60 * 1000; // 10 minutes in milliseconds
-
-//       let results = [];
-
-//       while (start < end) {
-//         // console.log(`Calling data for timepoint: ${start}`);
-
-//         const fields = {
-//           login: ppSecureLogin,
-//           password: ppSecret,
-//           timepoint: start,
-//           dataType: "LC",
-//         };
-
-//         const queryParams = new URLSearchParams(fields).toString();
-//         const fetchData = async (attempt = 1) => {
-//           try {
-//             const response = await axios.get(
-//               `${ppOriAPIURL}/DataFeeds/gamerounds/?${queryParams}`,
-//               {
-//                 headers: {
-//                   "Content-Type": "application/x-www-form-urlencoded",
-//                 },
-//               }
-//             );
-
-//             return response.data;
-//           } catch (error) {
-//             console.log(
-//               `Attempt ${attempt} failed: ${error.message}. Retrying...`
-//             );
-//             if (attempt < 5) {
-//               return await fetchData(attempt + 1); // Retry the request
-//             } else {
-//               throw new Error(`Failed after 5 attempts: ${error.message}`);
-//             }
-//           }
-//         };
-
-//         const result = await fetchData();
-
-//         results.push(result);
-
-//         // Add 10 minutes to the start time
-//         start += interval;
-//       }
-
-//       // Parse and process the CSV data manually
-//       let totalTurnover = 0;
-//       let totalWinLoss = 0;
-
-//       results.forEach((result) => {
-//         const lines = result.split("\n");
-//         const headers = lines[1].split(",");
-
-//         lines.slice(2).forEach((line) => {
-//           const values = line.split(",");
-//           if (values.length === headers.length) {
-//             const row = headers.reduce((obj, header, index) => {
-//               obj[header.trim()] = values[index].trim();
-//               return obj;
-//             }, {});
-
-//             const playerId = row.extPlayerID.toLowerCase();
-//             if (playerId === user.username.toLowerCase()) {
-//               const turnover = parseFloat(row.bet) || 0;
-//               const win = parseFloat(row.win) || 0;
-
-//               totalTurnover += turnover;
-//               totalWinLoss += win - turnover;
-//             }
-//           }
-//         });
-//       });
-
-//       // Format the total values to two decimal places
-//       totalTurnover = Number(totalTurnover.toFixed(2));
-//       totalWinLoss = Number(totalWinLoss.toFixed(2));
-
-//       return res.status(200).json({
-//         success: true,
-//         summary: {
-//           gamename: "PRAGMATIC PLAY LIVE",
-//           gamecategory: "Live Casino",
-//           user: {
-//             username: user.username,
-//             turnover: totalTurnover,
-//             winloss: totalWinLoss,
-//           },
-//         },
-//       });
-//     } catch (error) {
-//       console.log(
-//         "PRAGMATIC PLAY LIVE: Failed to fetch win/loss report:",
-//         error.message
-//       );
-//       return res.status(500).json({
-//         error: "PRAGMATIC PLAY LIVE: Failed to fetch win/loss report",
-//       });
-//     }
-//   }
-// );
 
 router.get(
   "/admin/api/pplive/:userId/dailygamedata",
@@ -2632,159 +2297,6 @@ router.get(
   }
 );
 
-// router.get(
-//   "/admin/api/ppslot/:userId/dailygamedata",
-//   authenticateAdminToken,
-//   async (req, res) => {
-//     try {
-//       const { startDate, endDate } = req.query;
-
-//       const userId = req.params.userId;
-
-//       const user = await User.findById(userId);
-
-//       let startD = moment.utc(new Date(startDate).toISOString());
-//       let endD = moment.utc(new Date(endDate).toISOString());
-//       // Get the timestamps
-//       let start = startD.startOf("day").subtract(8, "hours").valueOf();
-//       let end = endD.endOf("day").subtract(8, "hours").valueOf();
-
-//       const interval = 10 * 60 * 1000;
-
-//       // Generate all timepoints first
-//       const timepoints = [];
-//       let currentTime = start;
-//       while (currentTime < end) {
-//         timepoints.push(currentTime);
-//         currentTime += interval;
-//       }
-
-//       // Function to fetch data for a single timepoint with retry
-//       const fetchDataWithRetry = async (timepoint, maxRetries = 5) => {
-//         const fields = {
-//           login: ppSecureLogin,
-//           password: ppSecret,
-//           timepoint: timepoint,
-//           dataType: "RNG",
-//         };
-//         const queryParams = new URLSearchParams(fields).toString();
-
-//         for (let attempt = 1; attempt <= maxRetries; attempt++) {
-//           try {
-//             const response = await axios.get(
-//               `${ppOriAPIURL}/DataFeeds/gamerounds/?${queryParams}`,
-//               {
-//                 headers: {
-//                   "Content-Type": "application/x-www-form-urlencoded",
-//                 },
-//               }
-//             );
-//             return response.data;
-//           } catch (error) {
-//             console.log(
-//               `Attempt ${attempt} failed for timepoint ${timepoint}: ${error.message}`
-//             );
-//             if (attempt === maxRetries) throw error;
-//             await new Promise((resolve) => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
-//           }
-//         }
-//       };
-
-//       // Fetch data in parallel with batching
-//       const batchSize = 10; // Process 10 timepoints at once
-//       const results = [];
-
-//       for (let i = 0; i < timepoints.length; i += batchSize) {
-//         const batch = timepoints.slice(i, i + batchSize);
-//         const batchPromises = batch.map((timepoint) =>
-//           fetchDataWithRetry(timepoint).catch((error) => {
-//             console.error(
-//               `Failed to fetch data for timepoint ${timepoint}:`,
-//               error
-//             );
-//             return null; // Return null for failed requests
-//           })
-//         );
-
-//         const batchResults = await Promise.all(batchPromises);
-//         results.push(...batchResults.filter((result) => result !== null));
-
-//         // Add a small delay between batches to avoid overwhelming the API
-//         if (i + batchSize < timepoints.length) {
-//           await new Promise((resolve) => setTimeout(resolve, 1000));
-//         }
-//       }
-
-//       // Process results
-//       let playerSummary = {};
-//       results.forEach((result) => {
-//         if (!result) return; // Skip null results
-
-//         const lines = result.split("\n");
-//         const headers = lines[1]?.split(",");
-//         if (!headers) return;
-
-//         lines.slice(2).forEach((line) => {
-//           const values = line.split(",");
-//           if (values.length === headers.length) {
-//             const row = headers.reduce((obj, header, index) => {
-//               obj[header.trim()] = values[index].trim();
-//               return obj;
-//             }, {});
-
-//             const playerId = row.extPlayerID.toLowerCase();
-//             const turnover = parseFloat(row.bet) || 0;
-//             const win = parseFloat(row.win) || 0;
-
-//             if (!playerSummary[playerId]) {
-//               playerSummary[playerId] = { turnover: 0, winloss: 0 };
-//             }
-
-//             playerSummary[playerId].turnover += turnover;
-//             playerSummary[playerId].winloss += win - turnover;
-//           }
-//         });
-//       });
-
-//       // Format the results
-//       Object.keys(playerSummary).forEach((playerId) => {
-//         playerSummary[playerId].turnover = Number(
-//           playerSummary[playerId].turnover.toFixed(2)
-//         );
-//         playerSummary[playerId].winloss = Number(
-//           playerSummary[playerId].winloss.toFixed(2)
-//         );
-//       });
-
-//       const userSummary = playerSummary[user.username.toLowerCase()] || {
-//         turnover: 0,
-//         winloss: 0,
-//       };
-
-//       return res.status(200).json({
-//         success: true,
-//         summary: {
-//           gamename: "PRAGMATIC PLAY SLOT",
-//           gamecategory: "Slot Games",
-//           user: {
-//             username: user.username,
-//             turnover: userSummary.turnover,
-//             winloss: userSummary.winloss,
-//           },
-//         },
-//       });
-//     } catch (error) {
-//       console.log(
-//         "PRAGMATIC PLAY SLOT: Failed to fetch win/loss report:",
-//         error.message
-//       );
-//       return res.status(500).json({
-//         error: "PRAGMATIC PLAY SLOT: Failed to fetch win/loss report",
-//       });
-//     }
-//   }
-// );
-
 router.get(
   "/admin/api/ppslot/:userId/dailygamedata",
   authenticateAdminToken,
@@ -2823,68 +2335,6 @@ router.get(
         success: true,
         summary: {
           gamename: "PRAGMATIC PLAY SLOT",
-          gamecategory: "Slot Games",
-          user: {
-            username: user.username,
-            turnover: totalTurnover,
-            winloss: totalWinLoss,
-          },
-        },
-      });
-    } catch (error) {
-      console.log(
-        "PRAGMATIC PLAY SLOT: Failed to fetch win/loss report:",
-        error.message
-      );
-      return res.status(500).json({
-        success: false,
-        message: {
-          en: "PP SLOT: Failed to fetch win/loss report",
-          zh: "PP SLOT: 获取盈亏报告失败",
-        },
-      });
-    }
-  }
-);
-
-router.get(
-  "/admin/api/ppslot2x/:userId/dailygamedata",
-  authenticateAdminToken,
-  async (req, res) => {
-    try {
-      const { startDate, endDate } = req.query;
-
-      const userId = req.params.userId;
-
-      const user = await User.findById(userId);
-
-      const records = await SlotLivePPModal.find({
-        username: `${user.gameId}2x`,
-        createdAt: {
-          $gte: moment(new Date(startDate)).utc().toDate(),
-          $lte: moment(new Date(endDate)).utc().toDate(),
-        },
-        refunded: false,
-        ended: true,
-        gameType: "Slot",
-      });
-
-      let totalTurnover = 0;
-      let totalWinLoss = 0;
-
-      records.forEach((record) => {
-        totalTurnover += record.betamount || 0;
-        totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
-      });
-
-      totalTurnover = Number(totalTurnover.toFixed(2));
-      totalWinLoss = Number(totalWinLoss.toFixed(2));
-
-      // Return the aggregated results
-      return res.status(200).json({
-        success: true,
-        summary: {
-          gamename: "PRAGMATIC PLAY SLOT 2X",
           gamecategory: "Slot Games",
           user: {
             username: user.username,
@@ -2992,88 +2442,6 @@ router.get(
 );
 
 router.get(
-  "/admin/api/ppslot2x/:userId/gamedata",
-  authenticateAdminToken,
-  async (req, res) => {
-    try {
-      const { startDate, endDate } = req.query;
-
-      const userId = req.params.userId;
-
-      const user = await User.findById(userId);
-
-      const records = await GameDataLog.find({
-        username: user.username,
-        date: {
-          $gte: moment(new Date(startDate))
-            .utc()
-            .add(8, "hours")
-            .format("YYYY-MM-DD"),
-          $lte: moment(new Date(endDate))
-            .utc()
-            .add(8, "hours")
-            .format("YYYY-MM-DD"),
-        },
-      });
-
-      let totalTurnover = 0;
-      let totalWinLoss = 0;
-
-      // Sum up the values for EVOLUTION under Live Casino
-      records.forEach((record) => {
-        // Convert Mongoose Map to Plain Object
-        const gameCategories =
-          record.gameCategories instanceof Map
-            ? Object.fromEntries(record.gameCategories)
-            : record.gameCategories;
-
-        if (
-          gameCategories &&
-          gameCategories["Slot Games"] &&
-          gameCategories["Slot Games"] instanceof Map
-        ) {
-          const slotGames = Object.fromEntries(gameCategories["Slot Games"]);
-
-          if (slotGames["PRAGMATIC PLAY SLOT 2X"]) {
-            totalTurnover += slotGames["PRAGMATIC PLAY SLOT 2X"].turnover || 0;
-            totalWinLoss += slotGames["PRAGMATIC PLAY SLOT 2X"].winloss || 0;
-          }
-        }
-      });
-
-      // Format the total values to two decimal places
-      totalTurnover = Number(totalTurnover.toFixed(2));
-      totalWinLoss = Number(totalWinLoss.toFixed(2));
-
-      return res.status(200).json({
-        success: true,
-        summary: {
-          gamename: "PRAGMATIC PLAY SLOT 2X",
-          gamecategory: "Slot Games",
-          user: {
-            username: user.username,
-            turnover: totalTurnover,
-            winloss: totalWinLoss,
-          },
-        },
-      });
-    } catch (error) {
-      console.log(
-        "PRAGMATIC PLAY SLOT: Failed to fetch win/loss report:",
-        error.message
-      );
-      return res.status(500).json({
-        success: false,
-        message: {
-          en: "PP SLOT: Failed to fetch win/loss report",
-          zh: "PP SLOT: 获取盈亏报告失败",
-        },
-      });
-    }
-  }
-);
-
-router.get(
   "/admin/api/ppslot/dailykioskreport",
   authenticateAdminToken,
   async (req, res) => {
@@ -3088,7 +2456,6 @@ router.get(
         refunded: false,
         ended: true,
         gameType: "Slot",
-        username: { $not: /2x$/ },
       });
 
       let totalTurnover = 0;
@@ -3106,60 +2473,6 @@ router.get(
         success: true,
         summary: {
           gamename: "PRAGMATIC PLAY SLOT",
-          gamecategory: "Slot Games",
-          totalturnover: Number(totalTurnover.toFixed(2)),
-          totalwinloss: Number(totalWinLoss.toFixed(2)),
-        },
-      });
-    } catch (error) {
-      console.error(
-        "PRAGMATIC PLAY SLOT: Failed to fetch win/loss report:",
-        error
-      );
-      return res.status(500).json({
-        success: false,
-        message: {
-          en: "PP SLOT: Failed to fetch win/loss report",
-          zh: "PP SLOT: 获取盈亏报告失败",
-        },
-      });
-    }
-  }
-);
-
-router.get(
-  "/admin/api/ppslot2x/dailykioskreport",
-  authenticateAdminToken,
-  async (req, res) => {
-    try {
-      const { startDate, endDate } = req.query;
-
-      const records = await SlotLivePPModal.find({
-        createdAt: {
-          $gte: moment(new Date(startDate)).utc().toDate(),
-          $lte: moment(new Date(endDate)).utc().toDate(),
-        },
-        refunded: false,
-        ended: true,
-        gameType: "Slot",
-        username: /2x$/,
-      });
-
-      let totalTurnover = 0;
-      let totalWinLoss = 0;
-
-      records.forEach((record) => {
-        totalTurnover += record.betamount || 0;
-
-        const winLoss = (record.betamount || 0) - (record.settleamount || 0);
-
-        totalWinLoss += winLoss;
-      });
-
-      return res.status(200).json({
-        success: true,
-        summary: {
-          gamename: "PRAGMATIC PLAY SLOT 2X",
           gamecategory: "Slot Games",
           totalturnover: Number(totalTurnover.toFixed(2)),
           totalwinloss: Number(totalWinLoss.toFixed(2)),
@@ -3284,77 +2597,6 @@ router.get(
         success: true,
         summary: {
           gamename: "PRAGMATIC PLAY SLOT",
-          gamecategory: "Slot Games",
-          totalturnover: Number(totalTurnover.toFixed(2)),
-          totalwinloss: Number(totalWinLoss.toFixed(2)),
-        },
-      });
-    } catch (error) {
-      console.error(
-        "PRAGMATIC PLAY SLOT: Failed to fetch win/loss report:",
-        error
-      );
-      return res.status(500).json({
-        success: false,
-        message: {
-          en: "PP SLOT: Failed to fetch win/loss report",
-          zh: "PP SLOT: 获取盈亏报告失败",
-        },
-      });
-    }
-  }
-);
-
-router.get(
-  "/admin/api/ppslot2x/kioskreport",
-  authenticateAdminToken,
-  async (req, res) => {
-    try {
-      const { startDate, endDate } = req.query;
-
-      const records = await GameDataLog.find({
-        date: {
-          $gte: moment(new Date(startDate))
-            .utc()
-            .add(8, "hours")
-            .format("YYYY-MM-DD"),
-          $lte: moment(new Date(endDate))
-            .utc()
-            .add(8, "hours")
-            .format("YYYY-MM-DD"),
-        },
-      });
-
-      let totalTurnover = 0;
-      let totalWinLoss = 0;
-
-      records.forEach((record) => {
-        const gameCategories =
-          record.gameCategories instanceof Map
-            ? Object.fromEntries(record.gameCategories)
-            : record.gameCategories;
-
-        if (
-          gameCategories &&
-          gameCategories["Slot Games"] &&
-          gameCategories["Slot Games"] instanceof Map
-        ) {
-          const liveCasino = Object.fromEntries(gameCategories["Slot Games"]);
-
-          if (liveCasino["PRAGMATIC PLAY SLOT 2X"]) {
-            totalTurnover += Number(
-              liveCasino["PRAGMATIC PLAY SLOT 2X"].turnover || 0
-            );
-            totalWinLoss +=
-              Number(liveCasino["PRAGMATIC PLAY SLOT 2X"].winloss || 0) * -1;
-          }
-        }
-      });
-
-      return res.status(200).json({
-        success: true,
-        summary: {
-          gamename: "PRAGMATIC PLAY SLOT 2X",
           gamecategory: "Slot Games",
           totalturnover: Number(totalTurnover.toFixed(2)),
           totalwinloss: Number(totalWinLoss.toFixed(2)),

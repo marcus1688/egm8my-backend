@@ -337,6 +337,8 @@ const userSchema = new mongoose.Schema(
       spadegamingslot: { type: gameLockSchema, default: () => ({}) },
       spadegamingfish: { type: gameLockSchema, default: () => ({}) },
       allbet: { type: gameLockSchema, default: () => ({}) },
+      ppslot: { type: gameLockSchema, default: () => ({}) },
+      pplive: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       mega888: { type: gameStatusSchema, default: () => ({}) },
@@ -499,6 +501,9 @@ const userSchema = new mongoose.Schema(
     pastKiss918GamePW: {
       type: [String],
       default: [],
+    },
+    ppGameToken: {
+      type: String,
     },
   },
   {
