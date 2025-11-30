@@ -245,6 +245,10 @@ router.post("/admin/api/getAllTurnoverForRebate", async (req, res) => {
         url: `${PUBLIC_APIURL}api/pplive/getturnoverforrebate`,
         name: "PRAGMATIC PLAY LIVE",
       },
+      {
+        url: `${PUBLIC_APIURL}api/m9bet/getturnoverforrebate`,
+        name: "M9BET",
+      },
     ];
 
     const routePromises = routes.map((route) =>
