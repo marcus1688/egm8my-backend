@@ -19,9 +19,9 @@ require("dotenv").config();
 
 const sbobetSecret = process.env.SBOBET_SECRET;
 const webURL = "https://www.bm8my.vip/";
-const sbobetAPIURL = "https://ex-api-yy.xxttgg.com";
+const sbobetAPIURL = "https://ex-api-demo-yy.568win.com";
 const sbobetAgent = "EGM8MYR";
-const sbobetCreatedAgent = "EGM8MYRAM";
+const sbobetCreatedAgent = "BM8MYR";
 
 function roundToTwoDecimals(num) {
   return Math.round(num * 100) / 100;
@@ -71,55 +71,57 @@ function generateTraceCode() {
   return uuidv4();
 }
 
-// async function registerSBOBETAgent() {
-//   try {
-//     const requestData = {
-//       CompanyKey: sbobetSecret,
-//       ServerID: generateTraceCode(),
-//       Username: "EGM8MYRAM",
-//       Password: "Qwer1234",
-//       Currency: "MYR",
-//       Min: 10,
-//       Max: 50000,
-//       MaxPerMatch: 50000,
-//       CasinoTableLimit: 2,
-//       isTwoFAEnabled: false,
-//     };
+async function registerSBOBETAgent() {
+  try {
+    const requestData = {
+      CompanyKey: sbobetSecret,
+      ServerID: generateTraceCode(),
+      Username: "BM8MYR",
+      Password: "Qwer1234",
+      Currency: "MYR",
+      Min: 10,
+      Max: 50000,
+      MaxPerMatch: 50000,
+      CasinoTableLimit: 2,
+      isTwoFAEnabled: false,
+    };
 
-//     const response = await axios.post(
-//       `${sbobetAPIURL}/web-root/restricted/agent/register-agent.aspx`,
-//       requestData,
-//       {
-//         headers: {
-//           "Content-Type": "application/json",
-//         },
-//       }
-//     );
+    const response = await axios.post(
+      `${sbobetAPIURL}/web-root/restricted/agent/register-agent.aspx`,
+      requestData,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
-//     if (response.data.error.id !== 0) {
-//       console.log("sbo response error register agent", response.data);
+    if (response.data.error.id !== 0) {
+      console.log("sbo response error register agent", response.data);
 
-//       return {
-//         success: false,
-//         error: response.data,
-//       };
-//     }
+      return {
+        success: false,
+        error: response.data,
+      };
+    }
 
-//     return {
-//       success: true,
-//       data: response.data,
-//     };
-//   } catch (error) {
-//     console.error(
-//       "Register Agent SBOBET error in creating member:",
-//       error.message
-//     );
-//     return {
-//       success: false,
-//       error: error.message,
-//     };
-//   }
-// }
+    return {
+      success: true,
+      data: response.data,
+    };
+  } catch (error) {
+    console.error(
+      "Register Agent SBOBET error in creating member:",
+      error.message
+    );
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
+
+// registerSBOBETAgent();
 async function registerSBOBETUser(user) {
   try {
     const requestData = {
