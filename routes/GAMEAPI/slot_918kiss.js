@@ -1365,18 +1365,38 @@ router.post("/api/918kiss/getturnoverforrebate", async (req, res) => {
       },
     });
 
+    const uniqueGameIds = [
+      ...new Set(records.map((record) => record.username)),
+    ];
+
+    const users = await User.find(
+      { gameId: { $in: uniqueGameIds } },
+      { gameId: 1, username: 1 }
+    ).lean();
+
+    const gameIdToUsername = {};
+    users.forEach((user) => {
+      gameIdToUsername[user.gameId] = user.username;
+    });
+
+    // Aggregate turnover and win/loss for each player
     let playerSummary = {};
 
     records.forEach((record) => {
-      const username = record.username;
+      const gameId = record.username;
+      const actualUsername = gameIdToUsername[gameId];
 
-      if (!playerSummary[username]) {
-        playerSummary[username] = { turnover: 0, winloss: 0 };
+      if (!actualUsername) {
+        console.warn(`918KISS User not found for gameId: ${gameId}`);
+        return;
+      }
+      if (!playerSummary[actualUsername]) {
+        playerSummary[actualUsername] = { turnover: 0, winloss: 0 };
       }
 
-      playerSummary[username].turnover += record.betamount || 0;
+      playerSummary[actualUsername].turnover += record.betamount || 0;
 
-      playerSummary[username].winloss +=
+      playerSummary[actualUsername].winloss +=
         (record.settleamount || 0) - (record.betamount || 0);
     });
 
@@ -1420,7 +1440,7 @@ router.get(
       const user = await User.findById(userId);
 
       const records = await slot918KissModal.find({
-        username: user.username,
+        username: user.gameId,
         betTime: {
           $gte: startDate,
           $lt: endDate,
