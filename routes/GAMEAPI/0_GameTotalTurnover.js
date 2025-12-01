@@ -53,14 +53,17 @@ const getGameDataSummary = async (
   username,
   start,
   end,
-  aggregationPipeline
+  aggregationPipeline,
+  useBetTime = false
 ) => {
   try {
+    const timeField = useBetTime ? "betTime" : "createdAt";
+
     const results = await model.aggregate([
       {
         $match: {
           username: username,
-          createdAt: { $gte: start, $lte: end },
+          [timeField]: { $gte: start, $lte: end },
           ...aggregationPipeline.$match,
         },
       },
@@ -873,7 +876,8 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
         user.username,
         start,
         end,
-        aggregations.mega888
+        aggregations.mega888,
+        true
       ),
       getGameDataSummary(
         SlotRSGModal,
@@ -901,7 +905,8 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
         user.gameId,
         start,
         end,
-        aggregations.kiss918
+        aggregations.kiss918,
+        true
       ),
     ]);
 

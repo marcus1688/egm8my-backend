@@ -5855,7 +5855,8 @@ router.get(
         matchConditions,
         turnoverExpression = {
           $ifNull: [{ $ifNull: ["$validbetamount", "$betamount"] }, 0],
-        }
+        },
+        timeFieldName = "createdAt"
       ) => {
         try {
           const fullMatchConditions = {
@@ -6092,7 +6093,14 @@ router.get(
             settle: true,
           }),
 
-          getAllUsersTurnover(slotMega888Modal, {}),
+          getAllUsersTurnover(
+            slotMega888Modal,
+            {},
+            {
+              $ifNull: [{ $ifNull: ["$validbetamount", "$betamount"] }, 0],
+            },
+            "betTime"
+          ),
 
           getAllUsersTurnover(SlotRSGModal, {
             cancel: { $ne: true },
@@ -6108,8 +6116,14 @@ router.get(
             cancel: { $ne: true },
             settle: true,
           }),
-
-          getAllUsersTurnover(slot918KissModal, {}),
+          getAllUsersTurnover(
+            slot918KissModal,
+            {},
+            {
+              $ifNull: [{ $ifNull: ["$validbetamount", "$betamount"] }, 0],
+            },
+            "betTime"
+          ),
         ];
 
         const todayGameResults = await Promise.allSettled(todayGamePromises);
