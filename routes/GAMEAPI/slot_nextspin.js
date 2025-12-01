@@ -11,7 +11,6 @@ const {
   GameDataLog,
 } = require("../../models/users.model");
 const { adminUser, adminLog } = require("../../models/adminuser.model");
-const SlotJiliModal = require("../../models/slot_jili.model");
 const { v4: uuidv4 } = require("uuid");
 const jwt = require("jsonwebtoken");
 const moment = require("moment");
@@ -47,7 +46,7 @@ const nextSpinSecret = process.env.NEXTSPIN_SECRET;
 const webURL = "https://www.bm8my.vip/";
 const nextSpinAPIURL = "https://merchantapi.ns-api-cy2-tokyo01.com/api";
 const nextSpinGameURL = "https://lobby.d1mquqjm.com";
-const nextSpinCustomBrand = "EGM8";
+const nextSpinCustomBrand = "BM8";
 
 function generateSignature(id, method, sn, playerCode) {
   const rawString = `${id}${method}${sn}${playerCode}${lionKingSecret}`;
