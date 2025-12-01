@@ -19,6 +19,7 @@ const GameWalletLog = require("../../models/gamewalletlog.model");
 const slotMega888Modal = require("../../models/slot_mega888.model");
 const GameSyncLog = require("../../models/game_syncdata.model");
 const cron = require("node-cron");
+const { sync918KissGameRecords } = require("./slot_918kiss");
 require("dotenv").config();
 
 //Staging
@@ -2333,12 +2334,22 @@ const syncMega888GameHistory = async () => {
 
 if (process.env.NODE_ENV !== "development") {
   cron.schedule("*/10 * * * *", async () => {
+    // Mega888 sync
     console.log("[Cron] Starting Mega888 sync job");
     try {
       await syncMega888GameHistory();
       console.log("[Cron] Mega888 sync completed successfully");
     } catch (error) {
       console.error("[Cron] Mega888 sync failed:", error.message);
+    }
+
+    // 918Kiss sync
+    console.log("[Cron] Starting 918Kiss sync job");
+    try {
+      await sync918KissGameRecords();
+      console.log("[Cron] 918Kiss sync completed successfully");
+    } catch (error) {
+      console.error("[Cron] 918Kiss sync failed:", error.message);
     }
   });
 }

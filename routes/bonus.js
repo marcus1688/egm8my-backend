@@ -12,6 +12,7 @@ const Promotion = require("../models/promotion.model");
 const vip = require("../models/vip.model");
 const { checkSportPendingMatch } = require("../helpers/turnoverHelper");
 const { mega888CheckBalance } = require("./GAMEAPI/slot_mega888");
+const { kiss918CheckBalance } = require("./GAMEAPI/slot_918kiss");
 //this need change useing createdAt time
 const calculateCountdown = (createdAt) => {
   // //   const now = moment.utc().add(8, "hours"); // GMT+8 timezone
@@ -40,7 +41,10 @@ const calculateWeeklyCountdown = (createdAt) => {
 };
 
 async function getTotalGameBalance(user) {
-  const GAME_CHECKERS = [{ name: "MEGA888", checker: mega888CheckBalance }];
+  const GAME_CHECKERS = [
+    { name: "MEGA888", checker: mega888CheckBalance },
+    { name: "918KISS", checker: kiss918CheckBalance },
+  ];
 
   const results = await Promise.all(
     GAME_CHECKERS.map(({ name, checker }) =>

@@ -17,6 +17,7 @@ const moment = require("moment");
 const qs = require("querystring");
 const GameWalletLog = require("../../models/gamewalletlog.model");
 const GameSyncLog = require("../../models/game_syncdata.model");
+const slot918KissModal = require("../../models/slot_918kiss.model");
 const cron = require("node-cron");
 require("dotenv").config();
 
@@ -1203,5 +1204,717 @@ router.post(
   }
 );
 
+// router.post("/api/918kiss/getturnoverforrebate", async (req, res) => {
+//   try {
+//     const { date } = req.body;
+
+//     let startDate, endDate;
+//     if (date === "today") {
+//       startDate = moment
+//         .utc()
+//         .add(8, "hours")
+//         .startOf("day")
+//         .subtract(8, "hours")
+//         .format("YYYY-MM-DD");
+//       endDate = moment
+//         .utc()
+//         .add(8, "hours")
+//         .endOf("day")
+//         .subtract(8, "hours")
+//         .format("YYYY-MM-DD");
+//     } else if (date === "yesterday") {
+//       startDate = moment
+//         .utc()
+//         .add(8, "hours")
+//         .subtract(1, "days")
+//         .startOf("day")
+//         .subtract(8, "hours")
+//         .format("YYYY-MM-DD");
+
+//       endDate = moment
+//         .utc()
+//         .add(8, "hours")
+//         .subtract(1, "days")
+//         .endOf("day")
+//         .subtract(8, "hours")
+//         .format("YYYY-MM-DD");
+//     }
+
+//     console.log("918KISS QUERYING TIME", startDate, endDate);
+
+//     const gameID = "01854540936";
+
+//     const hashString = `${kiss918AgentId}${gameID}${kiss918Provider}${endDate}${kiss918Secret}`;
+//     const digest = generateMD5Hash(hashString);
+
+//     const payload = {
+//       agentID: kiss918AgentId,
+//       playerID: gameID,
+//       provider: kiss918Provider,
+//       date: endDate,
+//       secretKey: kiss918Secret,
+//       hash: digest,
+//     };
+
+//     const response = await axios.post(
+//       `${kiss918APIURL}player/game_record/`,
+//       payload,
+//       {
+//         headers: {
+//           "Content-Type": "application/json",
+//           Accept: "application/json",
+//         },
+//         maxRedirects: 0,
+//       }
+//     );
+
+//     console.log(response.data);
+//     return;
+//     const records = await slot918KissModal.find({
+//       betTime: {
+//         $gte: startDate,
+//         $lt: endDate,
+//       },
+//     });
+
+//     let playerSummary = {};
+
+//     records.forEach((record) => {
+//       const username = record.username;
+
+//       if (!playerSummary[username]) {
+//         playerSummary[username] = { turnover: 0, winloss: 0 };
+//       }
+
+//       playerSummary[username].turnover += record.betamount || 0;
+
+//       playerSummary[username].winloss +=
+//         (record.settleamount || 0) - (record.betamount || 0);
+//     });
+
+//     Object.keys(playerSummary).forEach((playerId) => {
+//       playerSummary[playerId].turnover = Number(
+//         playerSummary[playerId].turnover.toFixed(2)
+//       );
+//       playerSummary[playerId].winloss = Number(
+//         playerSummary[playerId].winloss.toFixed(2)
+//       );
+//     });
+//     return res.status(200).json({
+//       success: true,
+//       summary: {
+//         gamename: "918KISS",
+//         gamecategory: "Slot Games",
+//         users: playerSummary,
+//       },
+//     });
+//   } catch (error) {
+//     console.log("918KISS: Failed to fetch win/loss report:", error.message);
+//     return res.status(500).json({
+//       success: false,
+//       message: {
+//         en: "918KISS: Failed to fetch win/loss report",
+//         zh: "918KISS: 获取盈亏报告失败",
+//       },
+//     });
+//   }
+// });
+
+router.post("/api/918kiss/getturnoverforrebate", async (req, res) => {
+  try {
+    const { date } = req.body;
+
+    let startDate, endDate;
+    if (date === "today") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    } else if (date === "yesterday") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    }
+
+    console.log("918KISS QUERYING TIME", startDate, endDate);
+
+    const records = await slot918KissModal.find({
+      betTime: {
+        $gte: startDate,
+        $lt: endDate,
+      },
+    });
+
+    let playerSummary = {};
+
+    records.forEach((record) => {
+      const username = record.username;
+
+      if (!playerSummary[username]) {
+        playerSummary[username] = { turnover: 0, winloss: 0 };
+      }
+
+      playerSummary[username].turnover += record.betamount || 0;
+
+      playerSummary[username].winloss +=
+        (record.settleamount || 0) - (record.betamount || 0);
+    });
+
+    Object.keys(playerSummary).forEach((playerId) => {
+      playerSummary[playerId].turnover = Number(
+        playerSummary[playerId].turnover.toFixed(2)
+      );
+      playerSummary[playerId].winloss = Number(
+        playerSummary[playerId].winloss.toFixed(2)
+      );
+    });
+    return res.status(200).json({
+      success: true,
+      summary: {
+        gamename: "918KISS",
+        gamecategory: "Slot Games",
+        users: playerSummary,
+      },
+    });
+  } catch (error) {
+    console.log("918KISS: Failed to fetch win/loss report:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: {
+        en: "918KISS: Failed to fetch win/loss report",
+        zh: "918KISS: 获取盈亏报告失败",
+      },
+    });
+  }
+});
+
+router.get(
+  "/admin/api/918kiss/:userId/dailygamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      const records = await slot918KissModal.find({
+        username: user.username,
+        betTime: {
+          $gte: startDate,
+          $lt: endDate,
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        totalTurnover += record.betamount || 0;
+
+        totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
+      });
+
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+
+      // Return the aggregated results
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "918KISS",
+          gamecategory: "Slot Games",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("918KISS: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "918KISS: Failed to fetch win/loss report",
+          zh: "918KISS: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/918kiss/:userId/gamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      const records = await GameDataLog.find({
+        username: user.username,
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      // Sum up the values for EVOLUTION under Live Casino
+      records.forEach((record) => {
+        // Convert Mongoose Map to Plain Object
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
+
+        if (
+          gameCategories &&
+          gameCategories["Slot Games"] &&
+          gameCategories["Slot Games"] instanceof Map
+        ) {
+          const slotGames = Object.fromEntries(gameCategories["Slot Games"]);
+
+          if (slotGames["918KISS"]) {
+            totalTurnover += slotGames["918KISS"].turnover || 0;
+            totalWinLoss += slotGames["918KISS"].winloss || 0;
+          }
+        }
+      });
+
+      // Format the total values to two decimal places
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "918KISS",
+          gamecategory: "Slot Games",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("918KISS: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "918KISS: Failed to fetch win/loss report",
+          zh: "918KISS: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/918kiss/dailykioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const records = await slot918KissModal.find({
+        betTime: {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        totalTurnover += record.betamount || 0;
+
+        totalWinLoss += (record.betamount || 0) - (record.settleamount || 0);
+      });
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "918KISS",
+          gamecategory: "Slot Games",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("918KISS: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "918KISS: Failed to fetch win/loss report",
+          zh: "918KISS: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/918kiss/kioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const records = await GameDataLog.find({
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
+
+        if (
+          gameCategories &&
+          gameCategories["Slot Games"] &&
+          gameCategories["Slot Games"] instanceof Map
+        ) {
+          const liveCasino = Object.fromEntries(gameCategories["Slot Games"]);
+
+          if (liveCasino["918KISS"]) {
+            totalTurnover += Number(liveCasino["918KISS"].turnover || 0);
+            totalWinLoss += Number(liveCasino["918KISS"].winloss || 0);
+          }
+        }
+      });
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "918KISS",
+          gamecategory: "Slot Games",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("918KISS: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "918KISS: Failed to fetch win/loss report",
+          zh: "918KISS: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+async function fetch918KissGameRecords(user, date) {
+  try {
+    if (!user.kiss918GameID) {
+      return {
+        success: false,
+        error: "User does not have 918KISS game ID",
+        recordsSaved: 0,
+      };
+    }
+
+    const formattedDate = moment(date).format("YYYY-MM-DD");
+    const hashString = `${kiss918AgentId}${user.kiss918GameID}${kiss918Provider}${formattedDate}${kiss918Secret}`;
+    const digest = generateMD5Hash(hashString.toLowerCase());
+
+    const payload = {
+      agentID: kiss918AgentId,
+      playerID: user.kiss918GameID,
+      provider: kiss918Provider,
+      date: formattedDate,
+      secretKey: kiss918Secret,
+      hash: digest,
+    };
+
+    console.log(
+      `📡 Fetching 918KISS records for ${user.username} (${user.kiss918GameID}) - Date: ${formattedDate}`
+    );
+
+    const response = await axios.post(
+      `${kiss918APIURL}player/game_record/`,
+      payload,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        maxRedirects: 0,
+      }
+    );
+
+    if (response.data.error !== 0 && response.data.code !== 0) {
+      return {
+        success: false,
+        error: response.data.message || "API returned error",
+        recordsSaved: 0,
+      };
+    }
+
+    const records = response.data.result || [];
+
+    if (records.length === 0) {
+      console.log(`   ℹ️  No records found for ${user.username}`);
+      return {
+        success: true,
+        recordsSaved: 0,
+        skipped: 0,
+      };
+    }
+
+    const cutoffTime = moment.tz("Asia/Kuala_Lumpur").subtract(24, "hours");
+
+    let savedCount = 0;
+    let skippedCount = 0;
+    let duplicateCount = 0;
+
+    for (const record of records) {
+      try {
+        const betTimeUTC8 = moment.tz(
+          record.CreateTime,
+          "YYYY-MM-DD HH:mm:ss",
+          "Asia/Kuala_Lumpur"
+        );
+        const betTimeUTC = betTimeUTC8.utc().toDate();
+        // Skip if bet is older than 24 hours
+        if (betTimeUTC8.isBefore(cutoffTime)) {
+          skippedCount++;
+          continue;
+        }
+
+        // Check if betId (uuid) already exists
+        const existingBet = await slot918KissModal.findOne({
+          betId: record.uuid,
+        });
+        if (existingBet) {
+          duplicateCount++;
+          continue;
+        }
+
+        const newRecord = new slot918KissModal({
+          betId: record.uuid,
+          betamount: parseFloat(record.bet) || 0,
+          settleamount: parseFloat(record.Win) || 0,
+          username: user.gameId,
+          bet: true,
+          settle: true,
+          betTime: betTimeUTC,
+        });
+
+        await newRecord.save();
+        savedCount++;
+      } catch (err) {
+        console.error(`   ❌ Error saving record ${record.uuid}:`, err.message);
+      }
+    }
+
+    return {
+      success: true,
+      recordsSaved: savedCount,
+      skipped: skippedCount,
+      duplicates: duplicateCount,
+      totalRecords: records.length,
+    };
+  } catch (error) {
+    console.error(
+      `   ❌ Error fetching records for ${user.username}:`,
+      error.message
+    );
+    return {
+      success: false,
+      error: error.response?.data?.message || error.message,
+      recordsSaved: 0,
+    };
+  }
+}
+
+async function sync918KissGameRecords(daysBack = 5) {
+  try {
+    const startTime = Date.now();
+
+    const endDate = moment.utc();
+    const startDate = moment.utc().subtract(daysBack, "days");
+
+    // Find users who have deposit/withdraw in 918KISS in the last N days
+    const gameWalletLogs = await GameWalletLog.find({
+      gamename: { $regex: /^918kiss$/i },
+      remark: "Transfer",
+      createdAt: { $gte: startDate.toDate() },
+    })
+      .select("username")
+      .lean();
+
+    // Get unique usernames
+    const uniqueUsernames = [
+      ...new Set(gameWalletLogs.map((log) => log.username)),
+    ];
+
+    if (uniqueUsernames.length === 0) {
+      console.log("ℹ️  No active 918KISS players found");
+      return {
+        success: true,
+        totalPlayers: 0,
+        totalRecordsSaved: 0,
+      };
+    }
+
+    // Get user details with kiss918GameID
+    const users = await User.find({
+      username: { $in: uniqueUsernames },
+      kiss918GameID: { $exists: true, $ne: null },
+    })
+      .select("username kiss918GameID gameId")
+      .lean();
+
+    // Sync records for each user for each date
+    const results = {
+      totalPlayers: users.length,
+      totalRecordsSaved: 0,
+      totalSkipped: 0,
+      totalDuplicates: 0,
+      successfulPlayers: 0,
+      failedPlayers: 0,
+      errors: [],
+    };
+
+    for (let i = 0; i < users.length; i++) {
+      const user = users[i];
+      console.log(`[${i + 1}/${users.length}] Processing ${user.username}...`);
+
+      let playerSuccess = false;
+      let playerRecordsSaved = 0;
+
+      // Fetch records for each date in the range
+      for (
+        let date = moment(endDate);
+        date.isSameOrAfter(startDate, "day");
+        date.subtract(1, "day")
+      ) {
+        try {
+          const result = await fetch918KissGameRecords(user, date.toDate());
+
+          if (result.success) {
+            playerSuccess = true;
+            playerRecordsSaved += result.recordsSaved;
+            results.totalRecordsSaved += result.recordsSaved;
+            results.totalSkipped += result.skipped || 0;
+            results.totalDuplicates += result.duplicates || 0;
+          } else {
+            results.errors.push({
+              username: user.username,
+              date: date.format("YYYY-MM-DD"),
+              error: result.error,
+            });
+          }
+
+          // Add 100ms delay between API calls
+          if (i < users.length - 1 || !date.isSame(startDate, "day")) {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+        } catch (error) {
+          console.error(
+            `   ❌ Error for ${user.username} on ${date.format("YYYY-MM-DD")}:`,
+            error.message
+          );
+          results.errors.push({
+            username: user.username,
+            date: date.format("YYYY-MM-DD"),
+            error: error.message,
+          });
+        }
+      }
+
+      if (playerSuccess && playerRecordsSaved > 0) {
+        results.successfulPlayers++;
+      } else if (!playerSuccess) {
+        results.failedPlayers++;
+      }
+
+      console.log(
+        `   📊 Total saved for ${user.username}: ${playerRecordsSaved} records\n`
+      );
+    }
+
+    const endTime = Date.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(2);
+
+    console.log("=".repeat(70));
+    console.log("📊 918KISS SYNC SUMMARY");
+    console.log("=".repeat(70));
+    console.log(`⏱️  Duration:              ${duration}s`);
+    console.log(`👥 Total Players:         ${results.totalPlayers}`);
+    console.log(`✅ Successful Players:    ${results.successfulPlayers}`);
+    console.log(`❌ Failed Players:        ${results.failedPlayers}`);
+    console.log(`💾 Total Records Saved:   ${results.totalRecordsSaved}`);
+    console.log(`⏭️  Skipped (old):         ${results.totalSkipped}`);
+    console.log(`🔄 Duplicates:            ${results.totalDuplicates}`);
+    console.log(`⚠️  Errors:                ${results.errors.length}`);
+    console.log("=".repeat(70) + "\n");
+
+    return {
+      success: true,
+      ...results,
+      duration,
+    };
+  } catch (error) {
+    console.error("❌ Sync error:", error.message);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
+
 module.exports = router;
 module.exports.kiss918CheckBalance = kiss918CheckBalance;
+module.exports.sync918KissGameRecords = sync918KissGameRecords;

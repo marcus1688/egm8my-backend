@@ -20,6 +20,7 @@ const UserWalletLog = require("../models/userwalletlog.model");
 const Promotion = require("../models/promotion.model");
 const moment = require("moment");
 const { mega888CheckBalance } = require("./GAMEAPI/slot_mega888");
+const { kiss918CheckBalance } = require("./GAMEAPI/slot_918kiss");
 const Withdraw = require("../models/withdraw.model");
 
 require("dotenv").config();
@@ -46,7 +47,10 @@ async function uploadFileToS3(file) {
 }
 
 async function getTotalGameBalance(user) {
-  const GAME_CHECKERS = [{ name: "MEGA888", checker: mega888CheckBalance }];
+  const GAME_CHECKERS = [
+    { name: "MEGA888", checker: mega888CheckBalance },
+    { name: "918KISS", checker: kiss918CheckBalance },
+  ];
 
   const results = await Promise.all(
     GAME_CHECKERS.map(({ name, checker }) =>
