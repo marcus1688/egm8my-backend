@@ -342,7 +342,7 @@ const userSchema = new mongoose.Schema(
     },
     gameStatus: {
       mega888: { type: gameStatusSchema, default: () => ({}) },
-      // xe88: { type: gameStatusSchema, default: () => ({}) },
+      kiss918: { type: gameStatusSchema, default: () => ({}) },
       // kiss918: { type: gameStatusSchema, default: () => ({}) },
     },
     lastForcedLogout: { type: Date, default: null },

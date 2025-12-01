@@ -16,7 +16,6 @@ const jwt = require("jsonwebtoken");
 const moment = require("moment");
 const qs = require("querystring");
 const GameWalletLog = require("../../models/gamewalletlog.model");
-const slotMega888Modal = require("../../models/slot_mega888.model");
 const GameSyncLog = require("../../models/game_syncdata.model");
 const cron = require("node-cron");
 require("dotenv").config();
@@ -66,7 +65,6 @@ async function GameWalletLogAttempt(
 
 const kiss918RegisterUser = async (user) => {
   try {
-    const randomPass = generateRandomPassword();
     const hashString = `${kiss918AgentId}${kiss918Provider}${kiss918Secret}`;
     const digest = generateMD5Hash(hashString);
 
@@ -76,33 +74,34 @@ const kiss918RegisterUser = async (user) => {
       secretKey: kiss918Secret,
       hash: digest,
     };
-    console.log(payload);
-    console.log(`${kiss918APIURL}player/create/`);
+
     const response = await axios.post(
-      `${kiss918APIURL}player/create`,
+      `${kiss918APIURL}player/create/`,
       payload,
       {
         headers: {
           "Content-Type": "application/json",
+          Accept: "application/json",
         },
+        maxRedirects: 0,
       }
     );
-    console.log(response, "hi");
-    return;
-    if (response.data && response.data.result && response.data.result.success) {
-      const generatedLoginId = response.data.result.loginId;
+
+    if (response.data.error === 0) {
+      const generatedLoginId = response.data.playerID;
+      const generatedPassword = response.data.playerPwd;
 
       const updateFields = {
         $set: {
-          mega888GameID: generatedLoginId,
-          mega888GamePW: randomPass,
+          kiss918GameID: generatedLoginId,
+          kiss918GamePW: generatedPassword,
         },
       };
 
-      if (user.mega888GameID && user.mega888GamePW) {
+      if (user.kiss918GameID && user.kiss918GamePW) {
         updateFields.$push = {
-          pastMega888GameID: user.mega888GameID,
-          pastMega888GamePW: user.mega888GamePW,
+          pastKiss918GameID: user.kiss918GameID,
+          pastKiss918GamePW: user.kiss918GamePW,
         };
       }
 
@@ -112,81 +111,94 @@ const kiss918RegisterUser = async (user) => {
         success: true,
         userData: {
           userId: generatedLoginId,
-          password: randomPass,
+          password: generatedPassword,
         },
       };
     } else {
-      console.log(response.data, "MEGA888 Registration Failed");
+      console.log(response.data, "918KISS Registration Failed");
       return {
         success: false,
         error: response.data,
       };
     }
   } catch (error) {
-    console.log("MEGA888 error in registering user", error.message);
+    console.log("918KISS error in registering user", error.message);
     return {
       success: false,
       error: error.message,
     };
   }
 };
-const mega888CheckBalance = async (user) => {
+
+const kiss918CheckBalance = async (user) => {
   try {
-    if (!user.mega888GameID) {
+    if (!user.kiss918GameID) {
       return {
         success: true,
         balance: 0,
       };
     }
 
-    const random = String(Date.now());
-    const digest = generateMD5Hash(
-      random + mega888SN + user.mega888GameID + mega888Secret
-    );
+    const hashString = `${kiss918AgentId}${user.kiss918GameID}${kiss918Provider}${kiss918Secret}`;
+    const digest = generateMD5Hash(hashString);
 
-    const payload = buildParams(
+    const payload = {
+      agentID: kiss918AgentId,
+      playerID: user.kiss918GameID,
+      provider: kiss918Provider,
+      secretKey: kiss918Secret,
+      hash: digest,
+    };
+
+    const response = await axios.post(
+      `${kiss918APIURL}player/player_info/`,
+      payload,
       {
-        loginId: user.mega888GameID,
-        sn: mega888SN,
-        random: random,
-        digest: digest,
-      },
-      "open.mega.balance.get"
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        maxRedirects: 0,
+      }
     );
-    const response = await axios.post(mega888APIURL, payload);
-
     return {
-      success: !response.data.error,
-      balance: response.data.result || 0,
+      success: response.data.error === 0,
+      balance: response.data.playerBalance || 0,
       response: response.data,
     };
   } catch (error) {
-    console.error("MEGA888 error checking user balance", error.message);
+    console.error("918KISS error checking user balance", error.message);
     return { success: false, balance: 0 };
   }
 };
 
-async function mega888Deposit(user, trfamount) {
+async function kiss918Deposit(user, trfamount) {
   try {
-    const random = String(Date.now());
-    const digest = generateMD5Hash(
-      random + mega888SN + user.mega888GameID + trfamount + mega888Secret
-    );
+    const hashString = `${kiss918AgentId}${user.kiss918GameID}${kiss918Provider}${trfamount}${kiss918Secret}`;
+    const digest = generateMD5Hash(hashString);
 
-    const payload = buildParams(
+    const payload = {
+      agentID: kiss918AgentId,
+      playerID: user.kiss918GameID,
+      provider: kiss918Provider,
+      amount: trfamount,
+      secretKey: kiss918Secret,
+      hash: digest,
+    };
+
+    const response = await axios.post(
+      `${kiss918APIURL}player/deposit/`,
+      payload,
       {
-        loginId: user.mega888GameID,
-        sn: mega888SN,
-        random: random,
-        digest: digest,
-        amount: trfamount,
-      },
-      "open.mega.balance.transfer"
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        maxRedirects: 0,
+      }
     );
 
-    const response = await axios.post(mega888APIURL, payload);
-
-    if (response.data.error) {
+    if (response.data.error !== 0) {
       return {
         success: false,
         error: response.data,
@@ -195,7 +207,7 @@ async function mega888Deposit(user, trfamount) {
 
     return { success: true, data: response.data };
   } catch (error) {
-    console.error("MEGA888 error in deposit:", error.message);
+    console.error("918KISS error in deposit:", error.message);
     return {
       success: false,
       error: error.message,
@@ -203,26 +215,35 @@ async function mega888Deposit(user, trfamount) {
   }
 }
 
-async function mega888Withdraw(user, trfamount) {
+async function kiss918Withdraw(user, trfamount) {
   try {
-    const random = String(Date.now());
-    const digest = generateMD5Hash(
-      random + mega888SN + user.mega888GameID + -trfamount + mega888Secret
-    );
+    const hashString = `${kiss918AgentId}${
+      user.kiss918GameID
+    }${kiss918Provider}${-trfamount}${kiss918Secret}`;
+    const digest = generateMD5Hash(hashString);
 
-    const payload = buildParams(
+    const payload = {
+      agentID: kiss918AgentId,
+      playerID: user.kiss918GameID,
+      provider: kiss918Provider,
+      amount: -trfamount,
+      secretKey: kiss918Secret,
+      hash: digest,
+    };
+
+    const response = await axios.post(
+      `${kiss918APIURL}player/withdraw/`,
+      payload,
       {
-        loginId: user.mega888GameID,
-        sn: mega888SN,
-        random: random,
-        digest: digest,
-        amount: -trfamount,
-      },
-      "open.mega.balance.transfer"
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        maxRedirects: 0,
+      }
     );
 
-    const response = await axios.post(mega888APIURL, payload);
-    if (response.data.error) {
+    if (response.data.error !== 0) {
       return {
         success: false,
         error: response.data,
@@ -231,7 +252,7 @@ async function mega888Withdraw(user, trfamount) {
 
     return { success: true, data: response.data };
   } catch (error) {
-    console.error("MEGA888 error in withdraw:", error.message);
+    console.error("918KISS error in withdraw:", error.message);
     return {
       success: false,
       error: error.message,
@@ -239,7 +260,7 @@ async function mega888Withdraw(user, trfamount) {
   }
 }
 
-router.post("/api/mega888/register", authenticateToken, async (req, res) => {
+router.post("/api/918kiss/register", authenticateToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
 
@@ -256,33 +277,33 @@ router.post("/api/mega888/register", authenticateToken, async (req, res) => {
       });
     }
 
-    if (user.mega888GameID && user.mega888GamePW) {
+    if (user.kiss918GameID && user.kiss918GamePW) {
       return res.status(200).json({
         success: true,
         message: {
-          en: "MEGA888: Account registered successfully.",
-          zh: "MEGA888: 账户注册成功。",
-          ms: "MEGA888: Akaun berjaya didaftarkan.",
-          zh_hk: "MEGA888: 帳戶註冊成功。",
-          id: "MEGA888: Akun berhasil didaftarkan.",
+          en: "918KISS: Account registered successfully.",
+          zh: "918KISS: 账户注册成功。",
+          ms: "918KISS: Akaun berjaya didaftarkan.",
+          zh_hk: "918KISS: 帳戶註冊成功。",
+          id: "918KISS: Akun berhasil didaftarkan.",
         },
         userData: {
-          userId: user.mega888GameID,
-          password: user.mega888GamePW,
+          userId: user.kiss918GameID,
+          password: user.kiss918GamePW,
         },
       });
     }
 
-    const registerResponse = await mega888RegisterUser(user);
+    const registerResponse = await kiss918RegisterUser(user);
     if (!registerResponse.success) {
       return res.status(200).json({
         success: false,
         message: {
-          en: "MEGA888: Registration failed. Please try again or contact customer support for further assistance.",
-          zh: "MEGA888: 注册失败。请重试或联系客服寻求进一步帮助。",
-          ms: "MEGA888: Pendaftaran gagal. Sila cuba lagi atau hubungi sokongan pelanggan untuk bantuan lanjut.",
-          zh_hk: "MEGA888: 註冊失敗。請重試或聯絡客服尋求進一步協助。",
-          id: "MEGA888: Pendaftaran gagal. Silakan coba lagi atau hubungi dukungan pelanggan untuk bantuan lebih lanjut.",
+          en: "918KISS: Registration failed. Please try again or contact customer support for further assistance.",
+          zh: "918KISS: 注册失败。请重试或联系客服寻求进一步帮助。",
+          ms: "918KISS: Pendaftaran gagal. Sila cuba lagi atau hubungi sokongan pelanggan untuk bantuan lanjut.",
+          zh_hk: "918KISS: 註冊失敗。請重試或聯絡客服尋求進一步協助。",
+          id: "918KISS: Pendaftaran gagal. Silakan coba lagi atau hubungi dukungan pelanggan untuk bantuan lebih lanjut.",
         },
       });
     }
@@ -290,11 +311,11 @@ router.post("/api/mega888/register", authenticateToken, async (req, res) => {
     return res.status(200).json({
       success: true,
       message: {
-        en: "MEGA888: Account registered successfully.",
-        zh: "MEGA888: 账户注册成功。",
-        ms: "MEGA888: Akaun berjaya didaftarkan.",
-        zh_hk: "MEGA888: 帳戶註冊成功。",
-        id: "MEGA888: Akun berhasil didaftarkan.",
+        en: "918KISS: Account registered successfully.",
+        zh: "918KISS: 账户注册成功。",
+        ms: "918KISS: Akaun berjaya didaftarkan.",
+        zh_hk: "918KISS: 帳戶註冊成功。",
+        id: "918KISS: Akun berhasil didaftarkan.",
       },
       userData: {
         userId: registerResponse.userData.userId,
@@ -302,22 +323,22 @@ router.post("/api/mega888/register", authenticateToken, async (req, res) => {
       },
     });
   } catch (error) {
-    console.log("MEGA888 error in registering user", error.message);
+    console.log("918KISS error in registering user", error.message);
     return res.status(200).json({
       success: false,
       message: {
-        en: "MEGA888: Registration failed. Please try again or contact customer support for assistance.",
-        zh: "MEGA888: 注册失败。请重试或联系客服寻求帮助。",
-        ms: "MEGA888: Pendaftaran gagal. Sila cuba lagi atau hubungi sokongan pelanggan untuk bantuan.",
-        zh_hk: "MEGA888: 註冊失敗。請重試或聯絡客服尋求協助。",
-        id: "MEGA888: Pendaftaran gagal. Silakan coba lagi atau hubungi dukungan pelanggan untuk bantuan.",
+        en: "918KISS: Registration failed. Please try again or contact customer support for assistance.",
+        zh: "918KISS: 注册失败。请重试或联系客服寻求帮助。",
+        ms: "918KISS: Pendaftaran gagal. Sila cuba lagi atau hubungi sokongan pelanggan untuk bantuan.",
+        zh_hk: "918KISS: 註冊失敗。請重試或聯絡客服尋求協助。",
+        id: "918KISS: Pendaftaran gagal. Silakan coba lagi atau hubungi dukungan pelanggan untuk bantuan.",
       },
     });
   }
 });
 
 router.post(
-  "/admin/api/mega888/:userId/registeradmin",
+  "/admin/api/918kiss/:userId/registeradmin",
   authenticateAdminToken,
   async (req, res) => {
     try {
@@ -337,16 +358,16 @@ router.post(
         });
       }
 
-      const registerResponse = await mega888RegisterUser(user);
+      const registerResponse = await kiss918RegisterUser(user);
       if (!registerResponse.success) {
         return res.status(200).json({
           success: false,
           message: {
-            en: "MEGA888: Registration failed. Please try again or contact customer support for further assistance.",
-            zh: "MEGA888: 注册失败。请重试或联系客服寻求进一步帮助。",
-            ms: "MEGA888: Pendaftaran gagal. Sila cuba lagi atau hubungi sokongan pelanggan untuk bantuan lanjut.",
-            zh_hk: "MEGA888: 註冊失敗。請重試或聯絡客服尋求進一步協助。",
-            id: "MEGA888: Pendaftaran gagal. Silakan coba lagi atau hubungi dukungan pelanggan untuk bantuan lebih lanjut.",
+            en: "918KISS: Registration failed. Please try again or contact customer support for further assistance.",
+            zh: "918KISS: 注册失败。请重试或联系客服寻求进一步帮助。",
+            ms: "918KISS: Pendaftaran gagal. Sila cuba lagi atau hubungi sokongan pelanggan untuk bantuan lanjut.",
+            zh_hk: "918KISS: 註冊失敗。請重試或聯絡客服尋求進一步協助。",
+            id: "918KISS: Pendaftaran gagal. Silakan coba lagi atau hubungi dukungan pelanggan untuk bantuan lebih lanjut.",
           },
         });
       }
@@ -354,11 +375,11 @@ router.post(
       return res.status(200).json({
         success: true,
         message: {
-          en: "MEGA888: Account registered successfully.",
-          zh: "MEGA888: 账户注册成功。",
-          ms: "MEGA888: Akaun berjaya didaftarkan.",
-          zh_hk: "MEGA888: 帳戶註冊成功。",
-          id: "MEGA888: Akun berhasil didaftarkan.",
+          en: "918KISS: Account registered successfully.",
+          zh: "918KISS: 账户注册成功。",
+          ms: "918KISS: Akaun berjaya didaftarkan.",
+          zh_hk: "918KISS: 帳戶註冊成功。",
+          id: "918KISS: Akun berhasil didaftarkan.",
         },
         userData: {
           userId: registerResponse.userData.userId,
@@ -366,15 +387,15 @@ router.post(
         },
       });
     } catch (error) {
-      console.log("MEGA888 error in registering user", error.message);
+      console.log("918KISS error in registering user", error.message);
       return res.status(200).json({
         success: false,
         message: {
-          en: "MEGA888: Registration failed. Please try again or contact customer support for assistance.",
-          zh: "MEGA888: 注册失败。请重试或联系客服寻求帮助。",
-          ms: "MEGA888: Pendaftaran gagal. Sila cuba lagi atau hubungi sokongan pelanggan untuk bantuan.",
-          zh_hk: "MEGA888: 註冊失敗。請重試或聯絡客服尋求協助。",
-          id: "MEGA888: Pendaftaran gagal. Silakan coba lagi atau hubungi dukungan pelanggan untuk bantuan.",
+          en: "918KISS: Registration failed. Please try again or contact customer support for assistance.",
+          zh: "918KISS: 注册失败。请重试或联系客服寻求帮助。",
+          ms: "918KISS: Pendaftaran gagal. Sila cuba lagi atau hubungi sokongan pelanggan untuk bantuan.",
+          zh_hk: "918KISS: 註冊失敗。請重試或聯絡客服尋求協助。",
+          id: "918KISS: Pendaftaran gagal. Silakan coba lagi atau hubungi dukungan pelanggan untuk bantuan.",
         },
       });
     }
@@ -382,7 +403,7 @@ router.post(
 );
 
 router.post(
-  "/admin/api/mega888/:userId/checkbalance",
+  "/admin/api/918kiss/:userId/checkbalance",
   authenticateAdminToken,
   async (req, res) => {
     try {
@@ -402,17 +423,17 @@ router.post(
         });
       }
 
-      const balanceResponse = await mega888CheckBalance(user);
+      const balanceResponse = await kiss918CheckBalance(user);
 
       if (!balanceResponse.success) {
         return res.status(200).json({
           success: false,
           message: {
-            en: "MEGA888: Failed to retrieve balance. Please try again.",
-            zh: "MEGA888: 获取余额失败。请重试。",
-            ms: "MEGA888: Gagal mendapatkan baki. Sila cuba lagi.",
-            zh_hk: "MEGA888: 獲取餘額失敗。請重試。",
-            id: "MEGA888: Gagal mengambil saldo. Silakan coba lagi.",
+            en: "918KISS: Failed to retrieve balance. Please try again.",
+            zh: "918KISS: 获取余额失败。请重试。",
+            ms: "918KISS: Gagal mendapatkan baki. Sila cuba lagi.",
+            zh_hk: "918KISS: 獲取餘額失敗。請重試。",
+            id: "918KISS: Gagal mengambil saldo. Silakan coba lagi.",
           },
         });
       }
@@ -429,15 +450,15 @@ router.post(
         },
       });
     } catch (error) {
-      console.error("MEGA888 error checking user balance", error.message);
+      console.error("918KISS error checking user balance", error.message);
       return res.status(200).json({
         success: false,
         message: {
-          en: "MEGA888: Failed to retrieve balance. Please try again.",
-          zh: "MEGA888: 获取余额失败。请重试。",
-          ms: "MEGA888: Gagal mendapatkan baki. Sila cuba lagi.",
-          zh_hk: "MEGA888: 獲取餘額失敗。請重試。",
-          id: "MEGA888: Gagal mengambil saldo. Silakan coba lagi.",
+          en: "918KISS: Failed to retrieve balance. Please try again.",
+          zh: "918KISS: 获取余额失败。请重试。",
+          ms: "918KISS: Gagal mendapatkan baki. Sila cuba lagi.",
+          zh_hk: "918KISS: 獲取餘額失敗。請重試。",
+          id: "918KISS: Gagal mengambil saldo. Silakan coba lagi.",
         },
       });
     }
@@ -445,7 +466,7 @@ router.post(
 );
 
 router.post(
-  "/api/mega888/checkbalance",
+  "/api/918kiss/checkbalance",
   authenticateToken,
   async (req, res) => {
     try {
@@ -463,17 +484,17 @@ router.post(
           },
         });
       }
-      const balanceResponse = await mega888CheckBalance(user);
+      const balanceResponse = await kiss918CheckBalance(user);
 
       if (!balanceResponse.success) {
         return res.status(200).json({
           success: false,
           message: {
-            en: "MEGA888: Failed to retrieve balance. Please try again.",
-            zh: "MEGA888: 获取余额失败。请重试。",
-            ms: "MEGA888: Gagal mendapatkan baki. Sila cuba lagi.",
-            zh_hk: "MEGA888: 獲取餘額失敗。請重試。",
-            id: "MEGA888: Gagal mengambil saldo. Silakan coba lagi.",
+            en: "918KISS: Failed to retrieve balance. Please try again.",
+            zh: "918KISS: 获取余额失败。请重试。",
+            ms: "918KISS: Gagal mendapatkan baki. Sila cuba lagi.",
+            zh_hk: "918KISS: 獲取餘額失敗。請重試。",
+            id: "918KISS: Gagal mengambil saldo. Silakan coba lagi.",
           },
         });
       }
@@ -490,22 +511,22 @@ router.post(
         },
       });
     } catch (error) {
-      console.error("MEGA888 error checking user balance", error.message);
+      console.error("918KISS error checking user balance", error.message);
       return res.status(200).json({
         success: false,
         message: {
-          en: "MEGA888: Failed to retrieve balance. Please try again.",
-          zh: "MEGA888: 获取余额失败。请重试。",
-          ms: "MEGA888: Gagal mendapatkan baki. Sila cuba lagi.",
-          zh_hk: "MEGA888: 獲取餘額失敗。請重試。",
-          id: "MEGA888: Gagal mengambil saldo. Silakan coba lagi.",
+          en: "918KISS: Failed to retrieve balance. Please try again.",
+          zh: "918KISS: 获取余额失败。请重试。",
+          ms: "918KISS: Gagal mendapatkan baki. Sila cuba lagi.",
+          zh_hk: "918KISS: 獲取餘額失敗。請重試。",
+          id: "918KISS: Gagal mengambil saldo. Silakan coba lagi.",
         },
       });
     }
   }
 );
 
-router.post("/api/mega888/deposit", authenticateToken, async (req, res) => {
+router.post("/api/918kiss/deposit", authenticateToken, async (req, res) => {
   let formattedDepositAmount = 0;
   let user = null;
   let walletDeducted = false;
@@ -525,15 +546,15 @@ router.post("/api/mega888/deposit", authenticateToken, async (req, res) => {
       });
     }
 
-    if (!user.mega888GameID) {
+    if (!user.kiss918GameID) {
       return res.status(200).json({
         success: false,
         message: {
-          en: "MEGA888: Game account not registered. Please register an account first to proceed.",
-          zh: "MEGA888: 游戏账户未注册。请先注册账户以继续。",
-          ms: "MEGA888: Akaun permainan tidak berdaftar. Sila daftar akaun terlebih dahulu untuk meneruskan.",
-          zh_hk: "MEGA888: 遊戲帳戶未註冊。請先註冊帳戶以繼續。",
-          id: "MEGA888: Akun permainan belum terdaftar. Silakan daftar akun terlebih dahulu untuk melanjutkan.",
+          en: "918KISS: Game account not registered. Please register an account first to proceed.",
+          zh: "918KISS: 游戏账户未注册。请先注册账户以继续。",
+          ms: "918KISS: Akaun permainan tidak berdaftar. Sila daftar akaun terlebih dahulu untuk meneruskan.",
+          zh_hk: "918KISS: 遊戲帳戶未註冊。請先註冊帳戶以繼續。",
+          id: "918KISS: Akun permainan belum terdaftar. Silakan daftar akun terlebih dahulu untuk melanjutkan.",
         },
       });
     }
@@ -554,7 +575,7 @@ router.post("/api/mega888/deposit", authenticateToken, async (req, res) => {
       });
     }
 
-    if (user.gameStatus.mega888.transferInStatus) {
+    if (user.gameStatus.kiss918.transferInStatus) {
       return res.status(200).json({
         success: false,
         message: {
@@ -593,7 +614,7 @@ router.post("/api/mega888/deposit", authenticateToken, async (req, res) => {
 
     walletDeducted = true;
 
-    const depositResponse = await mega888Deposit(user, formattedDepositAmount);
+    const depositResponse = await kiss918Deposit(user, formattedDepositAmount);
 
     if (!depositResponse.success) {
       await User.findByIdAndUpdate(user._id, {
@@ -601,35 +622,35 @@ router.post("/api/mega888/deposit", authenticateToken, async (req, res) => {
       });
       walletDeducted = false;
 
-      console.error("MEGA888: Deposit failed -", depositResponse.error);
+      console.error("918KISS: Deposit failed -", depositResponse.error);
 
       return res.status(200).json({
         success: false,
         message: {
-          en: "MEGA888: Deposit failed. Please try again or contact customer support for further assistance.",
-          zh: "MEGA888: 存款失败。请重试或联系客服寻求进一步帮助。",
-          ms: "MEGA888: Deposit gagal. Sila cuba lagi atau hubungi sokongan pelanggan untuk bantuan lanjut.",
-          zh_hk: "MEGA888: 存款失敗。請重試或聯絡客服尋求進一步協助。",
-          id: "MEGA888: Deposit gagal. Silakan coba lagi atau hubungi dukungan pelanggan untuk bantuan lebih lanjut.",
+          en: "918KISS: Deposit failed. Please try again or contact customer support for further assistance.",
+          zh: "918KISS: 存款失败。请重试或联系客服寻求进一步帮助。",
+          ms: "918KISS: Deposit gagal. Sila cuba lagi atau hubungi sokongan pelanggan untuk bantuan lanjut.",
+          zh_hk: "918KISS: 存款失敗。請重試或聯絡客服尋求進一步協助。",
+          id: "918KISS: Deposit gagal. Silakan coba lagi atau hubungi dukungan pelanggan untuk bantuan lebih lanjut.",
         },
       });
     }
 
     try {
-      const gameBalance = await mega888CheckBalance(user);
+      const gameBalance = await kiss918CheckBalance(user);
 
       await GameWalletLogAttempt(
         user.username,
         "Transfer In",
         "Transfer",
         roundToTwoDecimals(formattedDepositAmount),
-        "MEGA888",
+        "918KISS",
         roundToTwoDecimals(gameBalance?.balance ?? 0),
         roundToTwoDecimals(user.wallet),
         roundToTwoDecimals(updatedUser.wallet)
       );
     } catch (logError) {
-      console.error("MEGA888: Failed to log transaction:", logError.message);
+      console.error("918KISS: Failed to log transaction:", logError.message);
     }
 
     return res.status(200).json({
@@ -643,17 +664,17 @@ router.post("/api/mega888/deposit", authenticateToken, async (req, res) => {
       },
     });
   } catch (error) {
-    console.log("MEGA888 error in deposit", error.message);
+    console.log("918KISS error in deposit", error.message);
 
     if (walletDeducted && user) {
       try {
         await User.findByIdAndUpdate(user._id, {
           $inc: { wallet: formattedDepositAmount },
         });
-        console.log("MEGA888: Wallet rollback successful");
+        console.log("918KISS: Wallet rollback successful");
       } catch (rollbackError) {
         console.error(
-          "MEGA888: CRITICAL - Rollback failed:",
+          "918KISS: CRITICAL - Rollback failed:",
           rollbackError.message
         );
       }
@@ -662,17 +683,17 @@ router.post("/api/mega888/deposit", authenticateToken, async (req, res) => {
     return res.status(200).json({
       success: false,
       message: {
-        en: "MEGA888: Deposit failed. Please try again or contact customer support for further assistance.",
-        zh: "MEGA888: 存款失败。请重试或联系客服寻求进一步帮助。",
-        ms: "MEGA888: Deposit gagal. Sila cuba lagi atau hubungi sokongan pelanggan untuk bantuan lanjut.",
-        zh_hk: "MEGA888: 存款失敗。請重試或聯絡客服尋求進一步協助。",
-        id: "MEGA888: Deposit gagal. Silakan coba lagi atau hubungi dukungan pelanggan untuk bantuan lebih lanjut.",
+        en: "918KISS: Deposit failed. Please try again or contact customer support for further assistance.",
+        zh: "918KISS: 存款失败。请重试或联系客服寻求进一步帮助。",
+        ms: "918KISS: Deposit gagal. Sila cuba lagi atau hubungi sokongan pelanggan untuk bantuan lanjut.",
+        zh_hk: "918KISS: 存款失敗。請重試或聯絡客服尋求進一步協助。",
+        id: "918KISS: Deposit gagal. Silakan coba lagi atau hubungi dukungan pelanggan untuk bantuan lebih lanjut.",
       },
     });
   }
 });
 
-router.post("/api/mega888/withdraw", authenticateToken, async (req, res) => {
+router.post("/api/918kiss/withdraw", authenticateToken, async (req, res) => {
   let formattedWithdrawAmount = 0;
   try {
     const user = await User.findById(req.user.userId);
@@ -690,15 +711,15 @@ router.post("/api/mega888/withdraw", authenticateToken, async (req, res) => {
       });
     }
 
-    if (!user.mega888GameID) {
+    if (!user.kiss918GameID) {
       return res.status(200).json({
         success: false,
         message: {
-          en: "MEGA888: Game account not registered. Please register an account first to proceed.",
-          zh: "MEGA888: 游戏账户未注册。请先注册账户以继续。",
-          ms: "MEGA888: Akaun permainan tidak berdaftar. Sila daftar akaun terlebih dahulu untuk meneruskan.",
-          zh_hk: "MEGA888: 遊戲帳戶未註冊。請先註冊帳戶以繼續。",
-          id: "MEGA888: Akun permainan belum terdaftar. Silakan daftar akun terlebih dahulu untuk melanjutkan.",
+          en: "918KISS: Game account not registered. Please register an account first to proceed.",
+          zh: "918KISS: 游戏账户未注册。请先注册账户以继续。",
+          ms: "918KISS: Akaun permainan tidak berdaftar. Sila daftar akaun terlebih dahulu untuk meneruskan.",
+          zh_hk: "918KISS: 遊戲帳戶未註冊。請先註冊帳戶以繼續。",
+          id: "918KISS: Akun permainan belum terdaftar. Silakan daftar akun terlebih dahulu untuk melanjutkan.",
         },
       });
     }
@@ -719,7 +740,7 @@ router.post("/api/mega888/withdraw", authenticateToken, async (req, res) => {
       });
     }
 
-    if (user.gameStatus.mega888.transferOutStatus) {
+    if (user.gameStatus.kiss918.transferOutStatus) {
       return res.status(200).json({
         success: false,
         message: {
@@ -732,23 +753,23 @@ router.post("/api/mega888/withdraw", authenticateToken, async (req, res) => {
       });
     }
 
-    const withdrawResponse = await mega888Withdraw(
+    const withdrawResponse = await kiss918Withdraw(
       user,
       formattedWithdrawAmount
     );
 
     if (!withdrawResponse.success) {
-      console.error("MEGA888: Withdraw failed -", withdrawResponse.error);
+      console.error("918KISS: Withdraw failed -", withdrawResponse.error);
 
       if (withdrawResponse.error.error.code === "37123") {
         return res.status(200).json({
           success: false,
           message: {
-            en: "MEGA888: Insufficient game balance to complete withdrawal.",
-            zh: "MEGA888: 游戏余额不足，无法完成提款。",
-            ms: "MEGA888: Baki permainan tidak mencukupi untuk melengkapkan pengeluaran.",
-            zh_hk: "MEGA888: 遊戲餘額不足，無法完成提款。",
-            id: "MEGA888: Saldo permainan tidak mencukupi untuk menyelesaikan penarikan.",
+            en: "918KISS: Insufficient game balance to complete withdrawal.",
+            zh: "918KISS: 游戏余额不足，无法完成提款。",
+            ms: "918KISS: Baki permainan tidak mencukupi untuk melengkapkan pengeluaran.",
+            zh_hk: "918KISS: 遊戲餘額不足，無法完成提款。",
+            id: "918KISS: Saldo permainan tidak mencukupi untuk menyelesaikan penarikan.",
           },
         });
       }
@@ -756,11 +777,11 @@ router.post("/api/mega888/withdraw", authenticateToken, async (req, res) => {
       return res.status(200).json({
         success: false,
         message: {
-          en: "MEGA888: Withdrawal failed. Please try again or contact customer support for further assistance.",
-          zh: "MEGA888: 提款失败。请重试或联系客服寻求进一步帮助。",
-          ms: "MEGA888: Pengeluaran gagal. Sila cuba lagi atau hubungi sokongan pelanggan untuk bantuan lanjut.",
-          zh_hk: "MEGA888: 提款失敗。請重試或聯絡客服尋求進一步協助。",
-          id: "MEGA888: Penarikan gagal. Silakan coba lagi atau hubungi dukungan pelanggan untuk bantuan lebih lanjut.",
+          en: "918KISS: Withdrawal failed. Please try again or contact customer support for further assistance.",
+          zh: "918KISS: 提款失败。请重试或联系客服寻求进一步帮助。",
+          ms: "918KISS: Pengeluaran gagal. Sila cuba lagi atau hubungi sokongan pelanggan untuk bantuan lanjut.",
+          zh_hk: "918KISS: 提款失敗。請重試或聯絡客服尋求進一步協助。",
+          id: "918KISS: Penarikan gagal. Silakan coba lagi atau hubungi dukungan pelanggan untuk bantuan lebih lanjut.",
         },
       });
     }
@@ -776,20 +797,20 @@ router.post("/api/mega888/withdraw", authenticateToken, async (req, res) => {
     ).lean();
 
     try {
-      const gameBalance = await mega888CheckBalance(user);
+      const gameBalance = await kiss918CheckBalance(user);
 
       await GameWalletLogAttempt(
         user.username,
         "Transfer Out",
         "Transfer",
         roundToTwoDecimals(formattedWithdrawAmount),
-        "MEGA888",
+        "918KISS",
         roundToTwoDecimals(gameBalance?.balance ?? 0),
         roundToTwoDecimals(user.wallet),
         roundToTwoDecimals(updatedUser.wallet)
       );
     } catch (logError) {
-      console.error("MEGA888: Failed to log transaction:", logError.message);
+      console.error("918KISS: Failed to log transaction:", logError.message);
     }
 
     return res.status(200).json({
@@ -803,22 +824,22 @@ router.post("/api/mega888/withdraw", authenticateToken, async (req, res) => {
       },
     });
   } catch (error) {
-    console.log("MEGA888 error in withdraw", error.message);
+    console.log("918KISS error in withdraw", error.message);
     return res.status(200).json({
       success: false,
       message: {
-        en: "MEGA888: Withdrawal failed. Please try again or contact customer support for further assistance.",
-        zh: "MEGA888: 提款失败。请重试或联系客服寻求进一步帮助。",
-        ms: "MEGA888: Pengeluaran gagal. Sila cuba lagi atau hubungi sokongan pelanggan untuk bantuan lanjut.",
-        zh_hk: "MEGA888: 提款失敗。請重試或聯絡客服尋求進一步協助。",
-        id: "MEGA888: Penarikan gagal. Silakan coba lagi atau hubungi dukungan pelanggan untuk bantuan lebih lanjut.",
+        en: "918KISS: Withdrawal failed. Please try again or contact customer support for further assistance.",
+        zh: "918KISS: 提款失败。请重试或联系客服寻求进一步帮助。",
+        ms: "918KISS: Pengeluaran gagal. Sila cuba lagi atau hubungi sokongan pelanggan untuk bantuan lanjut.",
+        zh_hk: "918KISS: 提款失敗。請重試或聯絡客服尋求進一步協助。",
+        id: "918KISS: Penarikan gagal. Silakan coba lagi atau hubungi dukungan pelanggan untuk bantuan lebih lanjut.",
       },
     });
   }
 });
 
 router.post(
-  "/admin/api/mega888/:userId/withdrawall",
+  "/admin/api/918kiss/:userId/withdrawall",
   authenticateAdminToken,
   async (req, res) => {
     try {
@@ -839,20 +860,20 @@ router.post(
         });
       }
 
-      if (!user.mega888GameID) {
+      if (!user.kiss918GameID) {
         return res.status(200).json({
           success: false,
           message: {
-            en: "MEGA888: Game account not registered. Please register an account first to proceed.",
-            zh: "MEGA888: 游戏账户未注册。请先注册账户以继续。",
-            ms: "MEGA888: Akaun permainan tidak berdaftar. Sila daftar akaun terlebih dahulu untuk meneruskan.",
-            zh_hk: "MEGA888: 遊戲帳戶未註冊。請先註冊帳戶以繼續。",
-            id: "MEGA888: Akun permainan belum terdaftar. Silakan daftar akun terlebih dahulu untuk melanjutkan.",
+            en: "918KISS: Game account not registered. Please register an account first to proceed.",
+            zh: "918KISS: 游戏账户未注册。请先注册账户以继续。",
+            ms: "918KISS: Akaun permainan tidak berdaftar. Sila daftar akaun terlebih dahulu untuk meneruskan.",
+            zh_hk: "918KISS: 遊戲帳戶未註冊。請先註冊帳戶以繼續。",
+            id: "918KISS: Akun permainan belum terdaftar. Silakan daftar akun terlebih dahulu untuk melanjutkan.",
           },
         });
       }
 
-      const gameBalance = await mega888CheckBalance(user);
+      const gameBalance = await kiss918CheckBalance(user);
 
       if (!gameBalance.success) {
         return res.status(200).json({
@@ -880,10 +901,10 @@ router.post(
         });
       }
 
-      const withdrawResponse = await mega888Withdraw(user, gameBalance.balance);
+      const withdrawResponse = await kiss918Withdraw(user, gameBalance.balance);
 
       if (!withdrawResponse.success) {
-        console.log("mega888 withdrw fail", withdrawResponse);
+        console.log("918KISS withdrw fail", withdrawResponse);
 
         if (withdrawResponse.error.error.code === "37123") {
           return res.status(200).json({
@@ -924,7 +945,7 @@ router.post(
         "Transfer Out",
         "Transfer",
         withdrawAmount,
-        "MEGA888",
+        "918KISS",
         "0",
         previousWallet,
         roundToTwoDecimals(updatedUser.wallet)
@@ -941,7 +962,7 @@ router.post(
         },
       });
     } catch (error) {
-      console.log("MEGA888 error in transferout", error.message);
+      console.log("918KISS error in transferout", error.message);
       return res.status(200).json({
         success: false,
         message: {
@@ -957,7 +978,7 @@ router.post(
 );
 
 router.post(
-  "/admin/api/mega888/:userId/withdraw",
+  "/admin/api/918kiss/:userId/withdraw",
   authenticateAdminToken,
   async (req, res) => {
     let formattedWithdrawAmount = 0;
@@ -978,15 +999,15 @@ router.post(
         });
       }
 
-      if (!user.mega888GameID) {
+      if (!user.kiss918GameID) {
         return res.status(200).json({
           success: false,
           message: {
-            en: "MEGA888: Game account not registered. Please register an account first to proceed.",
-            zh: "MEGA888: 游戏账户未注册。请先注册账户以继续。",
-            ms: "MEGA888: Akaun permainan tidak berdaftar. Sila daftar akaun terlebih dahulu untuk meneruskan.",
-            zh_hk: "MEGA888: 遊戲帳戶未註冊。請先註冊帳戶以繼續。",
-            id: "MEGA888: Akun permainan belum terdaftar. Silakan daftar akun terlebih dahulu untuk melanjutkan.",
+            en: "918KISS: Game account not registered. Please register an account first to proceed.",
+            zh: "918KISS: 游戏账户未注册。请先注册账户以继续。",
+            ms: "918KISS: Akaun permainan tidak berdaftar. Sila daftar akaun terlebih dahulu untuk meneruskan.",
+            zh_hk: "918KISS: 遊戲帳戶未註冊。請先註冊帳戶以繼續。",
+            id: "918KISS: Akun permainan belum terdaftar. Silakan daftar akun terlebih dahulu untuk melanjutkan.",
           },
         });
       }
@@ -1007,13 +1028,13 @@ router.post(
         });
       }
 
-      const withdrawResponse = await mega888Withdraw(
+      const withdrawResponse = await kiss918Withdraw(
         user,
         formattedWithdrawAmount
       );
 
       if (!withdrawResponse.success) {
-        console.error("MEGA888: Withdraw failed -", withdrawResponse.error);
+        console.error("918KISS: Withdraw failed -", withdrawResponse.error);
 
         if (withdrawResponse.error.error.code === "37123") {
           return res.status(200).json({
@@ -1051,20 +1072,20 @@ router.post(
       ).lean();
 
       try {
-        const gameBalance = await mega888CheckBalance(user);
+        const gameBalance = await kiss918CheckBalance(user);
 
         await GameWalletLogAttempt(
           user.username,
           "Transfer Out",
           "Transfer",
           roundToTwoDecimals(formattedWithdrawAmount),
-          "MEGA888",
+          "918KISS",
           roundToTwoDecimals(gameBalance?.balance ?? 0),
           roundToTwoDecimals(user.wallet),
           roundToTwoDecimals(updatedUser.wallet)
         );
       } catch (logError) {
-        console.error("MEGA888: Failed to log transaction:", logError.message);
+        console.error("918KISS: Failed to log transaction:", logError.message);
       }
 
       return res.status(200).json({
@@ -1078,7 +1099,7 @@ router.post(
         },
       });
     } catch (error) {
-      console.log("MEGA888 error in transferout", error.message);
+      console.log("918KISS error in transferout", error.message);
       return res.status(200).json({
         success: false,
         message: {
@@ -1094,7 +1115,7 @@ router.post(
 );
 
 router.post(
-  "/admin/api/mega888/setAsMain",
+  "/admin/api/918kiss/setAsMain",
   authenticateAdminToken,
   async (req, res) => {
     try {
@@ -1114,7 +1135,7 @@ router.post(
       }
 
       const user = await User.findOne({
-        pastMega888GameID: selectedGameId,
+        pastKiss918GameID: selectedGameId,
       }).lean();
 
       if (!user) {
@@ -1130,42 +1151,42 @@ router.post(
         });
       }
 
-      const indexToRemove = user.pastMega888GameID.indexOf(selectedGameId);
+      const indexToRemove = user.pastKiss918GameID.indexOf(selectedGameId);
 
-      let newPastGameIDs = [...user.pastMega888GameID];
-      let newPastGamePWs = [...user.pastMega888GamePW];
+      let newPastGameIDs = [...user.pastKiss918GameID];
+      let newPastGamePWs = [...user.pastKiss918GamePW];
 
       if (indexToRemove > -1) {
         newPastGameIDs.splice(indexToRemove, 1);
         newPastGamePWs.splice(indexToRemove, 1);
       }
 
-      if (user.mega888GameID && user.mega888GamePW) {
-        newPastGameIDs.push(user.mega888GameID);
-        newPastGamePWs.push(user.mega888GamePW);
+      if (user.kiss918GameID && user.kiss918GamePW) {
+        newPastGameIDs.push(user.kiss918GameID);
+        newPastGamePWs.push(user.kiss918GamePW);
       }
 
       await User.findByIdAndUpdate(user._id, {
         $set: {
-          mega888GameID: selectedGameId,
-          mega888GamePW: selectedPassword,
-          pastMega888GameID: newPastGameIDs,
-          pastMega888GamePW: newPastGamePWs,
+          kiss918GameID: selectedGameId,
+          kiss918GamePW: selectedPassword,
+          pastKiss918GameID: newPastGameIDs,
+          pastKiss918GamePW: newPastGamePWs,
         },
       });
 
       return res.status(200).json({
         success: true,
         message: {
-          en: "MEGA888 ID and password set as main successfully.",
-          zh: "MEGA888账号和密码已成功设置为主账号。",
-          zh_hk: "MEGA888帳號和密碼已成功設置為主帳號。",
-          ms: "ID dan kata laluan MEGA888 berjaya ditetapkan sebagai utama.",
-          id: "ID dan kata sandi MEGA888 berhasil ditetapkan sebagai utama.",
+          en: "918KISS ID and password set as main successfully.",
+          zh: "918KISS账号和密码已成功设置为主账号。",
+          zh_hk: "918KISS帳號和密碼已成功設置為主帳號。",
+          ms: "ID dan kata laluan 918KISS berjaya ditetapkan sebagai utama.",
+          id: "ID dan kata sandi 918KISS berhasil ditetapkan sebagai utama.",
         },
       });
     } catch (error) {
-      console.error("Error occurred while setting main MEGA888 ID:", error);
+      console.error("Error occurred while setting main 918KISS ID:", error);
       return res.status(200).json({
         success: false,
         message: {
