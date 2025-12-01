@@ -174,14 +174,16 @@ const kiss918CheckBalance = async (user) => {
 
 async function kiss918Deposit(user, trfamount) {
   try {
-    const hashString = `${kiss918AgentId}${user.kiss918GameID}${kiss918Provider}${trfamount}${kiss918Secret}`;
+    const formattedAmount = parseFloat(trfamount).toFixed(2);
+
+    const hashString = `${kiss918AgentId}${user.kiss918GameID}${kiss918Provider}${formattedAmount}${kiss918Secret}`;
     const digest = generateMD5Hash(hashString);
 
     const payload = {
       agentID: kiss918AgentId,
       playerID: user.kiss918GameID,
       provider: kiss918Provider,
-      amount: trfamount,
+      amount: parseFloat(formattedAmount),
       secretKey: kiss918Secret,
       hash: digest,
     };
@@ -217,16 +219,16 @@ async function kiss918Deposit(user, trfamount) {
 
 async function kiss918Withdraw(user, trfamount) {
   try {
-    const hashString = `${kiss918AgentId}${
-      user.kiss918GameID
-    }${kiss918Provider}${-trfamount}${kiss918Secret}`;
+    const formattedAmount = parseFloat(-trfamount).toFixed(2);
+
+    const hashString = `${kiss918AgentId}${user.kiss918GameID}${kiss918Provider}${formattedAmount}${kiss918Secret}`;
     const digest = generateMD5Hash(hashString);
 
     const payload = {
       agentID: kiss918AgentId,
       playerID: user.kiss918GameID,
       provider: kiss918Provider,
-      amount: -trfamount,
+      amount: parseFloat(formattedAmount),
       secretKey: kiss918Secret,
       hash: digest,
     };
