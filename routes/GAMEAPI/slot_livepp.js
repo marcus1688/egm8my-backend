@@ -1309,10 +1309,9 @@ router.post("/api/pragmaticplay/endRound", async (req, res) => {
       });
     }
 
-    await SlotLivePPModal.findOneAndUpdate(
+    await SlotLivePPModal.updateMany(
       { betId: roundId },
-      { $set: { ended: true } },
-      { upsert: true }
+      { $set: { ended: true } }
     );
 
     return res.status(200).json({
