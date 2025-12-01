@@ -14,6 +14,7 @@ const querystring = require("querystring");
 const moment = require("moment");
 const { mega888CheckBalance } = require("./slot_mega888");
 const GameWalletLog = require("../../models/gamewalletlog.model");
+const { kiss918CheckBalance } = require("./slot_918kiss");
 
 require("dotenv").config();
 
@@ -29,7 +30,13 @@ const GAME_BALANCE_CHECKERS = [
     extractBalance: (result) => Number(result.balance),
     condition: (user) => !!user.mega888GameID,
   },
-
+  {
+    name: "918Kiss",
+    key: "kiss918Balance",
+    checker: (user) => kiss918CheckBalance(user),
+    extractBalance: (result) => Number(result.balance),
+    condition: (user) => !!user.kiss918GameID,
+  },
   // {
   //   name: "pg",
   //   key: "pgBalance",

@@ -1202,3 +1202,4 @@ router.post(
 );
 
 module.exports = router;
+module.exports.kiss918CheckBalance = kiss918CheckBalance;
