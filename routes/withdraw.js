@@ -15,12 +15,14 @@ const Bonus = require("../models/bonus.model");
 const promotion = require("../models/promotion.model");
 const { mega888CheckBalance } = require("./GAMEAPI/slot_mega888");
 const { kiss918CheckBalance } = require("./GAMEAPI/slot_918kiss");
+const { huaweiCheckBalance } = require("./GAMEAPI/other_huaweilottery");
 const axios = require("axios");
 
 async function getTotalGameBalance(user) {
   const GAME_CHECKERS = [
     { name: "MEGA888", checker: mega888CheckBalance },
     { name: "918KISS", checker: kiss918CheckBalance },
+    { name: "GRANDDRAGON", checker: huaweiCheckBalance },
   ];
 
   const results = await Promise.all(

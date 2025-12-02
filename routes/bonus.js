@@ -13,6 +13,7 @@ const vip = require("../models/vip.model");
 const { checkSportPendingMatch } = require("../helpers/turnoverHelper");
 const { mega888CheckBalance } = require("./GAMEAPI/slot_mega888");
 const { kiss918CheckBalance } = require("./GAMEAPI/slot_918kiss");
+const { huaweiCheckBalance } = require("./GAMEAPI/other_huaweilottery");
 //this need change useing createdAt time
 const calculateCountdown = (createdAt) => {
   // //   const now = moment.utc().add(8, "hours"); // GMT+8 timezone
@@ -44,6 +45,7 @@ async function getTotalGameBalance(user) {
   const GAME_CHECKERS = [
     { name: "MEGA888", checker: mega888CheckBalance },
     { name: "918KISS", checker: kiss918CheckBalance },
+    { name: "GRANDDRAGON", checker: huaweiCheckBalance },
   ];
 
   const results = await Promise.all(
