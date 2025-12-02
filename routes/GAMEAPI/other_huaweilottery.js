@@ -1576,24 +1576,26 @@ const fetchtodaysbet = async () => {
 
     console.log(`👥 Found ${users.length} users in database`);
 
-    // Check existing bets using compound unique key (betId + transId)
-    const betIdTransIdPairs = validBets.map((bet) => ({
+    // Check existing bets using compound unique key (betId + transId + status)
+    const betIdTransIdStatusTriples = validBets.map((bet) => ({
       betId: bet.b_id.toString(),
       transId: bet.bd_id.toString(),
+      status: bet.status,
     }));
 
     const existingBets = await LotteryHuaweiModal.find({
-      $or: betIdTransIdPairs.map((pair) => ({
-        betId: pair.betId,
-        transId: pair.transId,
+      $or: betIdTransIdStatusTriples.map((triple) => ({
+        betId: triple.betId,
+        transId: triple.transId,
+        status: triple.status,
       })),
     })
-      .select("betId transId")
+      .select("betId transId status")
       .lean();
 
     // Create set of existing combinations for quick lookup
     const existingCombosSet = new Set(
-      existingBets.map((bet) => `${bet.betId}_${bet.transId}`)
+      existingBets.map((bet) => `${bet.betId}_${bet.transId}_${bet.status}`)
     );
 
     let newBetsCount = 0;
@@ -1612,7 +1614,7 @@ const fetchtodaysbet = async () => {
       }
 
       // Check if this bet combination already exists
-      const comboKey = `${bet.b_id}_${bet.bd_id}`;
+      const comboKey = `${bet.b_id}_${bet.bd_id}_${bet.status}`;
       if (existingCombosSet.has(comboKey)) {
         skippedBetsCount++;
         continue;
@@ -1631,8 +1633,9 @@ const fetchtodaysbet = async () => {
       const newBetRecord = {
         betId: bet.b_id.toString(),
         transId: bet.bd_id.toString(),
+        status: bet.status,
         betamount: parseFloat(bet.accepted_amount) || 0,
-        settleamount: parseFloat(bet.winning_amount) || 0,
+        settleamount: 0,
         username: gameId, // Store gameId as username
         bet: true,
         cancel: bet.status === "C" ? true : false, // Mark as cancelled if status is 'C'
@@ -1756,24 +1759,26 @@ const fetchtodayswinning = async () => {
 
     console.log(`👥 Found ${users.length} users in database`);
 
-    // Check existing bets using compound unique key (betId + transId)
-    const betIdTransIdPairs = paidBets.map((bet) => ({
+    // Check existing bets using compound unique key (betId + transId + status)
+    const betIdTransIdStatusTriples = paidBets.map((bet) => ({
       betId: bet.b_id.toString(),
       transId: bet.bd_id.toString(),
+      status: bet.status,
     }));
 
     const existingBets = await LotteryHuaweiModal.find({
-      $or: betIdTransIdPairs.map((pair) => ({
-        betId: pair.betId,
-        transId: pair.transId,
+      $or: betIdTransIdStatusTriples.map((triple) => ({
+        betId: triple.betId,
+        transId: triple.transId,
+        status: triple.status,
       })),
     })
-      .select("betId transId")
+      .select("betId transId status")
       .lean();
 
     // Create set of existing combinations for quick lookup
     const existingCombosSet = new Set(
-      existingBets.map((bet) => `${bet.betId}_${bet.transId}`)
+      existingBets.map((bet) => `${bet.betId}_${bet.transId}_${bet.status}`)
     );
 
     let newBetsCount = 0;
@@ -1792,7 +1797,7 @@ const fetchtodayswinning = async () => {
       }
 
       // Check if this bet combination already exists
-      const comboKey = `${bet.b_id}_${bet.bd_id}`;
+      const comboKey = `${bet.b_id}_${bet.bd_id}_${bet.status}`;
       if (existingCombosSet.has(comboKey)) {
         skippedBetsCount++;
         continue;
@@ -1809,6 +1814,7 @@ const fetchtodayswinning = async () => {
         betId: bet.b_id.toString(),
         transId: bet.bd_id.toString(),
         betamount: 0,
+        status: bet.status,
         settleamount: parseFloat(bet.winning_amount) || 0,
         username: gameId,
         settle: true,
