@@ -41,6 +41,7 @@ const SlotRSGModal = require("../../models/slot_rsg.model");
 const SlotLivePPModal = require("../../models/slot_live_pp.model");
 const SportM9BetModal = require("../../models/sport_m9bet.model");
 const slot918KissModal = require("../../models/slot_918kiss.model");
+const LotteryHuaweiModal = require("../../models/other_huaweilottery.model");
 
 const { v4: uuidv4 } = require("uuid");
 const querystring = require("querystring");
@@ -690,6 +691,14 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
           },
         },
       },
+      granddragon: {
+        $match: { cancel: { $ne: true } },
+        $group: {
+          _id: null,
+          turnover: { $sum: { $ifNull: ["$betamount", 0] } },
+          winLoss: { $sum: { $ifNull: ["$settleamount", 0] } },
+        },
+      },
     };
 
     // Create an array of promises for all aggregations to match player-report
@@ -908,6 +917,14 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
         aggregations.kiss918,
         true
       ),
+      getGameDataSummary(
+        LotteryHuaweiModal,
+        user.gameId,
+        start,
+        end,
+        aggregations.granddragon,
+        true
+      ),
     ]);
 
     // Create a result map from the resolved promises
@@ -1033,6 +1050,10 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
       kiss918:
         promiseResults[29].status === "fulfilled"
           ? promiseResults[29].value
+          : { turnover: 0, winLoss: 0 },
+      granddragon:
+        promiseResults[30].status === "fulfilled"
+          ? promiseResults[30].value
           : { turnover: 0, winLoss: 0 },
     };
     // Calculate total turnover and win loss

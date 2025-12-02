@@ -1130,7 +1130,7 @@ router.post(
   }
 );
 
-router.post("/api/alipay/getturnoverforrebate", async (req, res) => {
+router.post("/api/huawei/getturnoverforrebate", async (req, res) => {
   try {
     const { date } = req.body;
 
@@ -1167,26 +1167,46 @@ router.post("/api/alipay/getturnoverforrebate", async (req, res) => {
     }
 
     const records = await LotteryHuaweiModal.find({
-      createdAt: {
+      betTime: {
         $gte: startDate,
         $lt: endDate,
       },
+      cancel: { $ne: true },
+    });
+
+    const uniqueGameIds = [
+      ...new Set(records.map((record) => record.username)),
+    ];
+
+    const users = await User.find(
+      { gameId: { $in: uniqueGameIds } },
+      { gameId: 1, username: 1 }
+    ).lean();
+
+    const gameIdToUsername = {};
+    users.forEach((user) => {
+      gameIdToUsername[user.gameId] = user.username;
     });
 
     // Aggregate turnover and win/loss for each player
     let playerSummary = {};
 
     records.forEach((record) => {
-      const username = record.username;
+      const gameId = record.username;
+      const actualUsername = gameIdToUsername[gameId];
 
-      if (!playerSummary[username]) {
-        playerSummary[username] = { turnover: 0, winloss: 0 };
+      if (!actualUsername) {
+        console.warn(`GRAND DRAGON User not found for gameId: ${gameId}`);
+        return;
       }
 
-      playerSummary[username].turnover += record.betamount || 0;
+      if (!playerSummary[actualUsername]) {
+        playerSummary[actualUsername] = { turnover: 0, winloss: 0 };
+      }
 
-      playerSummary[username].winloss +=
-        (record.settleamount || 0) - (record.betamount || 0);
+      playerSummary[actualUsername].turnover += record.betamount || 0;
+
+      playerSummary[actualUsername].winloss += record.settleamount || 0;
     });
     // Format the turnover and win/loss for each player to two decimal places
     Object.keys(playerSummary).forEach((playerId) => {
@@ -1201,25 +1221,28 @@ router.post("/api/alipay/getturnoverforrebate", async (req, res) => {
     return res.status(200).json({
       success: true,
       summary: {
-        gamename: "ALIPAY",
+        gamename: "GRAND DRAGON",
         gamecategory: "Lottery",
         users: playerSummary,
       },
     });
   } catch (error) {
-    console.log("ALIPAY: Failed to fetch win/loss report:", error.message);
+    console.log(
+      "GRAND DRAGON: Failed to fetch win/loss report:",
+      error.message
+    );
     return res.status(500).json({
       success: false,
       message: {
-        en: "ALIPAY: Failed to fetch win/loss report",
-        zh: "ALIPAY: 获取盈亏报告失败",
+        en: "GRAND DRAGON: Failed to fetch win/loss report",
+        zh: "GRAND DRAGON: 获取盈亏报告失败",
       },
     });
   }
 });
 
 router.get(
-  "/admin/api/alipay/:userId/dailygamedata",
+  "/admin/api/huawei/:userId/dailygamedata",
   authenticateAdminToken,
   async (req, res) => {
     try {
@@ -1230,29 +1253,30 @@ router.get(
       const user = await User.findById(userId);
 
       const records = await LotteryHuaweiModal.find({
-        username: user.username,
+        username: user.gameId,
         createdAt: {
-          $gte: moment(new Date(startDate)).utc().toDate(),
-          $lte: moment(new Date(endDate)).utc().toDate(),
+          $gte: startDate,
+          $lt: endDate,
         },
+        cancel: { $ne: true },
       });
 
-      // Aggregate turnover and win/loss for each player
       let totalTurnover = 0;
       let totalWinLoss = 0;
 
       records.forEach((record) => {
         totalTurnover += record.betamount || 0;
-        totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
+        totalWinLoss += record.settleamount || 0;
       });
 
       totalTurnover = Number(totalTurnover.toFixed(2));
       totalWinLoss = Number(totalWinLoss.toFixed(2));
+
       // Return the aggregated results
       return res.status(200).json({
         success: true,
         summary: {
-          gamename: "ALIPAY",
+          gamename: "GRAND DRAGON",
           gamecategory: "Lottery",
           user: {
             username: user.username,
@@ -1262,12 +1286,15 @@ router.get(
         },
       });
     } catch (error) {
-      console.log("ALIPAY: Failed to fetch win/loss report:", error.message);
+      console.log(
+        "GRAND DRAGON: Failed to fetch win/loss report:",
+        error.message
+      );
       return res.status(500).json({
         success: false,
         message: {
-          en: "ALIPAY: Failed to fetch win/loss report",
-          zh: "ALIPAY: 获取盈亏报告失败",
+          en: "GRAND DRAGON: Failed to fetch win/loss report",
+          zh: "GRAND DRAGON: 获取盈亏报告失败",
         },
       });
     }
@@ -1275,7 +1302,7 @@ router.get(
 );
 
 router.get(
-  "/admin/api/alipay/:userId/gamedata",
+  "/admin/api/huawei/:userId/gamedata",
   authenticateAdminToken,
   async (req, res) => {
     try {
@@ -1317,9 +1344,9 @@ router.get(
         ) {
           const slotGames = Object.fromEntries(gameCategories["Lottery"]);
 
-          if (slotGames["ALIPAY"]) {
-            totalTurnover += slotGames["ALIPAY"].turnover || 0;
-            totalWinLoss += slotGames["ALIPAY"].winloss || 0;
+          if (slotGames["GRAND DRAGON"]) {
+            totalTurnover += slotGames["GRAND DRAGON"].turnover || 0;
+            totalWinLoss += slotGames["GRAND DRAGON"].winloss || 0;
           }
         }
       });
@@ -1331,7 +1358,7 @@ router.get(
       return res.status(200).json({
         success: true,
         summary: {
-          gamename: "ALIPAY",
+          gamename: "GRAND DRAGON",
           gamecategory: "Lottery",
           user: {
             username: user.username,
@@ -1341,12 +1368,15 @@ router.get(
         },
       });
     } catch (error) {
-      console.log("ALIPAY: Failed to fetch win/loss report:", error.message);
+      console.log(
+        "GRAND DRAGON: Failed to fetch win/loss report:",
+        error.message
+      );
       return res.status(500).json({
         success: false,
         message: {
-          en: "ALIPAY: Failed to fetch win/loss report",
-          zh: "ALIPAY: 获取盈亏报告失败",
+          en: "GRAND DRAGON: Failed to fetch win/loss report",
+          zh: "GRAND DRAGON: 获取盈亏报告失败",
         },
       });
     }
@@ -1354,7 +1384,7 @@ router.get(
 );
 
 router.get(
-  "/admin/api/alipay/dailykioskreport",
+  "/admin/api/huawei/dailykioskreport",
   authenticateAdminToken,
   async (req, res) => {
     try {
@@ -1365,6 +1395,7 @@ router.get(
           $gte: moment(new Date(startDate)).utc().toDate(),
           $lte: moment(new Date(endDate)).utc().toDate(),
         },
+        cancel: { $ne: true },
       });
 
       let totalTurnover = 0;
@@ -1373,25 +1404,28 @@ router.get(
       records.forEach((record) => {
         totalTurnover += record.betamount || 0;
 
-        totalWinLoss += (record.betamount || 0) - (record.settleamount || 0);
+        totalWinLoss -= record.settleamount || 0;
       });
+
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
 
       return res.status(200).json({
         success: true,
         summary: {
-          gamename: "ALIPAY",
+          gamename: "GRAND DRAGON",
           gamecategory: "Lottery",
-          totalturnover: Number(totalTurnover.toFixed(2)),
-          totalwinloss: Number(totalWinLoss.toFixed(2)),
+          totalturnover: totalTurnover,
+          totalwinloss: totalWinLoss,
         },
       });
     } catch (error) {
-      console.error("ALIPAY: Failed to fetch win/loss report:", error);
+      console.error("GRAND DRAGON: Failed to fetch win/loss report:", error);
       return res.status(500).json({
         success: false,
         message: {
-          en: "ALIPAY: Failed to fetch win/loss report",
-          zh: "ALIPAY: 获取盈亏报告失败",
+          en: "GRAND DRAGON: Failed to fetch win/loss report",
+          zh: "GRAND DRAGON: 获取盈亏报告失败",
         },
       });
     }
@@ -1399,7 +1433,7 @@ router.get(
 );
 
 router.get(
-  "/admin/api/alipay/kioskreport",
+  "/admin/api/huawei/kioskreport",
   authenticateAdminToken,
   async (req, res) => {
     try {
@@ -1434,9 +1468,10 @@ router.get(
         ) {
           const liveCasino = Object.fromEntries(gameCategories["Lottery"]);
 
-          if (liveCasino["ALIPAY"]) {
-            totalTurnover += Number(liveCasino["ALIPAY"].turnover || 0);
-            totalWinLoss += Number(liveCasino["ALIPAY"].winloss || 0) * -1;
+          if (liveCasino["GRAND DRAGON"]) {
+            totalTurnover += Number(liveCasino["GRAND DRAGON"].turnover || 0);
+            totalWinLoss +=
+              Number(liveCasino["GRAND DRAGON"].winloss || 0) * -1;
           }
         }
       });
@@ -1444,19 +1479,19 @@ router.get(
       return res.status(200).json({
         success: true,
         summary: {
-          gamename: "ALIPAY",
+          gamename: "GRAND DRAGON",
           gamecategory: "Lottery",
           totalturnover: Number(totalTurnover.toFixed(2)),
           totalwinloss: Number(totalWinLoss.toFixed(2)),
         },
       });
     } catch (error) {
-      console.error("ALIPAY: Failed to fetch win/loss report:", error);
+      console.error("GRAND DRAGON: Failed to fetch win/loss report:", error);
       return res.status(500).json({
         success: false,
         message: {
-          en: "ALIPAY: Failed to fetch win/loss report",
-          zh: "ALIPAY: 获取盈亏报告失败",
+          en: "GRAND DRAGON: Failed to fetch win/loss report",
+          zh: "GRAND DRAGON: 获取盈亏报告失败",
         },
       });
     }
@@ -1824,3 +1859,4 @@ const fetchtodayswinning = async () => {
 module.exports = router;
 module.exports.fetchtodaysbet = fetchtodaysbet;
 module.exports.fetchtodayswinning = fetchtodayswinning;
+module.exports.huaweiCheckBalance = huaweiCheckBalance;

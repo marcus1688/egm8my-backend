@@ -71,6 +71,7 @@ const SlotRSGModal = require("../models/slot_rsg.model");
 const SlotLivePPModal = require("../models/slot_live_pp.model");
 const SportM9BetModal = require("../models/sport_m9bet.model");
 const slot918KissModal = require("../models/slot_918kiss.model");
+const LotteryHuaweiModal= require("../models/other_huaweilottery.model")
 
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
@@ -6118,6 +6119,14 @@ router.get(
           }),
           getAllUsersTurnover(
             slot918KissModal,
+            {},
+            {
+              $ifNull: [{ $ifNull: ["$validbetamount", "$betamount"] }, 0],
+            },
+            "betTime"
+          ),
+          getAllUsersTurnover(
+            LotteryHuaweiModal,
             {},
             {
               $ifNull: [{ $ifNull: ["$validbetamount", "$betamount"] }, 0],

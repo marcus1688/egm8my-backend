@@ -253,6 +253,10 @@ router.post("/admin/api/getAllTurnoverForRebate", async (req, res) => {
         url: `${PUBLIC_APIURL}api/918kiss/getturnoverforrebate`,
         name: "918KISS",
       },
+      {
+        url: `${PUBLIC_APIURL}api/huawei/getturnoverforrebate`,
+        name: "GRAND DRAGON",
+      },
     ];
 
     const routePromises = routes.map((route) =>

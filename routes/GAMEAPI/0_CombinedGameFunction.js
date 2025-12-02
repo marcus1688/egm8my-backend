@@ -15,6 +15,7 @@ const moment = require("moment");
 const { mega888CheckBalance } = require("./slot_mega888");
 const GameWalletLog = require("../../models/gamewalletlog.model");
 const { kiss918CheckBalance } = require("./slot_918kiss");
+const { huaweiCheckBalance } = require("./other_huaweilottery");
 
 require("dotenv").config();
 
@@ -36,6 +37,13 @@ const GAME_BALANCE_CHECKERS = [
     checker: (user) => kiss918CheckBalance(user),
     extractBalance: (result) => Number(result.balance),
     condition: (user) => !!user.kiss918GameID,
+  },
+  {
+    name: "Grand Dragon",
+    key: "granddragonBalance",
+    checker: (user) => huaweiCheckBalance(user),
+    extractBalance: (result) => Number(result.balance),
+    condition: (user) => !!user.huaweiGameID,
   },
   // {
   //   name: "pg",
