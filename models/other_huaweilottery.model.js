@@ -6,6 +6,9 @@ const lotteryHUAWEIschema = new mongoose.Schema(
     betId: {
       type: String,
     },
+    transId: {
+      type: String,
+    },
     betamount: {
       type: Number,
     },
@@ -20,7 +23,9 @@ const lotteryHUAWEIschema = new mongoose.Schema(
     },
     settle: {
       type: Boolean,
-      default: false,
+    },
+    cancel: {
+      type: Boolean,
     },
     startDate: {
       type: Date,

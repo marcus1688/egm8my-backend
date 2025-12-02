@@ -1463,208 +1463,364 @@ router.get(
   }
 );
 
-// const fetchAcceptedBetsCron = () => {
-//   cron.schedule("*/1 * * * *", async () => {
-//     try {
-//       const today = moment
-//         .utc()
-//         .add(8, "hours")
-//         .startOf("day")
-//         .format("YYYY-MM-DD");
-//       const yesterday = moment
-//         .utc()
-//         .add(8, "hours")
-//         .subtract(1, "days")
-//         .startOf("day")
-//         .format("YYYY-MM-DD");
+const fetchtodaysbet = async () => {
+  try {
+    const today = moment
+      .utc()
+      .add(8, "hours")
+      .startOf("day")
+      .format("YYYY-MM-DD");
 
-//       // Get data from last 3 days to ensure we catch all settled bets
-//       const threeDaysAgo = moment
-//         .utc()
-//         .add(8, "hours")
-//         .subtract(7, "days")
-//         .startOf("day")
-//         .format("YYYY-MM-DD");
+    const threeDaysAgo = moment
+      .utc()
+      .add(8, "hours")
+      .subtract(3, "days")
+      .startOf("day")
+      .format("YYYY-MM-DD");
 
-//       const payload = {
-//         betting_dates: {
-//           from: threeDaysAgo,
-//           to: today,
-//         },
-//         mid: huaweiUsername,
-//         pw: huaweiPassword,
-//       };
+    const payload = {
+      betting_dates: {
+        from: threeDaysAgo,
+        to: today,
+      },
+      mid: huaweiUsername,
+      pw: huaweiPassword,
+    };
 
-//       const response = await axios.post(
-//         `${huaweiAPIURL}wallet_member_query_bet_detail`,
-//         payload,
-//         {
-//           headers: {
-//             "Content-Type": "application/json",
-//           },
-//         }
-//       );
+    console.log("🎲 Fetching lottery bets...");
 
-//       if (response.data.status.success !== true) {
-//         console.error("❌ Failed to fetch betting data from AP95");
-//         return;
-//       }
+    const response = await axios.post(
+      `${huaweiAPIURL}wallet_member_query_bet_detail`,
+      payload,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
-//       const bets = response.data.bets || [];
+    if (response.data.status.success !== true) {
+      console.error("❌ Failed to fetch betting data from Huawei");
+      return;
+    }
 
-//       if (bets.length === 0) {
-//         return;
-//       }
+    const bets = response.data.bets || [];
+    console.log(`📊 Found ${bets.length} total bets`);
 
-//       // Separate bets by status
-//       const acceptedBets = bets.filter((bet) => bet.status === "A");
-//       const settledBets = bets.filter((bet) => bet.status === "P");
+    if (bets.length === 0) {
+      console.log("ℹ️  No bets to process");
+      return;
+    }
 
-//       // Get unique mids for user lookup
-//       const allMids = [...new Set(bets.map((bet) => bet.mid))];
+    // Filter only status 'A' (Accepted) and 'C' (Cancelled)
+    const validBets = bets.filter(
+      (bet) => bet.status === "A" || bet.status === "C"
+    );
 
-//       // Batch query users
-//       const users = await User.find({
-//         alipayGameID: { $in: allMids },
-//       })
-//         .select("username alipayGameID")
-//         .lean();
+    console.log(`✅ ${validBets.length} valid bets (status A or C)`);
 
-//       const midToUsernameMap = new Map(
-//         users.map((user) => [user.alipayGameID, user.username])
-//       );
+    if (validBets.length === 0) {
+      console.log("ℹ️  No valid bets to process");
+      return;
+    }
 
-//       let newBetsCount = 0;
-//       let updatedBetsCount = 0;
-//       let skippedBetsCount = 0;
+    // Get unique names for user lookup
+    const uniqueNames = [...new Set(validBets.map((bet) => bet.name))];
 
-//       // PART 1: Process ACCEPTED bets (status = 'A') - Create new records
-//       if (acceptedBets.length > 0) {
-//         // Batch check for existing tranIds to improve performance
-//         const acceptedTranIds = acceptedBets.map((bet) => bet.bd_id.toString());
-//         const existingBets = await LotteryHuaweiModal.find({
-//           tranId: { $in: acceptedTranIds },
-//         })
-//           .select("tranId")
-//           .lean();
+    // Find users by username (bet.name matches user.username)
+    const users = await User.find({
+      username: { $in: uniqueNames },
+    })
+      .select("username gameId")
+      .lean();
 
-//         const existingTranIdsSet = new Set(
-//           existingBets.map((bet) => bet.tranId)
-//         );
+    // Create mapping: username -> gameId
+    const usernameToGameIdMap = new Map(
+      users.map((user) => [user.username, user.gameId])
+    );
 
-//         // Prepare new bet records
-//         const newBetRecords = [];
+    console.log(`👥 Found ${users.length} users in database`);
 
-//         for (const bet of acceptedBets) {
-//           const username = midToUsernameMap.get(bet.mid);
+    // Check existing bets using compound unique key (betId + transId)
+    const betIdTransIdPairs = validBets.map((bet) => ({
+      betId: bet.b_id.toString(),
+      transId: bet.bd_id.toString(),
+    }));
 
-//           if (!username) {
-//             continue;
-//           }
+    const existingBets = await LotteryHuaweiModal.find({
+      $or: betIdTransIdPairs.map((pair) => ({
+        betId: pair.betId,
+        transId: pair.transId,
+      })),
+    })
+      .select("betId transId")
+      .lean();
 
-//           // Check if bet already exists using tranId (bd_id)
-//           if (existingTranIdsSet.has(bet.bd_id.toString())) {
-//             skippedBetsCount++;
-//             continue; // Skip if already exists
-//           }
+    // Create set of existing combinations for quick lookup
+    const existingCombosSet = new Set(
+      existingBets.map((bet) => `${bet.betId}_${bet.transId}`)
+    );
 
-//           // Prepare new bet record
-//           const newBetRecord = {
-//             tranId: bet.bd_id.toString(), // bd_id as tranId (unique)
-//             betamount: bet.accepted_amount || 0, // accepted_amount
-//             settleamount: 0, // Will be updated when settled
-//             username: username, // Found from User schema
-//             bet: true, // Always true
-//             resultDate: new Date(bet.result_date), // result_date
-//             betDate: new Date(bet.betting_date), // betting_date
-//           };
+    let newBetsCount = 0;
+    let skippedBetsCount = 0;
+    let userNotFoundCount = 0;
+    const newBetRecords = [];
 
-//           newBetRecords.push(newBetRecord);
-//         }
+    for (const bet of validBets) {
+      // Get gameId from username
+      const gameId = usernameToGameIdMap.get(bet.name);
 
-//         // Batch insert new bet records
-//         if (newBetRecords.length > 0) {
-//           try {
-//             const insertResult = await LotteryHuaweiModal.insertMany(
-//               newBetRecords,
-//               {
-//                 ordered: false, // Continue inserting even if some fail due to duplicates
-//               }
-//             );
-//             newBetsCount = insertResult.length;
-//           } catch (insertError) {
-//             // Handle duplicate key errors gracefully
-//             if (insertError.code === 11000) {
-//               // Some bets were inserted, some were duplicates
-//               const insertedCount = insertError.insertedDocs
-//                 ? insertError.insertedDocs.length
-//                 : 0;
-//               newBetsCount = insertedCount;
-//             } else {
-//               console.error(`❌ Error inserting bets:`, insertError.message);
-//             }
-//           }
-//         }
-//       }
+      if (!gameId) {
+        console.warn(`⚠️  User not found for name: ${bet.name}`);
+        userNotFoundCount++;
+        continue;
+      }
 
-//       // PART 2: Process SETTLED bets (status = 'P') - Update existing records
-//       if (settledBets.length > 0) {
-//         for (const bet of settledBets) {
-//           const username = midToUsernameMap.get(bet.mid);
+      // Check if this bet combination already exists
+      const comboKey = `${bet.b_id}_${bet.bd_id}`;
+      if (existingCombosSet.has(comboKey)) {
+        skippedBetsCount++;
+        continue;
+      }
 
-//           if (!username) {
-//             continue;
-//           }
+      // Convert betting_date from UTC+8 to UTC
+      // betting_date format: '2025-12-02 17:10:58' (in UTC+8)
+      const betTimeUTC8 = moment.tz(
+        bet.betting_date,
+        "YYYY-MM-DD HH:mm:ss",
+        "Asia/Kuala_Lumpur"
+      );
+      const betTimeUTC = betTimeUTC8.utc().toDate();
 
-//           const updatedBet = await LotteryHuaweiModal.findOneAndUpdate(
-//             {
-//               tranId: bet.bd_id.toString(),
-//             },
-//             {
-//               $set: {
-//                 settleamount: bet.winning_amount || 0, // winning_amount
-//                 settle: true, // Set settle to true when status = 'P'
-//               },
-//             },
-//             {
-//               new: true, // Return updated document
-//             }
-//           );
+      // Prepare new bet record
+      const newBetRecord = {
+        betId: bet.b_id.toString(),
+        transId: bet.bd_id.toString(),
+        betamount: parseFloat(bet.accepted_amount) || 0,
+        settleamount: parseFloat(bet.winning_amount) || 0,
+        username: gameId, // Store gameId as username
+        bet: true,
+        cancel: bet.status === "C" ? true : false, // Mark as cancelled if status is 'C'
+        betTime: betTimeUTC, // Store in UTC
+        claimed: false,
+      };
 
-//           if (updatedBet) {
-//             updatedBetsCount++;
-//           } else {
-//             try {
-//               const newSettledBet = new LotteryHuaweiModal({
-//                 tranId: bet.bd_id.toString(),
-//                 betamount: bet.accepted_amount || 0, // Use accepted_amount from settled bet data
-//                 settleamount: bet.winning_amount || 0, // winning_amount
-//                 username: username,
-//                 bet: true,
-//                 settle: true, // Mark as settled since status = 'P'
-//                 resultDate: new Date(bet.result_date),
-//                 betDate: new Date(bet.betting_date),
-//               });
+      newBetRecords.push(newBetRecord);
+    }
 
-//               await newSettledBet.save();
-//               newBetsCount++; // Count as new bet
-//             } catch (saveError) {
-//               if (saveError.code === 11000) {
-//               } else {
-//                 console.error(
-//                   `❌ Error creating settled bet ${bet.bd_id}:`,
-//                   saveError.message
-//                 );
-//               }
-//             }
-//           }
-//         }
-//       }
-//     } catch (error) {
-//       console.error("❌ Error in complete lottery cron:", error.message);
-//     }
-//   });
-// };
+    // Batch insert new bet records
+    if (newBetRecords.length > 0) {
+      try {
+        const insertResult = await LotteryHuaweiModal.insertMany(
+          newBetRecords,
+          {
+            ordered: false, // Continue even if some fail
+          }
+        );
+        newBetsCount = insertResult.length;
+      } catch (insertError) {
+        if (insertError.code === 11000) {
+          // Handle duplicate key errors
+          const insertedCount = insertError.insertedDocs
+            ? insertError.insertedDocs.length
+            : 0;
+          newBetsCount = insertedCount;
+          console.warn(`⚠️  Some bets were duplicates`);
+        } else {
+          console.error(`❌ Error inserting bets:`, insertError.message);
+        }
+      }
+    }
+
+    console.log("\n========================================");
+    console.log("📊 LOTTERY SYNC SUMMARY");
+    console.log("========================================");
+    console.log(`✅ New bets saved:     ${newBetsCount}`);
+    console.log(`⏭️  Skipped (duplicate): ${skippedBetsCount}`);
+    console.log(`⚠️  User not found:    ${userNotFoundCount}`);
+    console.log("========================================\n");
+  } catch (error) {
+    console.error("❌ Error in lottery sync:", error.message);
+    console.error("Stack trace:", error.stack);
+  }
+};
+
+const fetchtodayswinning = async () => {
+  try {
+    const today = moment
+      .utc()
+      .add(8, "hours")
+      .endOf("day")
+      .format("YYYY-MM-DD");
+
+    const threeDaysAgo = moment
+      .utc()
+      .add(8, "hours")
+      .startOf("day")
+      .format("YYYY-MM-DD");
+
+    const payload = {
+      result_dates: {
+        from: threeDaysAgo,
+        to: today,
+      },
+      mid: huaweiUsername,
+      pw: huaweiPassword,
+    };
+
+    console.log("🏆 Fetching lottery winning bets...");
+    console.log("Result date range:", threeDaysAgo, "to", today);
+
+    const response = await axios.post(
+      `${huaweiAPIURL}wallet_member_query_bet_detail`,
+      payload,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (response.data.status.success !== true) {
+      console.error("❌ Failed to fetch winning data from Huawei");
+      return;
+    }
+
+    const bets = response.data.bets || [];
+    console.log(`📊 Found ${bets.length} total bets`);
+
+    if (bets.length === 0) {
+      console.log("ℹ️  No bets to process");
+      return;
+    }
+
+    // Filter ONLY status 'P' (Paid/Won)
+    const paidBets = bets.filter((bet) => bet.status === "P");
+
+    console.log(`🏆 ${paidBets.length} paid/winning bets (status P)`);
+
+    if (paidBets.length === 0) {
+      console.log("ℹ️  No winning bets to process");
+      return;
+    }
+
+    // Get unique names for user lookup
+    const uniqueNames = [...new Set(paidBets.map((bet) => bet.name))];
+
+    // Find users by username (bet.name matches user.username)
+    const users = await User.find({
+      username: { $in: uniqueNames },
+    })
+      .select("username gameId")
+      .lean();
+
+    // Create mapping: username -> gameId
+    const usernameToGameIdMap = new Map(
+      users.map((user) => [user.username, user.gameId])
+    );
+
+    console.log(`👥 Found ${users.length} users in database`);
+
+    // Check existing bets using compound unique key (betId + transId)
+    const betIdTransIdPairs = paidBets.map((bet) => ({
+      betId: bet.b_id.toString(),
+      transId: bet.bd_id.toString(),
+    }));
+
+    const existingBets = await LotteryHuaweiModal.find({
+      $or: betIdTransIdPairs.map((pair) => ({
+        betId: pair.betId,
+        transId: pair.transId,
+      })),
+    })
+      .select("betId transId")
+      .lean();
+
+    // Create set of existing combinations for quick lookup
+    const existingCombosSet = new Set(
+      existingBets.map((bet) => `${bet.betId}_${bet.transId}`)
+    );
+
+    let newBetsCount = 0;
+    let skippedBetsCount = 0;
+    let userNotFoundCount = 0;
+    const newBetRecords = [];
+
+    for (const bet of paidBets) {
+      // Get gameId from username
+      const gameId = usernameToGameIdMap.get(bet.name);
+
+      if (!gameId) {
+        console.warn(`⚠️  User not found for name: ${bet.name}`);
+        userNotFoundCount++;
+        continue;
+      }
+
+      // Check if this bet combination already exists
+      const comboKey = `${bet.b_id}_${bet.bd_id}`;
+      if (existingCombosSet.has(comboKey)) {
+        skippedBetsCount++;
+        continue;
+      }
+
+      const resultDateUTC8 = moment.tz(
+        bet.result_date + " 00:00:00", // Add 12:00 AM time
+        "YYYY-MM-DD HH:mm:ss",
+        "Asia/Kuala_Lumpur"
+      );
+      const betTimeUTC = resultDateUTC8.utc().toDate();
+
+      const newBetRecord = {
+        betId: bet.b_id.toString(),
+        transId: bet.bd_id.toString(),
+        betamount: 0,
+        settleamount: parseFloat(bet.winning_amount) || 0,
+        username: gameId,
+        settle: true,
+        betTime: betTimeUTC,
+        claimed: false,
+      };
+
+      newBetRecords.push(newBetRecord);
+    }
+
+    // Batch insert new bet records
+    if (newBetRecords.length > 0) {
+      try {
+        const insertResult = await LotteryHuaweiModal.insertMany(
+          newBetRecords,
+          {
+            ordered: false, // Continue even if some fail
+          }
+        );
+        newBetsCount = insertResult.length;
+      } catch (insertError) {
+        if (insertError.code === 11000) {
+          // Handle duplicate key errors
+          const insertedCount = insertError.insertedDocs
+            ? insertError.insertedDocs.length
+            : 0;
+          newBetsCount = insertedCount;
+          console.warn(`⚠️  Some bets were duplicates`);
+        } else {
+          console.error(`❌ Error inserting bets:`, insertError.message);
+        }
+      }
+    }
+
+    console.log("\n========================================");
+    console.log("🏆 LOTTERY WINNING SYNC SUMMARY");
+    console.log("========================================");
+    console.log(`✅ New winning bets saved: ${newBetsCount}`);
+    console.log(`⏭️  Skipped (duplicate):    ${skippedBetsCount}`);
+    console.log(`⚠️  User not found:         ${userNotFoundCount}`);
+    console.log("========================================\n");
+  } catch (error) {
+    console.error("❌ Error in lottery winning sync:", error.message);
+    console.error("Stack trace:", error.stack);
+  }
+};
+
 module.exports = router;
-
-// module.exports.fetchAcceptedBetsCron = fetchAcceptedBetsCron;
+module.exports.fetchtodaysbet = fetchtodaysbet;
+module.exports.fetchtodayswinning = fetchtodayswinning;

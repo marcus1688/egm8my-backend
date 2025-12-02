@@ -20,6 +20,7 @@ const slotMega888Modal = require("../../models/slot_mega888.model");
 const GameSyncLog = require("../../models/game_syncdata.model");
 const cron = require("node-cron");
 const { sync918KissGameRecords } = require("./slot_918kiss");
+const { fetchtodaysbet, fetchtodayswinning } = require("./other_huaweilottery");
 require("dotenv").config();
 
 //Staging
@@ -2350,6 +2351,15 @@ if (process.env.NODE_ENV !== "development") {
       console.log("[Cron] 918Kiss sync completed successfully");
     } catch (error) {
       console.error("[Cron] 918Kiss sync failed:", error.message);
+    }
+
+    console.log("[Cron] Starting huawei4d sync job");
+    try {
+      await fetchtodaysbet();
+      await fetchtodayswinning();
+      console.log("[Cron] huawei4d sync completed successfully");
+    } catch (error) {
+      console.error("[Cron] huawei4d sync failed:", error.message);
     }
   });
 }
