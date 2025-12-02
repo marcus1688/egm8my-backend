@@ -343,6 +343,7 @@ const userSchema = new mongoose.Schema(
     gameStatus: {
       mega888: { type: gameStatusSchema, default: () => ({}) },
       kiss918: { type: gameStatusSchema, default: () => ({}) },
+      granddragon: { type: gameStatusSchema, default: () => ({}) },
       // kiss918: { type: gameStatusSchema, default: () => ({}) },
     },
     lastForcedLogout: { type: Date, default: null },
@@ -503,6 +504,12 @@ const userSchema = new mongoose.Schema(
       default: [],
     },
     ppGameToken: {
+      type: String,
+    },
+    huaweiGameID: {
+      type: String,
+    },
+    huaweiGamePW: {
       type: String,
     },
   },

@@ -107,6 +107,8 @@ const liveWECasinoRouter = require("./routes/GAMEAPI/live_wecasino");
 const liveOnCasinoRouter = require("./routes/GAMEAPI/live_oncasino");
 const liveAllBetRouter = require("./routes/GAMEAPI/live_allbet");
 
+const lotteryHuaweiRouter = require("./routes/GAMEAPI/other_huaweilottery");
+
 const paymentGatewaySKL99Router = require("./routes/PaymentGateway/skl99");
 const paymentGatewaySurePayRouter = require("./routes/PaymentGateway/surepay");
 const paymentGatewayFPayRouter = require("./routes/PaymentGateway/fpay");
@@ -908,6 +910,8 @@ app.use(liveYeebetRouter);
 app.use(liveWECasinoRouter);
 app.use(liveOnCasinoRouter);
 app.use(liveAllBetRouter);
+
+app.use(lotteryHuaweiRouter);
 
 app.use(paymentGatewaySKL99Router);
 app.use(paymentGatewaySurePayRouter);
