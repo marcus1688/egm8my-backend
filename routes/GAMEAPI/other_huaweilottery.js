@@ -698,18 +698,20 @@ router.post("/api/huawei/withdraw", authenticateToken, async (req, res) => {
     if (!withdrawResponse.success) {
       console.error("GRAND DRRAGON: Withdraw failed -", withdrawResponse.error);
 
-      // if (withdrawResponse.error.error.code === "37123") {
-      //   return res.status(200).json({
-      //     success: false,
-      //     message: {
-      //       en: "GRAND DRRAGON: Insufficient game balance to complete withdrawal.",
-      //       zh: "GRAND DRRAGON: 游戏余额不足，无法完成提款。",
-      //       ms: "GRAND DRRAGON: Baki permainan tidak mencukupi untuk melengkapkan pengeluaran.",
-      //       zh_hk: "GRAND DRRAGON: 遊戲餘額不足，無法完成提款。",
-      //       id: "GRAND DRRAGON: Saldo permainan tidak mencukupi untuk menyelesaikan penarikan.",
-      //     },
-      //   });
-      // }
+      const firstMessage = withdrawResponse.error?.status?.messages?.[0] || "";
+
+      if (firstMessage.includes("doesn't have enough credit")) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "GRAND DRAGON: Insufficient game balance to complete withdrawal.",
+            zh: "GRAND DRAGON: 游戏余额不足，无法完成提款。",
+            zh_hk: "GRAND DRAGON: 遊戲餘額不足，無法完成提款。",
+            ms: "GRAND DRAGON: Baki permainan tidak mencukupi untuk melengkapkan pengeluaran.",
+            id: "GRAND DRAGON: Saldo permainan tidak mencukupi untuk menyelesaikan penarikan.",
+          },
+        });
+      }
 
       return res.status(200).json({
         success: false,
@@ -846,18 +848,21 @@ router.post(
       if (!withdrawResponse.success) {
         console.log("GRAND DRAGON withdrw fail", withdrawResponse);
 
-        // if (withdrawResponse.error.error.code === "37123") {
-        //   return res.status(200).json({
-        //     success: false,
-        //     message: {
-        //       en: "Insufficient game balance to complete withdrawal.",
-        //       zh: "游戏余额不足，无法完成提款。",
-        //       ms: "Baki permainan tidak mencukupi untuk melengkapkan pengeluaran.",
-        //       zh_hk: "遊戲餘額不足，無法完成提款。",
-        //       id: "Saldo permainan tidak mencukupi untuk menyelesaikan penarikan.",
-        //     },
-        //   });
-        // }
+        const firstMessage =
+          withdrawResponse.error?.status?.messages?.[0] || "";
+
+        if (firstMessage.includes("doesn't have enough credit")) {
+          return res.status(200).json({
+            success: false,
+            message: {
+              en: "GRAND DRAGON: Insufficient game balance to complete withdrawal.",
+              zh: "GRAND DRAGON: 游戏余额不足，无法完成提款。",
+              zh_hk: "GRAND DRAGON: 遊戲餘額不足，無法完成提款。",
+              ms: "GRAND DRAGON: Baki permainan tidak mencukupi untuk melengkapkan pengeluaran.",
+              id: "GRAND DRAGON: Saldo permainan tidak mencukupi untuk menyelesaikan penarikan.",
+            },
+          });
+        }
 
         return res.status(200).json({
           success: false,
@@ -978,18 +983,21 @@ router.post(
           withdrawResponse.error
         );
 
-        // if (withdrawResponse.error.error.code === "37123") {
-        //   return res.status(200).json({
-        //     success: false,
-        //     message: {
-        //       en: "Insufficient game balance to complete withdrawal.",
-        //       zh: "游戏余额不足，无法完成提款。",
-        //       ms: "Baki permainan tidak mencukupi untuk melengkapkan pengeluaran.",
-        //       zh_hk: "遊戲餘額不足，無法完成提款。",
-        //       id: "Saldo permainan tidak mencukupi untuk menyelesaikan penarikan.",
-        //     },
-        //   });
-        // }
+        const firstMessage =
+          withdrawResponse.error?.status?.messages?.[0] || "";
+
+        if (firstMessage.includes("doesn't have enough credit")) {
+          return res.status(200).json({
+            success: false,
+            message: {
+              en: "GRAND DRAGON: Insufficient game balance to complete withdrawal.",
+              zh: "GRAND DRAGON: 游戏余额不足，无法完成提款。",
+              zh_hk: "GRAND DRAGON: 遊戲餘額不足，無法完成提款。",
+              ms: "GRAND DRAGON: Baki permainan tidak mencukupi untuk melengkapkan pengeluaran.",
+              id: "GRAND DRAGON: Saldo permainan tidak mencukupi untuk menyelesaikan penarikan.",
+            },
+          });
+        }
 
         return res.status(200).json({
           success: false,
