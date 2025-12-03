@@ -39,7 +39,7 @@ const webURL = "https://www.bm8my.vip/";
 const luxepayINAPIURL = "https://btpayinapi.luxepay.co/payin/";
 const luxepayOUTAPIURL = "https://payoutapi.luxepay.co/Payout/Withdrawal";
 const luxepayQRDUITNOWAPIURL = "https://qrpayinapi.luxepay.co/DuitNow/Deposit";
-const callbackUrl = "https://api.egm8my.vip/api/luxepay/receivedcalled158291";
+const callbackUrl = "https://api.egm8my.vip/api/luxepay/payin";
 const banklistID = "69247c9f7ef1ac832d86e65f";
 
 function roundToTwoDecimals(num) {
@@ -274,7 +274,7 @@ router.post(
   }
 );
 
-router.post("/api/luxepay/payment", async (req, res) => {
+router.post("/api/luxepay/payin", async (req, res) => {
   try {
     const {
       status,
