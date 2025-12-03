@@ -284,7 +284,7 @@ router.post("/api/luxepay/payment", async (req, res) => {
       bank_reference,
       transaction,
     } = req.body;
-
+    console.log(req.body, "luxepay");
     if (!ItemID || Amount === undefined || status === undefined) {
       console.log("Missing required parameters:", { ItemID, Amount, status });
       return res.status(200).json({
