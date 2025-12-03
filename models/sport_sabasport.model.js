@@ -6,10 +6,25 @@ const sportSabaSportschema = new mongoose.Schema(
     licenseeTxId: {
       type: String,
     },
+    operationId: {
+      type: String,
+    },
     betId: {
       type: String,
     },
+    confirmbetId: {
+      type: String,
+    },
     cancelOperationId: {
+      type: String,
+    },
+    settleOperationId: {
+      type: String,
+    },
+    resettleOperationId: {
+      type: String,
+    },
+    unsettleOperationId: {
       type: String,
     },
     tranId: {
@@ -25,6 +40,9 @@ const sportSabaSportschema = new mongoose.Schema(
     settleamount: {
       type: Number,
     },
+    resettleamount: {
+      type: Number,
+    },
     username: {
       type: String,
     },
@@ -35,6 +53,9 @@ const sportSabaSportschema = new mongoose.Schema(
       type: Boolean,
     },
     cancel: {
+      type: Boolean,
+    },
+    isOddsChanged: {
       type: Boolean,
     },
     settle: {

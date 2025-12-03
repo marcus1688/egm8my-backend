@@ -362,7 +362,7 @@ router.post("/api/sabasport/placebet", async (req, res) => {
 
     const { operationId, userId, matchId, refId, creditAmount, debitAmount } =
       message;
-    console.log("placebet", message);
+
     const gameId = extractGameId(userId);
     if (!gameId) {
       return res
@@ -393,8 +393,8 @@ router.post("/api/sabasport/placebet", async (req, res) => {
     const toDeduct = (creditAmount || 0) - (debitAmount || 0);
 
     const updated = await User.findOneAndUpdate(
-      { gameId, wallet: { $gte: roundToTwoDecimals(toDeduct) } },
-      { $inc: { wallet: roundToTwoDecimals(-toDeduct) } },
+      { gameId, wallet: { $gte: roundToTwoDecimals(Math.abs(toDeduct)) } },
+      { $inc: { wallet: roundToTwoDecimals(toDeduct) } },
       { new: true, projection: { wallet: 1 } }
     ).lean();
 
@@ -439,8 +439,9 @@ router.post("/api/sabasport/confirmbet", async (req, res) => {
       return res.status(200).json({ status: "311", msg: "Invalid key" });
     }
 
-    const { operationId, userId, creditAmount, debitAmount } = message;
+    const { operationId, userId, txns } = message;
     console.log("confirmbet", message);
+
     const gameId = extractGameId(userId);
     if (!gameId) {
       return res
@@ -448,11 +449,13 @@ router.post("/api/sabasport/confirmbet", async (req, res) => {
         .json({ status: "101", msg: "Invalid userId format" });
     }
 
-    const [user, existingConfirm] = await Promise.all([
+    const refIds = txns.map((txn) => txn.refId);
+
+    const [user, existingBets] = await Promise.all([
       User.findOne({ gameId }, { wallet: 1 }).lean(),
-      SportSabaSportModal.findOne(
-        { betId: operationId, confirmbet: true },
-        { _id: 1 }
+      SportSabaSportModal.find(
+        { tranId: { $in: refIds } },
+        { tranId: 1, confirmbet: 1 }
       ).lean(),
     ]);
 
@@ -461,38 +464,87 @@ router.post("/api/sabasport/confirmbet", async (req, res) => {
         .status(200)
         .json({ status: "203", msg: "Account is not exist" });
     }
-    if (existingConfirm) {
+
+    const foundRefIds = new Set(existingBets.map((bet) => bet.tranId));
+    const confirmedRefIds = new Set(
+      existingBets.filter((bet) => bet.confirmbet).map((bet) => bet.tranId)
+    );
+
+    const missingRefIds = refIds.filter((refId) => !foundRefIds.has(refId));
+    if (missingRefIds.length) {
+      return res.status(200).json({
+        status: "504",
+        msg: `Bet not found: ${missingRefIds.join(", ")}`,
+      });
+    }
+
+    let totalChange = 0;
+    const bulkBetOps = [];
+
+    for (const txn of pendingTxns) {
+      if (confirmedRefIds.has(txn.refId)) continue;
+
+      const change = (txn.creditAmount || 0) - (txn.debitAmount || 0);
+      totalChange += change;
+
+      bulkBetOps.push({
+        updateOne: {
+          filter: { tranId: txn.refId },
+          update:
+            change < 0
+              ? {
+                  $set: {
+                    confirmbet: true,
+                    confirmbetId: operationId,
+                    isOddsChanged: txn.isOddsChanged || false,
+                  },
+                  $inc: { betamount: roundToTwoDecimals(-change) },
+                }
+              : {
+                  $set: {
+                    confirmbet: true,
+                    confirmbetId: operationId,
+                    isOddsChanged: txn.isOddsChanged || false,
+                  },
+                },
+        },
+      });
+    }
+
+    if (!bulkBetOps.length) {
       return res
         .status(200)
         .json({ status: "0", balance: roundToTwoDecimals(user.wallet) });
     }
 
-    const toDeduct = (creditAmount || 0) - (debitAmount || 0);
-    let finalBalance = user.wallet;
+    const walletQuery =
+      totalChange < 0
+        ? {
+            gameId,
+            wallet: { $gte: roundToTwoDecimals(totalChange) },
+          }
+        : { gameId };
 
-    const updated = await User.findOneAndUpdate(
-      { gameId, wallet: { $gte: roundToTwoDecimals(toDeduct) } },
-      { $inc: { wallet: roundToTwoDecimals(-toDeduct) } },
-      { new: true, projection: { wallet: 1 } }
-    ).lean();
+    const [updated] = await Promise.all([
+      totalChange !== 0
+        ? User.findOneAndUpdate(
+            walletQuery,
+            { $inc: { wallet: roundToTwoDecimals(-totalChange) } },
+            { new: true, projection: { wallet: 1 } }
+          ).lean()
+        : Promise.resolve(user),
+      SportSabaSportModal.bulkWrite(bulkBetOps),
+    ]);
 
-    if (!updated) {
+    if (totalChange < 0 && !updated) {
       return res
         .status(200)
         .json({ status: "502", msg: "Insufficient Balance" });
     }
-    finalBalance = updated.wallet;
-
-    SportSabaSportModal.updateOne(
-      { betId: operationId },
-      { $set: { confirmbet: true } }
-    ).catch((err) =>
-      console.error("SABASPORT confirmbet update error:", err.message)
-    );
 
     return res
       .status(200)
-      .json({ status: "0", balance: roundToTwoDecimals(finalBalance) });
+      .json({ status: "0", balance: roundToTwoDecimals(updated.wallet) });
   } catch (error) {
     console.error("SABASPORT confirmbet error:", error.message);
     return res
@@ -536,6 +588,7 @@ router.post("/api/sabasport/cancelbet", async (req, res) => {
         .status(200)
         .json({ status: "203", msg: "Account is not exist" });
     }
+
     if (existingCancel) {
       return res
         .status(200)
@@ -615,14 +668,7 @@ router.post("/api/sabasport/settle", async (req, res) => {
             $set: {
               settle: true,
               settleOperationId: operationId,
-              txId: txn.txId,
-              status: txn.status,
-              payout: roundToTwoDecimals(txn.payout || 0),
-              creditAmount: roundToTwoDecimals(txn.creditAmount || 0),
-              debitAmount: roundToTwoDecimals(txn.debitAmount || 0),
-              winlostDate: txn.winlostDate,
-              extraStatus: txn.extraStatus || "",
-              settlementTime: txn.settlementTime,
+              settleamount: roundToTwoDecimals(change || 0),
             },
           },
         },
@@ -696,10 +742,8 @@ router.post("/api/sabasport/unsettle", async (req, res) => {
           filter: { tranId: txn.refId },
           update: {
             $set: {
-              unsettle: true,
               unsettleOperationId: operationId,
               settle: false,
-              extraStatus: txn.extraStatus || "",
             },
           },
         },
@@ -766,25 +810,17 @@ router.post("/api/sabasport/resettle", async (req, res) => {
     for (const txn of txns) {
       const gameId = extractGameId(txn.userId);
 
-      if (!txn.extraInfo?.isOnlyWinlostDateChanged) {
-        const change = (txn.creditAmount || 0) - (txn.debitAmount || 0);
-        userChanges[gameId] = (userChanges[gameId] || 0) + change;
-      }
+      const change = (txn.creditAmount || 0) - (txn.debitAmount || 0);
+      userChanges[gameId] = (userChanges[gameId] || 0) + change;
 
       bulkBetOps.push({
         updateOne: {
           filter: { tranId: txn.refId },
           update: {
             $set: {
-              resettle: true,
               resettleOperationId: operationId,
               status: txn.status,
-              payout: roundToTwoDecimals(txn.payout || 0),
-              creditAmount: roundToTwoDecimals(txn.creditAmount || 0),
-              debitAmount: roundToTwoDecimals(txn.debitAmount || 0),
-              winlostDate: txn.winlostDate,
-              extraStatus: txn.extraStatus || "",
-              settlementTime: txn.settlementTime,
+              resettleamount: roundToTwoDecimals(change || 0),
             },
           },
         },
@@ -843,10 +879,8 @@ router.post("/api/sabasport/placebetparlay", async (req, res) => {
       debitAmount,
     } = message;
     const gameId = extractGameId(userId);
-    if (!gameId) {
-      return res
-        .status(200)
-        .json({ status: "101", msg: "Invalid userId format" });
+    if (!gameId || !txns?.length) {
+      return res.status(200).json({ status: "101", msg: "Invalid request" });
     }
 
     const [user, existing] = await Promise.all([
@@ -854,7 +888,7 @@ router.post("/api/sabasport/placebetparlay", async (req, res) => {
         { gameId },
         { wallet: 1, "gameLock.sabasport.lock": 1 }
       ).lean(),
-      SportSabaSportModal.findOne(
+      SportSabaSportModal.find(
         { operationId },
         { tranId: 1, licenseeTxId: 1 }
       ).lean(),
@@ -868,26 +902,29 @@ router.post("/api/sabasport/placebetparlay", async (req, res) => {
     if (user.gameLock?.sabasport?.lock) {
       return res.status(200).json({ status: "202", msg: "Account is lock" });
     }
-
-    if (existing) {
-      const existingTxns = await SportSabaSportModal.find(
-        { operationId },
-        { tranId: 1, licenseeTxId: 1 }
-      ).lean();
+    if (existing.length) {
       return res.status(200).json({
         status: "0",
-        txns: existingTxns.map((t) => ({
+        txns: existing.map((t) => ({
           refId: t.tranId,
           licenseeTxId: t.licenseeTxId,
         })),
       });
     }
 
-    const toDeduct = (debitAmount || 0) - (creditAmount || 0);
+    const totalChange = (creditAmount || 0) - (debitAmount || 0);
+
+    const walletQuery =
+      totalChange < 0
+        ? {
+            gameId,
+            wallet: { $gte: roundToTwoDecimals(totalChange) },
+          }
+        : { gameId };
 
     const updated = await User.findOneAndUpdate(
-      { gameId, wallet: { $gte: toDeduct } },
-      { $inc: { wallet: -toDeduct } },
+      walletQuery,
+      { $inc: { wallet: roundToTwoDecimals(totalChange) } },
       { new: true, projection: { wallet: 1 } }
     ).lean();
 
@@ -900,29 +937,19 @@ router.post("/api/sabasport/placebetparlay", async (req, res) => {
     const txnsResponse = [];
     const betRecords = txns.map((txn) => {
       const licenseeTxId = generateTransactionId();
+      const totalChangeForEach =
+        (txn.creditAmount || 0) - (txn.debitAmount || 0);
       txnsResponse.push({ refId: txn.refId, licenseeTxId });
       return {
-        betId: operationId,
-        operationId,
+        operationId: operationId,
         username: gameId,
         bet: true,
-        betType: "parlay",
-        parlayType: txn.parlayType,
-        betamount: roundToTwoDecimals(txn.betAmount || 0),
+        betamount: roundToTwoDecimals(Math.abs(totalChangeForEach) || 0),
         tranId: txn.refId,
-        licenseeTxId,
-        creditAmount: roundToTwoDecimals(txn.creditAmount || 0),
-        debitAmount: roundToTwoDecimals(txn.debitAmount || 0),
-        betTime: betTime,
-        IP,
-        ticketDetail: JSON.stringify(ticketDetail),
-        detail: JSON.stringify(txn.detail),
       };
     });
 
-    SportSabaSportModal.insertMany(betRecords).catch((err) =>
-      console.error("SABASPORT placebetparlay insert error:", err.message)
-    );
+    await SportSabaSportModal.insertMany(betRecords);
 
     return res.status(200).json({ status: "0", txns: txnsResponse });
   } catch (error) {
@@ -947,58 +974,119 @@ router.post("/api/sabasport/confirmbetparlay", async (req, res) => {
       return res.status(200).json({ status: "311", msg: "Invalid key" });
     }
 
-    const { userId, creditAmount, debitAmount, txns, transactionTime } =
-      message;
+    const { operationId, userId, updateTime, transactionTime, txns } = message;
+    console.log("confirmbetparlay", message);
+
     const gameId = extractGameId(userId);
-    if (!gameId) {
-      return res
-        .status(200)
-        .json({ status: "101", msg: "Invalid userId format" });
+    if (!gameId || !txns?.length) {
+      return res.status(200).json({ status: "101", msg: "Invalid request" });
     }
 
-    const user = await User.findOne({ gameId }, { wallet: 1 }).lean();
+    const refIds = txns.map((txn) => txn.refId);
+
+    const [user, existingBets] = await Promise.all([
+      User.findOne({ gameId }, { wallet: 1 }).lean(),
+      SportSabaSportModal.find(
+        { tranId: { $in: refIds } },
+        { tranId: 1, confirmed: 1 }
+      ).lean(),
+    ]);
+
     if (!user) {
       return res
         .status(200)
         .json({ status: "203", msg: "Account is not exist" });
     }
 
-    const toChange = (creditAmount || 0) - (debitAmount || 0);
+    // Use Set for O(1) lookup
+    const foundRefIds = new Set(existingBets.map((bet) => bet.tranId));
+    const confirmedRefIds = new Set(
+      existingBets.filter((bet) => bet.confirmed).map((bet) => bet.tranId)
+    );
 
-    const bulkBetOps = txns.map((txn) => ({
-      updateOne: {
-        filter: { tranId: txn.refId },
-        update: {
-          $set: {
-            confirmed: true,
-            txId: txn.txId,
-            actualAmount: roundToTwoDecimals(txn.actualAmount || 0),
-            isOddsChanged: txn.isOddsChanged || false,
-            winlostDate: txn.winlostDate,
-            odds: txn.odds || 0,
-            transactionTime,
-          },
-        },
-      },
-    }));
-
-    const promises = [SportSabaSportModal.bulkWrite(bulkBetOps)];
-    let finalBalance = user.wallet;
-
-    if (toChange !== 0) {
-      const updated = await User.findOneAndUpdate(
-        { gameId },
-        { $inc: { wallet: roundToTwoDecimals(toChange) } },
-        { new: true, projection: { wallet: 1 } }
-      ).lean();
-      finalBalance = updated.wallet;
+    // Check missing
+    const missingRefIds = refIds.filter((refId) => !foundRefIds.has(refId));
+    if (missingRefIds.length) {
+      return res.status(200).json({
+        status: "504",
+        msg: `Bet not found: ${missingRefIds.join(", ")}`,
+      });
     }
 
-    await Promise.all(promises);
+    // Filter pending and build bulk ops in one loop
+    let totalChange = 0;
+    const bulkBetOps = [];
+
+    for (const txn of txns) {
+      if (confirmedRefIds.has(txn.refId)) continue;
+
+      const change = (txn.creditAmount || 0) - (txn.debitAmount || 0);
+      totalChange += change;
+
+      bulkBetOps.push({
+        updateOne: {
+          filter: { tranId: txn.refId },
+          update:
+            change < 0
+              ? {
+                  $set: {
+                    confirmed: true,
+                    confirmedOperationId: operationId,
+                    licenseeTxId: txn.licenseeTxId,
+                    isOddsChanged: txn.isOddsChanged || false,
+                  },
+                  $inc: { betamount: roundToTwoDecimals(Math.abs(change)) },
+                }
+              : {
+                  $set: {
+                    confirmed: true,
+                    confirmedOperationId: operationId,
+                    licenseeTxId: txn.licenseeTxId,
+                    isOddsChanged: txn.isOddsChanged || false,
+                  },
+                },
+        },
+      });
+    }
+
+    // All already confirmed
+    if (!bulkBetOps.length) {
+      return res
+        .status(200)
+        .json({ status: "0", balance: roundToTwoDecimals(user.wallet) });
+    }
+
+    // Build wallet query - check balance only if deducting
+    const walletQuery =
+      totalChange < 0
+        ? {
+            gameId,
+            wallet: { $gte: roundToTwoDecimals(Math.abs(totalChange)) },
+          }
+        : { gameId };
+
+    // Execute wallet update and bulk ops in parallel
+    const [updated] = await Promise.all([
+      totalChange !== 0
+        ? User.findOneAndUpdate(
+            walletQuery,
+            { $inc: { wallet: roundToTwoDecimals(totalChange) } },
+            { new: true, projection: { wallet: 1 } }
+          ).lean()
+        : Promise.resolve(user),
+      SportSabaSportModal.bulkWrite(bulkBetOps),
+    ]);
+
+    // Check if insufficient balance (only when deducting)
+    if (totalChange < 0 && !updated) {
+      return res
+        .status(200)
+        .json({ status: "502", msg: "Insufficient Balance" });
+    }
 
     return res
       .status(200)
-      .json({ status: "0", balance: roundToTwoDecimals(finalBalance) });
+      .json({ status: "0", balance: roundToTwoDecimals(updated.wallet) });
   } catch (error) {
     console.error("SABASPORT confirmbetparlay error:", error.message);
     return res
@@ -1021,23 +1109,11 @@ router.post("/api/sabasport/placebet3rd", async (req, res) => {
       return res.status(200).json({ status: "311", msg: "Invalid key" });
     }
 
-    const {
-      operationId,
-      userId,
-      productId,
-      ticketList,
-      betTime,
-      IP,
-      productName_en,
-      gameName_en,
-      creditAmount,
-      debitAmount,
-    } = message;
+    const { operationId, userId, ticketList, creditAmount, debitAmount } =
+      message;
     const gameId = extractGameId(userId);
-    if (!gameId) {
-      return res
-        .status(200)
-        .json({ status: "101", msg: "Invalid userId format" });
+    if (!gameId || !ticketList?.length) {
+      return res.status(200).json({ status: "101", msg: "Invalid request" });
     }
 
     const [user, existing] = await Promise.all([
@@ -1045,7 +1121,10 @@ router.post("/api/sabasport/placebet3rd", async (req, res) => {
         { gameId },
         { wallet: 1, "gameLock.sabasport.lock": 1 }
       ).lean(),
-      SportSabaSportModal.findOne({ operationId }, { _id: 1 }).lean(),
+      SportSabaSportModal.find(
+        { operationId },
+        { tranId: 1, licenseeTxId: 1 }
+      ).lean(),
     ]);
 
     if (!user) {
@@ -1057,30 +1136,34 @@ router.post("/api/sabasport/placebet3rd", async (req, res) => {
       return res.status(200).json({ status: "202", msg: "Account is lock" });
     }
 
-    if (existing) {
-      const existingTxns = await SportSabaSportModal.find(
-        { operationId },
-        { tranId: 1, licenseeTxId: 1 }
-      ).lean();
+    if (existing.length) {
       return res.status(200).json({
         status: "0",
         balance: roundToTwoDecimals(user.wallet),
-        txns: existingTxns.map((t) => ({
+        txns: existing.map((t) => ({
           refId: t.tranId,
           licenseeTxId: t.licenseeTxId,
         })),
       });
     }
 
-    const toDeduct = (debitAmount || 0) - (creditAmount || 0);
+    const totalChange = (creditAmount || 0) - (debitAmount || 0);
+
+    const walletQuery =
+      totalChange < 0
+        ? {
+            gameId,
+            wallet: { $gte: roundToTwoDecimals(Math.abs(totalChange)) },
+          }
+        : { gameId };
 
     const updated = await User.findOneAndUpdate(
-      { gameId, wallet: { $gte: toDeduct } },
-      { $inc: { wallet: -toDeduct } },
+      walletQuery,
+      { $inc: { wallet: roundToTwoDecimals(totalChange) } },
       { new: true, projection: { wallet: 1 } }
     ).lean();
 
-    if (!updated) {
+    if (totalChange < 0 && !updated) {
       return res
         .status(200)
         .json({ status: "502", msg: "Insufficient Balance" });
@@ -1089,38 +1172,24 @@ router.post("/api/sabasport/placebet3rd", async (req, res) => {
     const txnsResponse = [];
     const betRecords = ticketList.map((ticket) => {
       const licenseeTxId = generateTransactionId();
+      const ticketChange =
+        (ticket.creditAmount || 0) - (ticket.debitAmount || 0);
       txnsResponse.push({ refId: ticket.refId, licenseeTxId });
       return {
-        betId: operationId,
         operationId,
         username: gameId,
         bet: true,
-        betType: "3rd",
-        productId,
-        productName: productName_en,
-        gameName: gameName_en,
-        betamount: roundToTwoDecimals(ticket.betAmount || 0),
-        actualAmount: roundToTwoDecimals(ticket.actualAmount || 0),
         tranId: ticket.refId,
         licenseeTxId,
-        odds: ticket.odds || 0,
-        oddsType: ticket.oddsType,
-        betChoice: ticket.betChoice_en,
-        extra: JSON.stringify(ticket.extra || {}),
-        creditAmount: roundToTwoDecimals(ticket.creditAmount || 0),
-        debitAmount: roundToTwoDecimals(ticket.debitAmount || 0),
-        betTime,
-        IP,
+        betamount: roundToTwoDecimals(Math.abs(ticketChange)),
       };
     });
 
-    SportSabaSportModal.insertMany(betRecords).catch((err) =>
-      console.error("SABASPORT placebet3rd insert error:", err.message)
-    );
+    await SportSabaSportModal.insertMany(betRecords);
 
     return res.status(200).json({
       status: "0",
-      balance: roundToTwoDecimals(updated.wallet),
+      balance: roundToTwoDecimals(updated?.wallet || user.wallet),
       txns: txnsResponse,
     });
   } catch (error) {
@@ -1145,59 +1214,108 @@ router.post("/api/sabasport/confirmbet3rd", async (req, res) => {
       return res.status(200).json({ status: "311", msg: "Invalid key" });
     }
 
-    const { userId, txns, transactionTime, creditAmount, debitAmount } =
-      message;
+    const { operationId, userId, txns, creditAmount, debitAmount } = message;
+    console.log("confirmbet3rd", message);
+
     const gameId = extractGameId(userId);
-    if (!gameId) {
-      return res
-        .status(200)
-        .json({ status: "101", msg: "Invalid userId format" });
+    if (!gameId || !txns?.length) {
+      return res.status(200).json({ status: "101", msg: "Invalid request" });
     }
 
-    const user = await User.findOne({ gameId }, { wallet: 1 }).lean();
+    const refIds = txns.map((txn) => txn.refId);
+
+    const [user, existingBets] = await Promise.all([
+      User.findOne({ gameId }, { wallet: 1 }).lean(),
+      SportSabaSportModal.find(
+        { tranId: { $in: refIds } },
+        { tranId: 1, confirmbet: 1 }
+      ).lean(),
+    ]);
+
     if (!user) {
       return res
         .status(200)
         .json({ status: "203", msg: "Account is not exist" });
     }
 
-    const toChange = (creditAmount || 0) - (debitAmount || 0);
+    const foundRefIds = new Set(existingBets.map((bet) => bet.tranId));
+    const confirmedRefIds = new Set(
+      existingBets.filter((bet) => bet.confirmbet).map((bet) => bet.tranId)
+    );
 
-    const bulkBetOps = txns.map((txn) => ({
-      updateOne: {
-        filter: { tranId: txn.refId },
-        update: {
-          $set: {
-            confirmed: true,
-            txId: txn.txId,
-            winlostDate: txn.winlostDate,
-            transactionTime,
-          },
-        },
-      },
-    }));
-
-    let finalBalance = user.wallet;
-
-    const promises = [SportSabaSportModal.bulkWrite(bulkBetOps)];
-    if (toChange !== 0) {
-      promises.push(
-        User.findOneAndUpdate(
-          { gameId },
-          { $inc: { wallet: roundToTwoDecimals(toChange) } },
-          { new: true, projection: { wallet: 1 } }
-        ).lean()
-      );
+    const missingRefIds = refIds.filter((refId) => !foundRefIds.has(refId));
+    if (missingRefIds.length) {
+      return res.status(200).json({
+        status: "504",
+        msg: `Bet not found: ${missingRefIds.join(", ")}`,
+      });
     }
 
-    const results = await Promise.all(promises);
-    if (results[1]) {
-      finalBalance = results[1].wallet;
+    let totalChange = 0;
+    const bulkBetOps = [];
+
+    for (const txn of txns) {
+      if (confirmedRefIds.has(txn.refId)) continue;
+
+      const change = (txn.creditAmount || 0) - (txn.debitAmount || 0);
+      totalChange += change;
+
+      bulkBetOps.push({
+        updateOne: {
+          filter: { tranId: txn.refId },
+          update:
+            change < 0
+              ? {
+                  $set: {
+                    confirmbet: true,
+                    confirmbetId: operationId,
+                  },
+                  $inc: { betamount: roundToTwoDecimals(Math.abs(change)) },
+                }
+              : {
+                  $set: {
+                    confirmbet: true,
+                    confirmbetId: operationId,
+                  },
+                },
+        },
+      });
+    }
+
+    if (!bulkBetOps.length) {
+      return res
+        .status(200)
+        .json({ status: "0", balance: roundToTwoDecimals(user.wallet) });
+    }
+
+    const walletQuery =
+      totalChange < 0
+        ? {
+            gameId,
+            wallet: { $gte: roundToTwoDecimals(Math.abs(totalChange)) },
+          }
+        : { gameId };
+
+    const [updated] = await Promise.all([
+      totalChange !== 0
+        ? User.findOneAndUpdate(
+            walletQuery,
+            { $inc: { wallet: roundToTwoDecimals(totalChange) } },
+            { new: true, projection: { wallet: 1 } }
+          ).lean()
+        : Promise.resolve(user),
+      SportSabaSportModal.bulkWrite(bulkBetOps),
+    ]);
+
+    if (totalChange < 0 && !updated) {
+      return res
+        .status(200)
+        .json({ status: "502", msg: "Insufficient Balance" });
     }
 
     return res
       .status(200)
-      .json({ status: "0", balance: roundToTwoDecimals(finalBalance) });
+      .json({ status: "0", balance: roundToTwoDecimals(updated.wallet) });
   } catch (error) {
     console.error("SABASPORT confirmbet3rd error:", error.message);
     return res
@@ -1205,10 +1323,10 @@ router.post("/api/sabasport/confirmbet3rd", async (req, res) => {
       .json({ status: "902", msg: "Internal Server Error" });
   }
 });
-
 // ============================================
 // PLACE BET ENT
 // ============================================
+
 router.post("/api/sabasport/placebetent", async (req, res) => {
   try {
     const { key, message } = req.body;
@@ -1220,23 +1338,10 @@ router.post("/api/sabasport/placebetent", async (req, res) => {
       return res.status(200).json({ status: "311", msg: "Invalid key" });
     }
 
-    const {
-      userId,
-      productId,
-      ticketList,
-      betTime,
-      IP,
-      productName_en,
-      gameName_en,
-      roundId,
-      creditAmount,
-      debitAmount,
-    } = message;
+    const { userId, ticketList, creditAmount, debitAmount } = message;
     const gameId = extractGameId(userId);
-    if (!gameId) {
-      return res
-        .status(200)
-        .json({ status: "101", msg: "Invalid userId format" });
+    if (!gameId || !ticketList?.length) {
+      return res.status(200).json({ status: "101", msg: "Invalid request" });
     }
 
     const [user, existing] = await Promise.all([
@@ -1259,9 +1364,11 @@ router.post("/api/sabasport/placebetent", async (req, res) => {
       return res.status(200).json({ status: "202", msg: "Account is lock" });
     }
 
+    // Return existing if same refId already processed
     if (existing) {
       return res.status(200).json({
         status: "0",
+        msg: "Success",
         userId,
         balance: roundToTwoDecimals(user.wallet),
         ticketList: ticketList.map((t) => ({
@@ -1271,15 +1378,23 @@ router.post("/api/sabasport/placebetent", async (req, res) => {
       });
     }
 
-    const toDeduct = (debitAmount || 0) - (creditAmount || 0);
+    const totalChange = (creditAmount || 0) - (debitAmount || 0);
+
+    const walletQuery =
+      totalChange < 0
+        ? {
+            gameId,
+            wallet: { $gte: roundToTwoDecimals(Math.abs(totalChange)) },
+          }
+        : { gameId };
 
     const updated = await User.findOneAndUpdate(
-      { gameId, wallet: { $gte: toDeduct } },
-      { $inc: { wallet: -toDeduct } },
+      walletQuery,
+      { $inc: { wallet: roundToTwoDecimals(totalChange) } },
       { new: true, projection: { wallet: 1 } }
     ).lean();
 
-    if (!updated) {
+    if (totalChange < 0 && !updated) {
       return res
         .status(200)
         .json({ status: "502", msg: "Insufficient Balance" });
@@ -1292,31 +1407,19 @@ router.post("/api/sabasport/placebetent", async (req, res) => {
       return {
         username: gameId,
         bet: true,
-        betType: "ent",
-        productId,
-        productName: productName_en,
-        gameName: gameName_en,
-        roundId,
-        betamount: roundToTwoDecimals(ticket.stake || 0),
-        actualAmount: roundToTwoDecimals(ticket.actualStake || 0),
         tranId: ticket.refId,
         licenseeTxId,
-        betChoice: ticket.betChoice_en || "",
-        extra: JSON.stringify(ticket.extra || {}),
-        betTime,
-        IP,
+        betamount: roundToTwoDecimals(ticket.actualStake || 0),
       };
     });
 
-    SportSabaSportModal.insertMany(betRecords).catch((err) =>
-      console.error("SABASPORT placebetent insert error:", err.message)
-    );
+    await SportSabaSportModal.insertMany(betRecords);
 
     return res.status(200).json({
       status: "0",
       msg: "Success",
       userId,
-      balance: roundToTwoDecimals(updated.wallet),
+      balance: roundToTwoDecimals(updated?.wallet || user.wallet),
       ticketList: ticketListResponse,
     });
   } catch (error) {
@@ -1341,18 +1444,7 @@ router.post("/api/sabasport/settleent", async (req, res) => {
       return res.status(200).json({ status: "311", msg: "Invalid key" });
     }
 
-    const {
-      userId,
-      refId,
-      status,
-      actualStake,
-      netStake,
-      winLostDate,
-      creditAmount,
-      debitAmount,
-      winlostAmount,
-      txIds,
-    } = message;
+    const { userId, refId, creditAmount, debitAmount, txIds } = message;
     const gameId = extractGameId(userId);
     if (!gameId) {
       return res
@@ -1363,7 +1455,11 @@ router.post("/api/sabasport/settleent", async (req, res) => {
     const [user, existing] = await Promise.all([
       User.findOne({ gameId }, { wallet: 1 }).lean(),
       SportSabaSportModal.findOne(
-        { tranId: refId, settle: true, txId: { $in: txIds } },
+        {
+          tranId: refId,
+          settle: true,
+          settleOperationId: txIds?.[0]?.toString(),
+        },
         { _id: 1 }
       ).lean(),
     ]);
@@ -1377,38 +1473,26 @@ router.post("/api/sabasport/settleent", async (req, res) => {
       return res.status(200).json({ status: "0" });
     }
 
-    const toChange = (creditAmount || 0) - (debitAmount || 0);
+    const totalChange = (creditAmount || 0) - (debitAmount || 0);
 
-    const promises = [
+    await Promise.all([
       SportSabaSportModal.updateOne(
         { tranId: refId },
         {
           $set: {
             settle: true,
-            status,
-            actualAmount: roundToTwoDecimals(actualStake || 0),
-            netStake: roundToTwoDecimals(netStake || 0),
-            payout: roundToTwoDecimals(creditAmount || 0),
-            winlostAmount: roundToTwoDecimals(winlostAmount || 0),
-            winlostDate: winLostDate,
-            txId: txIds[0],
-            creditAmount: roundToTwoDecimals(creditAmount || 0),
-            debitAmount: roundToTwoDecimals(debitAmount || 0),
+            settleOperationId: txIds?.[0]?.toString() || "",
+            settleamount: roundToTwoDecimals(totalChange),
           },
         }
       ),
-    ];
-
-    if (toChange !== 0) {
-      promises.push(
-        User.updateOne(
-          { gameId },
-          { $inc: { wallet: roundToTwoDecimals(toChange) } }
-        )
-      );
-    }
-
-    await Promise.all(promises);
+      totalChange !== 0
+        ? User.updateOne(
+            { gameId },
+            { $inc: { wallet: roundToTwoDecimals(totalChange) } }
+          )
+        : Promise.resolve(),
+    ]);
 
     return res.status(200).json({ status: "0" });
   } catch (error) {
@@ -1433,15 +1517,7 @@ router.post("/api/sabasport/cancelbetent", async (req, res) => {
       return res.status(200).json({ status: "311", msg: "Invalid key" });
     }
 
-    const {
-      userId,
-      refId,
-      winLostDate,
-      creditAmount,
-      debitAmount,
-      winlostAmount,
-      txIds,
-    } = message;
+    const { userId, refId, creditAmount, debitAmount, txIds } = message;
     const gameId = extractGameId(userId);
     if (!gameId) {
       return res
@@ -1452,7 +1528,11 @@ router.post("/api/sabasport/cancelbetent", async (req, res) => {
     const [user, existing] = await Promise.all([
       User.findOne({ gameId }, { wallet: 1 }).lean(),
       SportSabaSportModal.findOne(
-        { tranId: refId, cancel: true },
+        {
+          tranId: refId,
+          cancel: true,
+          cancelOperationId: txIds?.[0]?.toString(),
+        },
         { _id: 1 }
       ).lean(),
     ]);
@@ -1466,34 +1546,25 @@ router.post("/api/sabasport/cancelbetent", async (req, res) => {
       return res.status(200).json({ status: "0" });
     }
 
-    const toChange = (creditAmount || 0) - (debitAmount || 0);
+    const totalChange = (creditAmount || 0) - (debitAmount || 0);
 
-    const promises = [
+    await Promise.all([
       SportSabaSportModal.updateOne(
         { tranId: refId },
         {
           $set: {
             cancel: true,
-            winlostDate: winLostDate,
-            txId: txIds[0],
-            creditAmount: roundToTwoDecimals(creditAmount || 0),
-            debitAmount: roundToTwoDecimals(debitAmount || 0),
-            winlostAmount: roundToTwoDecimals(winlostAmount || 0),
+            cancelOperationId: txIds?.[0]?.toString() || "",
           },
         }
       ),
-    ];
-
-    if (toChange !== 0) {
-      promises.push(
-        User.updateOne(
-          { gameId },
-          { $inc: { wallet: roundToTwoDecimals(toChange) } }
-        )
-      );
-    }
-
-    await Promise.all(promises);
+      totalChange !== 0
+        ? User.updateOne(
+            { gameId },
+            { $inc: { wallet: roundToTwoDecimals(totalChange) } }
+          )
+        : Promise.resolve(),
+    ]);
 
     return res.status(200).json({ status: "0" });
   } catch (error) {
@@ -1528,7 +1599,7 @@ router.post("/api/sabasport/getticketinfo", async (req, res) => {
 
     const ticket = await SportSabaSportModal.findOne(
       { tranId: refId, username: gameId },
-      { status: 1, actualAmount: 1, winlostAmount: 1, settle: 1, cancel: 1 }
+      { betamount: 1, settleamount: 1, settle: 1, cancel: 1 }
     ).lean();
 
     if (!ticket) {
@@ -1539,15 +1610,20 @@ router.post("/api/sabasport/getticketinfo", async (req, res) => {
     if (ticket.cancel) {
       ticketStatus = "void";
     } else if (ticket.settle) {
-      ticketStatus = ticket.status?.toLowerCase() || "running";
+      ticketStatus = "won"; // Default to won if settled, adjust based on settleamount
+      if ((ticket.settleamount || 0) < 0) {
+        ticketStatus = "lose";
+      } else if ((ticket.settleamount || 0) === 0) {
+        ticketStatus = "draw";
+      }
     }
 
     return res.status(200).json({
       status: "0",
       msg: "Success",
       ticketStatus,
-      actualStake: roundToTwoDecimals(ticket.actualAmount || 0),
-      winlostAmount: roundToTwoDecimals(ticket.winlostAmount || 0),
+      actualStake: roundToTwoDecimals(ticket.betamount || 0),
+      winlostAmount: roundToTwoDecimals(ticket.settleamount || 0),
     });
   } catch (error) {
     console.error("SABASPORT getticketinfo error:", error.message);
@@ -1590,18 +1666,7 @@ router.post("/api/sabasport/adjustbalance", async (req, res) => {
       return res.status(200).json({ status: "311", msg: "Invalid key" });
     }
 
-    const {
-      time,
-      userId,
-      txId,
-      refNo,
-      refId,
-      operationId,
-      betType,
-      betTypeName,
-      winlostDate,
-      balanceInfo,
-    } = message;
+    const { userId, refId, operationId, balanceInfo } = message;
     const gameId = extractGameId(userId);
     if (!gameId) {
       return res
@@ -1611,10 +1676,7 @@ router.post("/api/sabasport/adjustbalance", async (req, res) => {
 
     const [user, existing] = await Promise.all([
       User.findOne({ gameId }, { wallet: 1 }).lean(),
-      SportSabaSportModal.findOne(
-        { adjustOperationId: operationId },
-        { _id: 1 }
-      ).lean(),
+      SportSabaSportModal.findOne({ operationId }, { _id: 1 }).lean(),
     ]);
 
     if (!user) {
@@ -1627,35 +1689,22 @@ router.post("/api/sabasport/adjustbalance", async (req, res) => {
     }
 
     const { creditAmount, debitAmount } = balanceInfo;
-    const toChange = (creditAmount || 0) - (debitAmount || 0);
+    const totalChange = (creditAmount || 0) - (debitAmount || 0);
 
-    const promises = [
+    await Promise.all([
       SportSabaSportModal.create({
         username: gameId,
-        betType: "adjust",
-        adjustOperationId: operationId,
+        operationId,
         tranId: refId,
-        txId,
-        refNo: refNo || 0,
-        sabaBetType: betType,
-        betTypeName,
-        winlostDate,
-        creditAmount: roundToTwoDecimals(creditAmount || 0),
-        debitAmount: roundToTwoDecimals(debitAmount || 0),
-        adjustTime: time,
+        betamount: roundToTwoDecimals(Math.abs(totalChange)),
       }),
-    ];
-
-    if (toChange !== 0) {
-      promises.push(
-        User.updateOne(
-          { gameId },
-          { $inc: { wallet: roundToTwoDecimals(toChange) } }
-        )
-      );
-    }
-
-    await Promise.all(promises);
+      totalChange !== 0
+        ? User.updateOne(
+            { gameId },
+            { $inc: { wallet: roundToTwoDecimals(totalChange) } }
+          )
+        : Promise.resolve(),
+    ]);
 
     return res.status(200).json({ status: "0" });
   } catch (error) {
