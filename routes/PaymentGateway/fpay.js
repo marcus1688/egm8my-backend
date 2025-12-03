@@ -85,6 +85,7 @@ async function getFPayAuth(paymentMethod) {
       username: merchantName,
       api_key: apiKey,
     };
+
     const response = await axios.post(`${fpayAPIURL}auth`, payload, {
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -259,11 +260,11 @@ router.post("/api/fpay/getpaymentlink", authenticateToken, async (req, res) => {
       BSN: "bank",
       AllianceBank: "bank",
       AffinBank: "bank",
-      Tng: "duitnow",
+      Tng: "ewallet",
       MayBankQR: "duitnow",
       DuitNowQR: "duitnow",
-      GrabPay: "duitnow",
-      Boost: "duitnow",
+      GrabPay: "ewallet",
+      Boost: "ewallet",
     };
 
     const fpayAuth = await getFPayAuth(PAYMENT_METHOD[bankCode]);
