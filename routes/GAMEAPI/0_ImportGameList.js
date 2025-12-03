@@ -88,7 +88,7 @@ function parseRTP(rtpRaw) {
 
 router.post("/api/playtech/import-games", async (req, res) => {
   try {
-    const importFilePath = path.join(__dirname, "../../public/pp.json");
+    const importFilePath = path.join(__dirname, "../../public/fastspin.json");
     console.log(importFilePath);
 
     // Check if file exists
@@ -114,9 +114,9 @@ router.post("/api/playtech/import-games", async (req, res) => {
 
     console.log("pass");
     console.log(`Found ${gameList.length} games to import`);
-    await GamePPGameModal.deleteMany();
+    await GameFastSpinGameModal.deleteMany();
     // Insert into MongoDB
-    await GamePPGameModal.insertMany(gameList);
+    await GameFastSpinGameModal.insertMany(gameList);
 
     return res.status(200).json({
       success: true,
@@ -771,7 +771,7 @@ router.post("/api/jili/getgamelistMissing", async (req, res) => {
 
 router.post("/api/playtech/export-games", async (req, res) => {
   try {
-    const allGames = await GamePlayStarGameModal.find().lean(); // lean() for plain JS objects
+    const allGames = await GamePPGameModal.find().lean(); // lean() for plain JS objects
 
     if (!allGames || allGames.length === 0) {
       return res.status(404).json({
@@ -781,7 +781,7 @@ router.post("/api/playtech/export-games", async (req, res) => {
     }
 
     // Create a temporary file
-    const exportFilePath = path.join(__dirname, "../../exports/playstar.json");
+    const exportFilePath = path.join(__dirname, "../../exports/pp.json");
 
     // Ensure export directory exists
     const exportDir = path.dirname(exportFilePath);

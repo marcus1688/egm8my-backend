@@ -98,6 +98,7 @@ const slotLivePPRouter = require("./routes/GAMEAPI/slot_livepp");
 
 const sportSBOBETRouter = require("./routes/GAMEAPI/sport_sbobet");
 const sportM9BetRouter = require("./routes/GAMEAPI/sports_m9bet");
+const sportSabaSportRouter = require("./routes/GAMEAPI/sport_saba");
 
 const esportTFGamingRouter = require("./routes/GAMEAPI/esport_tfgaming");
 
@@ -902,6 +903,7 @@ app.use(slotLivePPRouter);
 
 app.use(sportSBOBETRouter);
 app.use(sportM9BetRouter);
+app.use(sportSabaSportRouter);
 
 app.use(esportTFGamingRouter);
 

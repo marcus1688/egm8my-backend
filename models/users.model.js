@@ -339,6 +339,7 @@ const userSchema = new mongoose.Schema(
       allbet: { type: gameLockSchema, default: () => ({}) },
       ppslot: { type: gameLockSchema, default: () => ({}) },
       pplive: { type: gameLockSchema, default: () => ({}) },
+      sabasport: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       mega888: { type: gameStatusSchema, default: () => ({}) },
@@ -510,6 +511,9 @@ const userSchema = new mongoose.Schema(
       type: String,
     },
     huaweiGamePW: {
+      type: String,
+    },
+    sabasportGameID: {
       type: String,
     },
   },
