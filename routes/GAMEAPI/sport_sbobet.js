@@ -164,6 +164,249 @@ async function registerSBOBETUser(user) {
   }
 }
 
+router.post("/api/sbobetother/getgamelist", async (req, res) => {
+  try {
+    const requestData = {
+      CompanyKey: sbobetSecret,
+      ServerID: generateTraceCode(),
+      GpId: "14",
+      IsGetAll: false,
+    };
+
+    const response = await axios.post(
+      `${sbobetAPIURL}/web-root/restricted/information/get-game-list.aspx`,
+      requestData,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (response.data.error.id !== 0) {
+      console.log("SBOBET error in launching game", response.data);
+
+      if (response.data.ErrorCode === 104) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Game under maintenance. Please try again later.",
+            zh: "游戏正在维护中，请稍后再试。",
+            ms: "Permainan sedang diselenggara, sila cuba lagi nanti.",
+            zh_hk: "遊戲正在維護中，請稍後再試。",
+            id: "Permainan sedang dalam pemeliharaan. Silakan coba lagi nanti.",
+          },
+        });
+      }
+
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "SBOBET: Game launch failed. Please try again or customer service for assistance.",
+          zh: "SBOBET: 游戏启动失败，请重试或联系客服以获得帮助。",
+          ms: "SBOBET: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          zh_hk: "SBOBET: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+          id: "SBOBET: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+        },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      gameLobby: response.data,
+      message: {
+        en: "Game launched successfully.",
+        zh: "游戏启动成功。",
+        ms: "Permainan berjaya dimulakan.",
+        zh_hk: "遊戲啟動成功。",
+        id: "Permainan berhasil diluncurkan.",
+      },
+    });
+  } catch (error) {
+    console.log("SBOBET error in launching game", error);
+    return res.status(200).json({
+      success: false,
+      message: {
+        en: "SBOBET: Game launch failed. Please try again or customer service for assistance.",
+        zh: "SBOBET: 游戏启动失败，请重试或联系客服以获得帮助。",
+        ms: "SBOBET: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+        zh_hk: "SBOBET: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+        id: "SBOBET: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+      },
+    });
+  }
+});
+
+router.post(
+  "/api/sbobetother/launchGame",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const userId = req.user.userId;
+      const user = await User.findById(userId);
+
+      if (!user) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "User not found. Please try again or contact customer service for assistance.",
+            zh: "用户未找到，请重试或联系客服以获取帮助。",
+            ms: "Pengguna tidak ditemui, sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+            zh_hk: "用戶未找到，請重試或聯絡客服以獲取幫助。",
+            id: "Pengguna tidak ditemukan. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+          },
+        });
+      }
+
+      if (user.gameLock.sbobet.lock) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Your game access has been locked. Please contact customer support for further assistance.",
+            zh: "您的游戏访问已被锁定，请联系客服以获取进一步帮助。",
+            ms: "Akses permainan anda telah dikunci. Sila hubungi khidmat pelanggan untuk bantuan lanjut.",
+            zh_hk: "您的遊戲訪問已被鎖定，請聯絡客服以獲取進一步幫助。",
+            id: "Akses permainan Anda telah dikunci. Silakan hubungi dukungan pelanggan untuk bantuan lebih lanjut.",
+          },
+        });
+      }
+
+      if (!user.sbobetRegistered) {
+        const registeredData = await registerSBOBETUser(user);
+
+        if (!registeredData.success) {
+          console.log(`SBOBET in registering account ${registeredData}`);
+
+          return res.status(200).json({
+            success: false,
+            message: {
+              en: "SBOBET: Game launch failed. Please try again or customer service for assistance.",
+              zh: "SBOBET: 游戏启动失败，请重试或联系客服以获得帮助。",
+              ms: "SBOBET: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+              zh_hk: "SBOBET: 遊戲開唔到，老闆試多次或者搵客服幫手。",
+              id: "SBOBET: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+            },
+          });
+        }
+
+        await User.findOneAndUpdate(
+          { username: user.username },
+          {
+            $set: {
+              sbobetRegistered: true,
+            },
+          }
+        );
+      }
+
+      const { gameLang, clientPlatform } = req.body;
+
+      let lang = "en";
+
+      if (gameLang === "en") {
+        lang = "en";
+      } else if (gameLang === "zh") {
+        lang = "zh-cn";
+      } else if (gameLang === "ms") {
+        lang = "en";
+      } else if (gameLang === "id") {
+        lang = "id-id";
+      } else if (gameLang === "zh_hk") {
+        lang = "zh-tw";
+      }
+
+      let platform = "m";
+      if (clientPlatform === "web") {
+        platform = "d";
+      } else if (clientPlatform === "mobile") {
+        platform = "m";
+      }
+
+      const requestData = {
+        CompanyKey: sbobetSecret,
+        ServerID: generateTraceCode(),
+        Username: user.gameId,
+        Portfolio: "Casino",
+        // GpId: 1024,
+        // GameId: 6101,
+        // Lang: lang,
+        Device: platform,
+        ProductId: 1029,
+      };
+
+      const response = await axios.post(
+        `${sbobetAPIURL}/web-root/restricted/player/v2/login.aspx`,
+        requestData,
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (response.data.error.id !== 0) {
+        console.log("SBOBET error in launching game", response.data);
+
+        if (response.data.ErrorCode === 104) {
+          return res.status(200).json({
+            success: false,
+            message: {
+              en: "Game under maintenance. Please try again later.",
+              zh: "游戏正在维护中，请稍后再试。",
+              ms: "Permainan sedang diselenggara, sila cuba lagi nanti.",
+              zh_hk: "遊戲正在維護中，請稍後再試。",
+              id: "Permainan sedang dalam pemeliharaan. Silakan coba lagi nanti.",
+            },
+          });
+        }
+
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "SBOBET: Game launch failed. Please try again or customer service for assistance.",
+            zh: "SBOBET: 游戏启动失败，请重试或联系客服以获得帮助。",
+            ms: "SBOBET: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+            zh_hk: "SBOBET: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+            id: "SBOBET: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+          },
+        });
+      }
+
+      await GameWalletLogAttempt(
+        user.username,
+        "Transfer In",
+        "Seamless",
+        roundToTwoDecimals(user.wallet),
+        "SBOBET"
+      );
+
+      return res.status(200).json({
+        success: true,
+        gameLobby: response.data.url,
+        message: {
+          en: "Game launched successfully.",
+          zh: "游戏启动成功。",
+          ms: "Permainan berjaya dimulakan.",
+          zh_hk: "遊戲啟動成功。",
+          id: "Permainan berhasil diluncurkan.",
+        },
+      });
+    } catch (error) {
+      console.log("SBOBET error in launching game", error);
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "SBOBET: Game launch failed. Please try again or customer service for assistance.",
+          zh: "SBOBET: 游戏启动失败，请重试或联系客服以获得帮助。",
+          ms: "SBOBET: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          zh_hk: "SBOBET: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+          id: "SBOBET: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+        },
+      });
+    }
+  }
+);
+
 router.post("/api/sbobet/launchGame", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -1032,4 +1275,364 @@ router.post(
     }
   }
 );
+
+router.post("/api/sbobet/getturnoverforrebate", async (req, res) => {
+  try {
+    const { date } = req.body;
+
+    let startDate, endDate;
+    if (date === "today") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    } else if (date === "yesterday") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    }
+
+    console.log("VPOWER QUERYING TIME", startDate, endDate);
+
+    const records = await SportSBOBETModal.find({
+      createdAt: {
+        $gte: startDate,
+        $lt: endDate,
+      },
+      cancel: { $ne: true },
+      settle: true,
+    });
+
+    const uniqueGameIds = [
+      ...new Set(records.map((record) => record.username)),
+    ];
+
+    const users = await User.find(
+      { gameId: { $in: uniqueGameIds } },
+      { gameId: 1, username: 1 }
+    ).lean();
+
+    const gameIdToUsername = {};
+    users.forEach((user) => {
+      gameIdToUsername[user.gameId] = user.username;
+    });
+
+    // Aggregate turnover and win/loss for each player
+    let playerSummary = {};
+
+    records.forEach((record) => {
+      const gameId = record.username;
+      const actualUsername = gameIdToUsername[gameId];
+
+      if (!actualUsername) {
+        console.warn(`SBOBET User not found for gameId: ${gameId}`);
+        return;
+      }
+
+      if (!playerSummary[actualUsername]) {
+        playerSummary[actualUsername] = { turnover: 0, winloss: 0 };
+      }
+
+      playerSummary[actualUsername].turnover += record.betamount || 0;
+
+      playerSummary[actualUsername].winloss +=
+        (record.settleamount || 0) - (record.betamount || 0);
+    });
+    // Format the turnover and win/loss for each player to two decimal places
+    Object.keys(playerSummary).forEach((playerId) => {
+      playerSummary[playerId].turnover = Number(
+        playerSummary[playerId].turnover.toFixed(2)
+      );
+      playerSummary[playerId].winloss = Number(
+        playerSummary[playerId].winloss.toFixed(2)
+      );
+    });
+    // Return the aggregated results
+    return res.status(200).json({
+      success: true,
+      summary: {
+        gamename: "SBOBET",
+        gamecategory: "Sports",
+        users: playerSummary,
+      },
+    });
+  } catch (error) {
+    console.log("SBOBET: Failed to fetch win/loss report:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: {
+        en: "SBOBET: Failed to fetch win/loss report",
+        zh: "SBOBET: 获取盈亏报告失败",
+      },
+    });
+  }
+});
+
+// router.get(
+//   "/admin/api/vpower/:userId/dailygamedata",
+//   authenticateAdminToken,
+//   async (req, res) => {
+//     try {
+//       const { startDate, endDate } = req.query;
+
+//       const userId = req.params.userId;
+
+//       const user = await User.findById(userId);
+
+//       const records = await SportSBOBETModal.find({
+//         username: user.gameId,
+//         createdAt: {
+//           $gte: moment(new Date(startDate)).utc().toDate(),
+//           $lte: moment(new Date(endDate)).utc().toDate(),
+//         },
+//         settle: true,
+//       });
+
+//       // Aggregate turnover and win/loss for each player
+//       let totalTurnover = 0;
+//       let totalWinLoss = 0;
+
+//       records.forEach((record) => {
+//         totalTurnover += record.betamount || 0;
+//         totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
+//       });
+
+//       totalTurnover = Number(totalTurnover.toFixed(2));
+//       totalWinLoss = Number(totalWinLoss.toFixed(2));
+//       // Return the aggregated results
+//       return res.status(200).json({
+//         success: true,
+//         summary: {
+//           gamename: "VPOWER",
+//           gamecategory: "Slot Games",
+//           user: {
+//             username: user.username,
+//             turnover: totalTurnover,
+//             winloss: totalWinLoss,
+//           },
+//         },
+//       });
+//     } catch (error) {
+//       console.log("VPOWER: Failed to fetch win/loss report:", error.message);
+//       return res.status(500).json({
+//         success: false,
+//         message: {
+//           en: "VPOWER: Failed to fetch win/loss report",
+//           zh: "VPOWER: 获取盈亏报告失败",
+//         },
+//       });
+//     }
+//   }
+// );
+
+// router.get(
+//   "/admin/api/vpower/:userId/gamedata",
+//   authenticateAdminToken,
+//   async (req, res) => {
+//     try {
+//       const { startDate, endDate } = req.query;
+
+//       const userId = req.params.userId;
+
+//       const user = await User.findById(userId);
+
+//       const records = await GameDataLog.find({
+//         username: user.username,
+//         date: {
+//           $gte: moment(new Date(startDate))
+//             .utc()
+//             .add(8, "hours")
+//             .format("YYYY-MM-DD"),
+//           $lte: moment(new Date(endDate))
+//             .utc()
+//             .add(8, "hours")
+//             .format("YYYY-MM-DD"),
+//         },
+//       });
+
+//       let totalTurnover = 0;
+//       let totalWinLoss = 0;
+
+//       // Sum up the values for EVOLUTION under Live Casino
+//       records.forEach((record) => {
+//         // Convert Mongoose Map to Plain Object
+//         const gameCategories =
+//           record.gameCategories instanceof Map
+//             ? Object.fromEntries(record.gameCategories)
+//             : record.gameCategories;
+
+//         if (
+//           gameCategories &&
+//           gameCategories["Slot Games"] &&
+//           gameCategories["Slot Games"] instanceof Map
+//         ) {
+//           const slotGames = Object.fromEntries(gameCategories["Slot Games"]);
+
+//           if (slotGames["VPOWER"]) {
+//             totalTurnover += slotGames["VPOWER"].turnover || 0;
+//             totalWinLoss += slotGames["VPOWER"].winloss || 0;
+//           }
+//         }
+//       });
+
+//       // Format the total values to two decimal places
+//       totalTurnover = Number(totalTurnover.toFixed(2));
+//       totalWinLoss = Number(totalWinLoss.toFixed(2));
+
+//       return res.status(200).json({
+//         success: true,
+//         summary: {
+//           gamename: "VPOWER",
+//           gamecategory: "Slot Games",
+//           user: {
+//             username: user.username,
+//             turnover: totalTurnover,
+//             winloss: totalWinLoss,
+//           },
+//         },
+//       });
+//     } catch (error) {
+//       console.log("VPOWER: Failed to fetch win/loss report:", error.message);
+//       return res.status(500).json({
+//         success: false,
+//         message: {
+//           en: "VPOWER: Failed to fetch win/loss report",
+//           zh: "VPOWER: 获取盈亏报告失败",
+//         },
+//       });
+//     }
+//   }
+// );
+
+// router.get(
+//   "/admin/api/vpower/dailykioskreport",
+//   authenticateAdminToken,
+//   async (req, res) => {
+//     try {
+//       const { startDate, endDate } = req.query;
+
+//       const records = await SportSBOBETModal.find({
+//         createdAt: {
+//           $gte: moment(new Date(startDate)).utc().toDate(),
+//           $lte: moment(new Date(endDate)).utc().toDate(),
+//         },
+//         settle: true,
+//       });
+
+//       let totalTurnover = 0;
+//       let totalWinLoss = 0;
+
+//       records.forEach((record) => {
+//         totalTurnover += record.betamount || 0;
+
+//         totalWinLoss += (record.betamount || 0) - (record.settleamount || 0);
+//       });
+
+//       return res.status(200).json({
+//         success: true,
+//         summary: {
+//           gamename: "VPOWER",
+//           gamecategory: "Slot Games",
+//           totalturnover: Number(totalTurnover.toFixed(2)),
+//           totalwinloss: Number(totalWinLoss.toFixed(2)),
+//         },
+//       });
+//     } catch (error) {
+//       console.error("VPOWER: Failed to fetch win/loss report:", error);
+//       return res.status(500).json({
+//         success: false,
+//         message: {
+//           en: "VPOWER: Failed to fetch win/loss report",
+//           zh: "VPOWER: 获取盈亏报告失败",
+//         },
+//       });
+//     }
+//   }
+// );
+
+// router.get(
+//   "/admin/api/vpower/kioskreport",
+//   authenticateAdminToken,
+//   async (req, res) => {
+//     try {
+//       const { startDate, endDate } = req.query;
+
+//       const records = await GameDataLog.find({
+//         date: {
+//           $gte: moment(new Date(startDate))
+//             .utc()
+//             .add(8, "hours")
+//             .format("YYYY-MM-DD"),
+//           $lte: moment(new Date(endDate))
+//             .utc()
+//             .add(8, "hours")
+//             .format("YYYY-MM-DD"),
+//         },
+//       });
+
+//       let totalTurnover = 0;
+//       let totalWinLoss = 0;
+
+//       records.forEach((record) => {
+//         const gameCategories =
+//           record.gameCategories instanceof Map
+//             ? Object.fromEntries(record.gameCategories)
+//             : record.gameCategories;
+
+//         if (
+//           gameCategories &&
+//           gameCategories["Slot Games"] &&
+//           gameCategories["Slot Games"] instanceof Map
+//         ) {
+//           const liveCasino = Object.fromEntries(gameCategories["Slot Games"]);
+
+//           if (liveCasino["VPOWER"]) {
+//             totalTurnover += Number(liveCasino["VPOWER"].turnover || 0);
+//             totalWinLoss += Number(liveCasino["VPOWER"].winloss || 0) * -1;
+//           }
+//         }
+//       });
+
+//       return res.status(200).json({
+//         success: true,
+//         summary: {
+//           gamename: "VPOWER",
+//           gamecategory: "Slot Games",
+//           totalturnover: Number(totalTurnover.toFixed(2)),
+//           totalwinloss: Number(totalWinLoss.toFixed(2)),
+//         },
+//       });
+//     } catch (error) {
+//       console.error("VPOWER: Failed to fetch win/loss report:", error);
+//       return res.status(500).json({
+//         success: false,
+//         message: {
+//           en: "VPOWER: Failed to fetch win/loss report",
+//           zh: "VPOWER: 获取盈亏报告失败",
+//         },
+//       });
+//     }
+//   }
+// );
+
 module.exports = router;

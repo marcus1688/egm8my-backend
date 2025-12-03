@@ -21,7 +21,7 @@ const webURL = "https://www.bm8my.vip/";
 const yeebetAPIURL = "https://api.yeebet.vip";
 const yeebetSecret = process.env.YEEBET_SECRET;
 const yeebetAppID = "EGM8MYR";
-const yeebetLaunchAppID = "xtdYNVD83P50";
+const yeebetLaunchAppID = "EGM8MYR";
 
 function roundToTwoDecimals(num) {
   return Math.round(num * 100) / 100;
@@ -145,18 +145,20 @@ router.post("/api/yeebet/launchGame", authenticateToken, async (req, res) => {
       currency: "MYR",
       returnurl: webURL,
     };
+
     const sign = generateSignature(params, yeebetSecret);
 
     const fullParams = { ...params, sign };
+    console.log(fullParams);
 
     const query = new URLSearchParams(fullParams).toString();
-
+    console.log(`${yeebetAPIURL}/api/login?${query}`);
     const response = await axios.post(`${yeebetAPIURL}/api/login?${query}`, {
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
       },
     });
-
+    console.log(response.data);
     if (response.data.result !== 0) {
       console.log("YEEBET error in launching game", response.data);
 
