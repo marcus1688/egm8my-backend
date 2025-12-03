@@ -36,7 +36,8 @@ require("dotenv").config();
 const luxepayMerchantCode = "bm8mytest";
 const luxepaySecret = process.env.LUXEPAY_SECRET;
 const webURL = "https://www.bm8my.vip/";
-const luxepayINAPIURL = "https://btpayinapi.luxepay.co/payin/";
+const luxepayDuitNowAPIURL = "https://qrpayinapi.luxepay.co/DuitNow/Deposit";
+const luxepayINAPIURL = "https://btpayinapi.luxepay.co/payin/DepositV2";
 const luxepayOUTAPIURL = "https://payoutapi.luxepay.co/Payout/Withdrawal";
 const luxepayQRDUITNOWAPIURL = "https://qrpayinapi.luxepay.co/DuitNow/Deposit";
 const callbackUrl = "https://api.egm8my.vip/api/luxepay/payin";
@@ -54,6 +55,27 @@ const generateDepositV2Hash = (
   secretKey
 ) => {
   const dataToHash = merchantCode + itemId + currency + amount;
+  return CryptoJS.HmacSHA256(dataToHash, secretKey).toString();
+};
+
+const generateDuitNowHash = (
+  merchantCode,
+  refId,
+  playerUsername,
+  playerIp,
+  currencyCode,
+  amount,
+  clientUrl,
+  secretKey
+) => {
+  const dataToHash =
+    merchantCode +
+    refId +
+    playerUsername +
+    playerIp +
+    currencyCode +
+    amount +
+    clientUrl;
   return CryptoJS.HmacSHA256(dataToHash, secretKey).toString();
 };
 
@@ -103,7 +125,7 @@ router.post(
   authenticateToken,
   async (req, res) => {
     try {
-      const { trfAmt, bankCode, promotionId } = req.body;
+      const { trfAmt, bankCode, promotionId, gameLang } = req.body;
 
       const userId = req.user?.userId;
 
@@ -180,36 +202,83 @@ router.post(
           },
         });
       }
-      const Hash = generateDepositV2Hash(
-        luxepayMerchantCode,
-        refno,
-        "MYR",
-        trfAmt,
-        luxepaySecret
-      );
 
-      const requestBody = {
-        MerchantCode: luxepayMerchantCode,
-        ReturnURL: webURL,
-        FailedReturnURL: webURL,
-        HTTPPostURL: callbackUrl,
-        Amount: trfAmt,
-        Currency: "MYR",
-        ItemID: refno,
-        ItemDescription: `Top up MYR ${trfAmt} for ${user.username}`,
-        PlayerId: user.username,
-        Hash,
-        BankCode: bankCode,
-        ClientFullName: user.fullname,
-      };
+      let APIURL;
+      let requestBody;
+      let hash;
 
-      const response = await axios.post(
-        `${luxepayINAPIURL}DepositV2`,
-        requestBody,
-        {
-          headers: { "Content-Type": "application/json" },
+      if (bankCode === "DUITNOW") {
+        let clientIp = req.headers["x-forwarded-for"] || req.ip;
+        clientIp = clientIp.split(",")[0].trim();
+
+        let lang = "en";
+
+        if (gameLang === "en") {
+          lang = "en";
+        } else if (gameLang === "zh") {
+          lang = "en";
+        } else if (gameLang === "zh_hk") {
+          lang = "en";
+        } else if (gameLang === "ms") {
+          lang = "my";
+        } else if (gameLang === "id") {
+          lang = "my";
         }
-      );
+
+        hash = generateDuitNowHash(
+          luxepayMerchantCode,
+          refno,
+          user.fullname,
+          clientIp,
+          "MYR",
+          trfAmt,
+          webURL,
+          luxepaySecret
+        );
+
+        APIURL = luxepayDuitNowAPIURL;
+
+        requestBody = {
+          merchant_code: luxepayMerchantCode,
+          ref_id: refno,
+          player_username: user.fullname,
+          player_ip: clientIp,
+          currency_code: "MYR",
+          amount: trfAmt,
+          client_url: webURL,
+          hash: hash,
+          lang,
+        };
+      } else {
+        hash = generateDepositV2Hash(
+          luxepayMerchantCode,
+          refno,
+          "MYR",
+          trfAmt,
+          luxepaySecret
+        );
+
+        APIURL = luxepayINAPIURL;
+
+        requestBody = {
+          MerchantCode: luxepayMerchantCode,
+          ReturnURL: webURL,
+          FailedReturnURL: webURL,
+          HTTPPostURL: callbackUrl,
+          Amount: trfAmt,
+          Currency: "MYR",
+          ItemID: refno,
+          ItemDescription: `Top up MYR ${trfAmt} for ${user.username}`,
+          PlayerId: user.username,
+          Hash: hash,
+          BankCode: bankCode,
+          ClientFullName: user.fullname,
+        };
+      }
+
+      const response = await axios.post(`${APIURL}`, requestBody, {
+        headers: { "Content-Type": "application/json" },
+      });
       if (response.data.message && !response.data.transaction) {
         console.log(`TRUEPay API Error: ${JSON.stringify(response.data)}`);
 
