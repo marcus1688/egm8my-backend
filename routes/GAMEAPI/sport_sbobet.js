@@ -328,12 +328,13 @@ router.post(
         Username: user.gameId,
         Portfolio: "Casino",
         // GpId: 1024,
-        // GameId: 6101,
+        // GameId: 0,
         // Lang: lang,
         Device: platform,
         ProductId: 1029,
       };
-
+      console.log(requestData);
+      console.log(`${sbobetAPIURL}/web-root/restricted/player/v2/login.aspx`);
       const response = await axios.post(
         `${sbobetAPIURL}/web-root/restricted/player/v2/login.aspx`,
         requestData,
@@ -343,6 +344,7 @@ router.post(
           },
         }
       );
+      console.log(response.data);
 
       if (response.data.error.id !== 0) {
         console.log("SBOBET error in launching game", response.data);
