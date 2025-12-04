@@ -410,7 +410,7 @@ router.post("/api/sabasport/placebet", async (req, res) => {
       betId: operationId,
       username: gameId,
       bet: true,
-      betamount: roundToTwoDecimals(toDeduct),
+      betamount: roundToTwoDecimals(Math.abs(toDeduct)),
       tranId: refId || "",
       matchId: matchId || "",
       licenseeTxId,
