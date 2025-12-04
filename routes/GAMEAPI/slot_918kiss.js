@@ -1938,3 +1938,4 @@ async function sync918KissGameRecords(daysBack = 5) {
 module.exports = router;
 module.exports.kiss918CheckBalance = kiss918CheckBalance;
 module.exports.sync918KissGameRecords = sync918KissGameRecords;
+module.exports.kiss918Withdraw = kiss918Withdraw;

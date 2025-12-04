@@ -1866,3 +1866,4 @@ module.exports = router;
 module.exports.fetchtodaysbet = fetchtodaysbet;
 module.exports.fetchtodayswinning = fetchtodayswinning;
 module.exports.huaweiCheckBalance = huaweiCheckBalance;
+module.exports.huaweiWithdraw = huaweiWithdraw;

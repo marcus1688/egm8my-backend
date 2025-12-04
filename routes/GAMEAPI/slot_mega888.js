@@ -2366,3 +2366,4 @@ if (process.env.NODE_ENV !== "development") {
 
 module.exports = router;
 module.exports.mega888CheckBalance = mega888CheckBalance;
+module.exports.mega888Withdraw = mega888Withdraw;
