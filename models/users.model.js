@@ -340,6 +340,7 @@ const userSchema = new mongoose.Schema(
       ppslot: { type: gameLockSchema, default: () => ({}) },
       pplive: { type: gameLockSchema, default: () => ({}) },
       sabasport: { type: gameLockSchema, default: () => ({}) },
+      yggdrasil: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       mega888: { type: gameStatusSchema, default: () => ({}) },
@@ -398,6 +399,9 @@ const userSchema = new mongoose.Schema(
       default: 0,
     },
     hacksawGameToken: {
+      type: String,
+    },
+    yggdrasilGameToken: {
       type: String,
     },
     relaxgamingGameToken: {
