@@ -38,8 +38,7 @@ const luxepaySecret = process.env.LUXEPAY_SECRET;
 const webURL = "https://www.bm8my.vip/";
 const luxepayDuitNowAPIURL = "https://qrpayinapi.luxepay.co/DuitNow/Deposit";
 const luxepayINAPIURL = "https://btpayinapi.luxepay.co/payin/DepositV2";
-const luxepayOUTAPIURL = "https://payoutapi.luxepay.co/Payout/Withdrawal";
-const luxepayQRDUITNOWAPIURL = "https://qrpayinapi.luxepay.co/DuitNow/Deposit";
+const luxepayPAYOUTAPIURL = "https://payoutapi.luxepay.co/Payout/Withdrawal";
 const callbackUrl = "https://api.egm8my.vip/api/luxepay/payin";
 const banklistID = "69247c9f7ef1ac832d86e65f";
 
@@ -55,6 +54,32 @@ const generateDepositV2Hash = (
   secretKey
 ) => {
   const dataToHash = merchantCode + itemId + currency + amount;
+  return CryptoJS.HmacSHA256(dataToHash, secretKey).toString();
+};
+
+const generateWithdrawHash = (
+  merchantCode,
+  ref_id,
+  player_username,
+  player_ip,
+  currency_code,
+  amount,
+  bank_code,
+  beneficiary_account,
+  beneficiary_name,
+  secretKey
+) => {
+  const dataToHash =
+    merchantCode +
+    ref_id +
+    player_username +
+    player_ip +
+    currency_code +
+    amount +
+    bank_code +
+    beneficiary_account +
+    beneficiary_name;
+
   return CryptoJS.HmacSHA256(dataToHash, secretKey).toString();
 };
 
@@ -372,7 +397,7 @@ router.post("/api/luxepay/payin", async (req, res) => {
     const statusText = statusMapping[statusCode] || "Unknown";
     const roundedAmount = roundToTwoDecimals(Amount);
 
-    const luxepayModal = await luxepayModal
+    const existingTrx = await luxepayModal
       .findOne(
         { ourRefNo: ItemID },
         { _id: 1, username: 1, status: 1, createdAt: 1, promotionId: 1 }
@@ -752,6 +777,146 @@ router.post("/api/luxepay/payin", async (req, res) => {
     return res.status(200).json({
       error_code: 4,
       message: "Operation Failed",
+    });
+  }
+});
+
+router.post("/admin/api/luxepay/requesttransfer/:userId", async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "User not found. Please try again or contact customer service for assistance.",
+          zh: "用户未找到，请重试或联系客服以获取帮助。",
+          ms: "Pengguna tidak ditemui, sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          zh_hk: "用戶未找到，請重試或聯絡客服以獲取幫助。",
+          id: "Pengguna tidak ditemukan. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+        },
+      });
+    }
+
+    const {
+      amount,
+      bankCode,
+      accountHolder,
+      accountNumber,
+      bankName,
+      transactionId,
+    } = req.body;
+
+    if (!amount || !bankCode || !accountHolder || !accountNumber) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "Please complete all required fields",
+          zh: "请完成所有必填项",
+          zh_hk: "麻煩完成所有必填項目",
+          ms: "Sila lengkapkan semua medan yang diperlukan",
+          id: "Silakan lengkapi semua kolom yang diperlukan",
+        },
+      });
+    }
+
+    const formattedAmount = Number(amount).toFixed(2);
+
+    let clientIp = req.headers["x-forwarded-for"] || req.ip;
+    clientIp = clientIp.split(",")[0].trim();
+
+    const hash = generateWithdrawHash(
+      luxepayMerchantCode,
+      transactionId,
+      accountHolder,
+      "161.142.136.26",
+      "MYR",
+      formattedAmount,
+      bankCode,
+      accountNumber,
+      accountHolder,
+      luxepaySecret
+    );
+
+    const requestBody = {
+      merchant_code: luxepayMerchantCode,
+      ref_id: transactionId,
+      player_username: accountHolder,
+      player_ip: "161.142.136.26",
+      currency_code: "MYR",
+      amount: formattedAmount,
+      bank_code: bankCode,
+      beneficiary_account: accountNumber,
+      beneficiary_name: accountHolder,
+      hash,
+    };
+    console.log(requestBody);
+    console.log(luxepayPAYOUTAPIURL);
+    const response = await axios.post(`${luxepayPAYOUTAPIURL}`, requestBody, {
+      headers: { "Content-Type": "application/json" },
+    });
+    console.log(response.data);
+    return;
+    if (response.data.error_code && !response.data.transaction) {
+      console.log(`TRUEPay API Error: ${JSON.stringify(response.data)}`);
+
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "Failed to generate payment link. Please try again or contact customer service for assistance.",
+          zh: "生成支付链接失败，请重试或联系客服以获取帮助。",
+          zh_hk: "生成支付連結失敗，麻煩老闆再試多次或者聯絡客服幫手。",
+          ms: "Gagal menjana pautan pembayaran. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          id: "Gagal membuat tautan pembayaran. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+        },
+      });
+    }
+
+    await Promise.all([
+      luxepayModal.create({
+        ourRefNo: refno,
+        paymentGatewayRefNo: "",
+        transfername: user.fullname,
+        username: user.username,
+        amount: Number(trfAmt),
+        transferType: bankCode,
+        transactiontype: "deposit",
+        status: "Pending",
+        platformCharge: 0,
+        remark: "-",
+        promotionId: promotionId || null,
+      }),
+    ]);
+
+    const paymentUrl = response.data.redirect_to.replace("redirectlink=", "");
+
+    return res.status(200).json({
+      success: true,
+      message: {
+        en: "Redirecting to payment page...",
+        zh: "正在跳转至支付页面...",
+        zh_hk: "正在跳緊去支付頁面...",
+        ms: "Mengalihkan ke halaman pembayaran...",
+        id: "Mengarahkan ke halaman pembayaran...",
+      },
+      url: paymentUrl,
+    });
+  } catch (error) {
+    console.error(
+      `Error in LUXEPAY API - User: ${req.user?.userId}, Amount: ${req.body?.trfAmt}:`,
+      error.response?.data || error.message
+    );
+
+    return res.status(200).json({
+      success: false,
+      message: {
+        en: "Failed to generate payment link. Please try again or contact customer service for assistance.",
+        zh: "生成支付链接失败，请重试或联系客服以获取帮助。",
+        zh_hk: "生成支付連結失敗，麻煩老闆再試多次或者聯絡客服幫手。",
+        ms: "Gagal menjana pautan pembayaran. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+        id: "Gagal membuat tautan pembayaran. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+      },
     });
   }
 });
