@@ -42,6 +42,7 @@ const GameRSGGameModal = require("../../models/slot_rsgDatabase.model");
 const GameAceWinGameModal = require("../../models/slot_acewinDatabase.model");
 const GameSpadeGamingGameModal = require("../../models/slot_spadegamingDatabase.model");
 const GamePPGameModal = require("../../models/slot_live_ppDatabase.model");
+const GameYellowBatGameModal = require("../../models/slot_yellowbatDatabase.model");
 
 const { S3Client, ListObjectsV2Command } = require("@aws-sdk/client-s3");
 const multer = require("multer");
@@ -284,7 +285,7 @@ router.post("/api/importGameList/168168", async (req, res) => {
         .json({ success: false, message: "No valid games to import." });
     }
 
-    await GameAceWinGameModal.insertMany(games);
+    await GameYellowBatGameModal.insertMany(games);
     res.status(200).json({
       success: true,
       imported: games.length,
@@ -298,14 +299,14 @@ router.post("/api/importGameList/168168", async (req, res) => {
   }
 });
 
-router.post("/api/importImgUrl/acewin", async (req, res) => {
+router.post("/api/importImgUrl/yellowbat", async (req, res) => {
   try {
     const bucket = "allgameslist";
-    const basePathEN = "acewin/en/";
-    const basePathCN = "acewin/zh/";
+    const basePathEN = "yellowbat/en/";
+    const basePathCN = "yellowbat/zh/";
 
     // Get all games from the database that need images
-    const allGames = await GameAceWinGameModal.find(
+    const allGames = await GameYellowBatGameModal.find(
       {
         $or: [
           { imageUrlEN: { $exists: false } },
@@ -328,20 +329,23 @@ router.post("/api/importImgUrl/acewin", async (req, res) => {
     console.log(`Found ${allGames.length} games needing image sync`);
 
     /**
-     * Extract GameID from AWS filename
-     * Format: "SLOT_1002_木乃伊来了呀!_MummyMia_500X500_EN.png"
-     * Returns: "1002"
+     * Extract GameID from filename
+     * Format: "1001_zh_500x500.png" or "1001_en_500x500.png"
+     * Returns: "1001" (everything before the first underscore)
      */
     const extractGameIDFromFilename = (filename) => {
-      console.log(`  Processing filename: ${filename}`);
+      // Remove file extension first
+      const nameWithoutExt = filename.replace(
+        /\.(jpg|jpeg|png|gif|webp)$/i,
+        ""
+      );
 
-      // Split by underscore
-      const parts = filename.split("_");
+      // Split by underscore and take the first part
+      const parts = nameWithoutExt.split("_");
 
-      // GameID is between first and second underscore (parts[1])
-      if (parts.length >= 2) {
-        const gameID = parts[1];
-        console.log(`  Extracted GameID: "${gameID}"`);
+      if (parts.length >= 1 && parts[0]) {
+        const gameID = parts[0];
+        console.log(`  Extracted GameID: "${gameID}" from ${filename}`);
         return gameID;
       }
 
@@ -370,14 +374,12 @@ router.post("/api/importImgUrl/acewin", async (req, res) => {
     const cnImageMap = {};
 
     console.log("\n=== Processing EN Images ===");
-    // Process EN images
     if (enObjectsResult.Contents) {
       enObjectsResult.Contents.forEach((object) => {
         const filename = object.Key.split("/").pop();
 
         // Only process image files
         if (!filename.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-          console.log(`  Skipping non-image file: ${filename}`);
           return;
         }
 
@@ -392,14 +394,12 @@ router.post("/api/importImgUrl/acewin", async (req, res) => {
     }
 
     console.log("\n=== Processing CN Images ===");
-    // Process CN images
     if (cnObjectsResult.Contents) {
       cnObjectsResult.Contents.forEach((object) => {
         const filename = object.Key.split("/").pop();
 
         // Only process image files
         if (!filename.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-          console.log(`  Skipping non-image file: ${filename}`);
           return;
         }
 
@@ -416,74 +416,62 @@ router.post("/api/importImgUrl/acewin", async (req, res) => {
     console.log(`\nEN Image Map: ${Object.keys(enImageMap).length} entries`);
     console.log(`CN Image Map: ${Object.keys(cnImageMap).length} entries`);
 
-    // Update each game document with the corresponding image URLs
-    const updatePromises = allGames.map(async (game) => {
+    // Build bulk operations
+    const bulkOps = [];
+
+    for (const game of allGames) {
       const updates = {};
 
-      console.log(
-        `\nProcessing game: gameNameEN="${game.gameNameEN}", gameID="${game.gameID}"`
-      );
-
-      // Match images using GameID
       if (enImageMap[game.gameID]) {
         updates.imageUrlEN = enImageMap[game.gameID];
-        console.log(`  ✅ EN image found: ${enImageMap[game.gameID]}`);
-      } else {
-        console.log(`  ❌ EN image NOT found for GameID: ${game.gameID}`);
       }
 
       if (cnImageMap[game.gameID]) {
         updates.imageUrlCN = cnImageMap[game.gameID];
-        console.log(`  ✅ CN image found: ${cnImageMap[game.gameID]}`);
-      } else {
-        console.log(`  ❌ CN image NOT found for GameID: ${game.gameID}`);
       }
 
-      // Only update if we found at least one matching image
       if (Object.keys(updates).length > 0) {
+        bulkOps.push({
+          updateOne: {
+            filter: { _id: game._id },
+            update: { $set: updates },
+          },
+        });
         console.log(
-          `  ✅ Updating game "${game.gameNameEN}" (${game.gameID}) with ${
-            Object.keys(updates).length
-          } image(s)`
-        );
-        return GameAceWinGameModal.findByIdAndUpdate(
-          game._id,
-          { $set: updates },
-          { new: true }
+          `  ✅ Queued update for "${game.gameNameEN}" (${game.gameID})`
         );
       } else {
         console.log(
-          `  ⚠️ No images found for game "${game.gameNameEN}" (${game.gameID})`
+          `  ⚠️ No images found for "${game.gameNameEN}" (${game.gameID})`
         );
       }
+    }
 
-      return null;
-    });
+    // Execute bulk update
+    let updatedCount = 0;
+    if (bulkOps.length) {
+      const result = await GameYellowBatGameModal.bulkWrite(bulkOps);
+      updatedCount = result.modifiedCount;
+    }
 
-    // Execute all updates
-    const results = await Promise.all(updatePromises);
-
-    // Count successful updates
-    const updatedCount = results.filter((result) => result !== null).length;
-
-    // Get examples of unmatched games
+    // Get unmatched games
     const unmatchedGames = allGames
-      .filter((game, index) => results[index] === null)
+      .filter((game) => !enImageMap[game.gameID] && !cnImageMap[game.gameID])
       .slice(0, 10)
       .map((game) => ({
         gameNameEN: game.gameNameEN,
         gameID: game.gameID,
       }));
 
-    // Get examples of matched games
-    const matchedGames = results
-      .filter((result) => result !== null)
+    // Get matched games
+    const matchedGames = allGames
+      .filter((game) => enImageMap[game.gameID] || cnImageMap[game.gameID])
       .slice(0, 5)
       .map((game) => ({
         gameNameEN: game.gameNameEN,
         gameID: game.gameID,
-        imageUrlEN: game.imageUrlEN || "Not set",
-        imageUrlCN: game.imageUrlCN || "Not set",
+        imageUrlEN: enImageMap[game.gameID] || "Not found",
+        imageUrlCN: cnImageMap[game.gameID] || "Not found",
       }));
 
     return res.status(200).json({
@@ -491,14 +479,14 @@ router.post("/api/importImgUrl/acewin", async (req, res) => {
       message: `Successfully synced images for ${updatedCount} games`,
       totalGames: allGames.length,
       updatedGames: updatedCount,
-      unmatchedGames: allGames.length - updatedCount,
+      unmatchedGames: allGames.length - bulkOps.length,
       enImagesAvailable: Object.keys(enImageMap).length,
       cnImagesAvailable: Object.keys(cnImageMap).length,
       matchedExamples: matchedGames,
       unmatchedExamples: unmatchedGames,
     });
   } catch (error) {
-    console.error("Error syncing AceWin images:", error);
+    console.error("Error syncing YellowBat images:", error);
 
     return res.status(500).json({
       success: false,
@@ -742,7 +730,7 @@ router.post("/api/jili/updateMalayName", async (req, res) => {
 router.post("/api/jili/getgamelistMissing", async (req, res) => {
   try {
     // Fetch all games from the database (or add filters as needed)
-    const missingImageGames = await GameAceWinGameModal.find({
+    const missingImageGames = await GameYellowBatGameModal.find({
       $or: [
         { imageUrlEN: { $exists: false } },
         { imageUrlEN: "" },
