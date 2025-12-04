@@ -71,7 +71,7 @@ const SlotRSGModal = require("../models/slot_rsg.model");
 const SlotLivePPModal = require("../models/slot_live_pp.model");
 const SportM9BetModal = require("../models/sport_m9bet.model");
 const slot918KissModal = require("../models/slot_918kiss.model");
-const LotteryHuaweiModal= require("../models/other_huaweilottery.model")
+const LotteryHuaweiModal = require("../models/other_huaweilottery.model");
 
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
@@ -3707,8 +3707,8 @@ router.post(
         ownername: bank.ownername,
         bankAccount: bank.bankaccount,
         remark: withdraw.remark || "-",
-        lastBalance: bank.currentbalance - withdraw.amount,
-        currentBalance: bank.currentbalance,
+        lastBalance: updatedBank.currentbalance - withdraw.amount,
+        currentBalance: updatedBank.currentbalance,
         processby: adminuser.username,
         transactiontype: "reverted withdraw",
         amount: withdraw.amount,
