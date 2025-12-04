@@ -115,13 +115,13 @@ const createWalletLog = (
 ) => {
   return GameWalletLog.create({
     username,
-    transactionType: "Transfer Out",
-    type: "Transfer",
+    transactiontype: "Transfer Out",
+    remark: "Transfer",
     amount: roundToTwoDecimals(amount),
-    gameName,
-    gameBalance: 0,
-    beforeBalance: roundToTwoDecimals(beforeBalance),
-    afterBalance: roundToTwoDecimals(afterBalance),
+    gamename: gameName,
+    gamebalance: 0,
+    beforewalletbalance: roundToTwoDecimals(beforeBalance),
+    afterwalletbalance: roundToTwoDecimals(afterBalance),
   });
 };
 
