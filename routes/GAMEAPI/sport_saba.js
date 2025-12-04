@@ -721,11 +721,30 @@ router.post("/api/sabasport/unsettle", async (req, res) => {
       return res.status(200).json({ status: "101", msg: "Invalid txns" });
     }
 
-    const existing = await SportSabaSportModal.findOne(
-      { unsettleOperationId: operationId },
-      { _id: 1 }
-    ).lean();
+    const refIds = txns.map((txn) => txn.refId);
+
+    const [existing, existingBets] = await Promise.all([
+      SportSabaSportModal.findOne(
+        { unsettleOperationId: operationId },
+        { _id: 1 }
+      ).lean(),
+      SportSabaSportModal.find(
+        { tranId: { $in: refIds } },
+        { tranId: 1, settle: 1 }
+      ).lean(),
+    ]);
+
     if (existing) {
+      return res.status(200).json({ status: "0" });
+    }
+
+    const settledRefIds = new Set(
+      existingBets.filter((bet) => bet.settle).map((bet) => bet.tranId)
+    );
+
+    const settledTxns = txns.filter((txn) => settledRefIds.has(txn.refId));
+
+    if (!settledTxns.length) {
       return res.status(200).json({ status: "0" });
     }
 
