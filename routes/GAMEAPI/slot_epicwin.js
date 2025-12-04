@@ -19,7 +19,7 @@ const GameEpicWinGameModal = require("../../models/slot_epicwinDatabase.model");
 
 require("dotenv").config();
 
-const epicWinOperatorID = "epwnEGM8MYRMYR";
+const epicWinOperatorID = "epwnbm8myMYR";
 const epicWinSecret = process.env.EPICWIN_SECRET;
 const webURL = "https://www.bm8my.vip/";
 const epicWinAPIURL = "https://smapi.eptech88.com/api/opgateway/v1/op/";
@@ -602,7 +602,7 @@ router.post("/api/epicwin/launchGame", authenticateToken, async (req, res) => {
   }
 });
 
-router.post("/api/epicwins/GetBalance", async (req, res) => {
+router.post("/api/epicwinmy/GetBalance", async (req, res) => {
   try {
     const { OperatorId, Signature, PlayerId, AuthToken, RequestDateTime } =
       req.body;
@@ -703,7 +703,7 @@ router.post("/api/epicwins/GetBalance", async (req, res) => {
   }
 });
 
-router.post("/api/epicwins/Bet", async (req, res) => {
+router.post("/api/epicwinmy/Bet", async (req, res) => {
   try {
     const {
       OperatorId,
@@ -874,7 +874,7 @@ router.post("/api/epicwins/Bet", async (req, res) => {
   }
 });
 
-router.post("/api/epicwins/GameResult", async (req, res) => {
+router.post("/api/epicwinmy/GameResult", async (req, res) => {
   try {
     const {
       OperatorId,
@@ -1024,7 +1024,7 @@ router.post("/api/epicwins/GameResult", async (req, res) => {
   }
 });
 
-router.post("/api/epicwins/Rollback", async (req, res) => {
+router.post("/api/epicwinmy/Rollback", async (req, res) => {
   try {
     const {
       OperatorId,
@@ -1168,7 +1168,7 @@ router.post("/api/epicwins/Rollback", async (req, res) => {
   }
 });
 
-router.post("/api/epicwins/CashBonus", async (req, res) => {
+router.post("/api/epicwinmy/CashBonus", async (req, res) => {
   try {
     const { OperatorId, Signature, PlayerId, RequestDateTime, Payout, TranId } =
       req.body;
@@ -1297,7 +1297,7 @@ router.post("/api/epicwins/CashBonus", async (req, res) => {
   }
 });
 
-router.post("/api/epicwins/Jackpot", async (req, res) => {
+router.post("/api/epicwinmy/Jackpot", async (req, res) => {
   try {
     const { OperatorId, Signature, PlayerId, RequestDateTime, Payout, TranId } =
       req.body;
