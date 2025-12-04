@@ -529,7 +529,7 @@ router.post("/api/sabasport/confirmbet", async (req, res) => {
       totalChange !== 0
         ? User.findOneAndUpdate(
             walletQuery,
-            { $inc: { wallet: roundToTwoDecimals(-totalChange) } },
+            { $inc: { wallet: roundToTwoDecimals(totalChange) } },
             { new: true, projection: { wallet: 1 } }
           ).lean()
         : Promise.resolve(user),
