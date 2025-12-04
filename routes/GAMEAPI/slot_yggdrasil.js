@@ -19,6 +19,8 @@ const SlotDCTGameYggDrasilModal = require("../../models/slot_dctyggdrasil.model"
 require("dotenv").config();
 
 const dctyggdrasilGameBrandID = "S035058";
+const dctyggdrasilTopORG = "GamingsoftGroup";
+const dctyggdrasilORG = "EGM8VIPMYR";
 const dctyggdrasilGameKey = process.env.DCTGAME_YGGDRASIL_SECRET;
 const webURL = "https://www.bm8my.vip/";
 const dctyggdrasilGameAPIURL = "https://atp.dcgames.asia";
@@ -336,26 +338,29 @@ router.post("/api/yggdrasil/updategameid", async (req, res) => {
 router.post("/api/yggdrasil/comparegamenames", async (req, res) => {
   try {
     const sign = generateSignature({
-      brandId: dctyggdrasilGameBrandID,
-      apiKey: dctyggdrasilGameKey,
+      topOrg: dctyggdrasilTopORG,
+      org: dctyggdrasilORG,
+      key: dctyggdrasilGameKey,
     });
 
     const payload = {
-      brand_id: dctyggdrasilGameBrandID,
+      topOrg: dctyggdrasilTopORG,
+      org: dctyggdrasilORG,
       sign,
-      provider: "hs",
+      type: "yg",
     };
-
+    console.log(payload);
+    console.log(`${dctyggdrasilGameAPIURL}/ata/getGameList`);
     const response = await axios.post(
-      `${dctyggdrasilGameAPIURL}/dcs/getGameList`,
+      `${dctyggdrasilGameAPIURL}/ata/getGameList`,
       payload,
       {
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
         },
       }
     );
-
+    console.log(response.data, "hiohi");
     // Get all games from database
     const dbGames = await GameYGGDrasilGameModal.find({}).lean();
 
