@@ -481,7 +481,7 @@ router.post("/api/sabasport/confirmbet", async (req, res) => {
     let totalChange = 0;
     const bulkBetOps = [];
 
-    for (const txn of pendingTxns) {
+    for (const txn of txns) {
       if (confirmedRefIds.has(txn.refId)) continue;
 
       const change = (txn.creditAmount || 0) - (txn.debitAmount || 0);
