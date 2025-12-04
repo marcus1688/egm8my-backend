@@ -1715,7 +1715,9 @@ router.post("/api/sabasport/adjustbalance", async (req, res) => {
         username: gameId,
         operationId,
         tranId: refId,
-        betamount: roundToTwoDecimals(Math.abs(totalChange)),
+        betamount: roundToTwoDecimals(totalChange),
+        settle: true,
+        bet: true,
       }),
       totalChange !== 0
         ? User.updateOne(
