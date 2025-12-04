@@ -530,6 +530,7 @@ router.post("/api/luxepay/payin", async (req, res) => {
           method: "auto",
           processBy: "admin",
           amount: roundedAmount,
+          bankid: "69247c9f7ef1ac832d86e65f",
           walletamount: user.wallet,
           remark: "-",
           status: "approved",

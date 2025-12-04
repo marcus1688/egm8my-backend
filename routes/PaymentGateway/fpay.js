@@ -560,6 +560,7 @@ async function handleDepositApproval(
         ownername: "Payment Gateway",
         transfernumber: order_id,
         walletType: "Main",
+        bankid: bankIDPG,
         transactionType: "deposit",
         method: "auto",
         processBy: "admin",

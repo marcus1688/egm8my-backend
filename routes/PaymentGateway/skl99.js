@@ -416,6 +416,7 @@ router.post("/api/skldepositprod", async (req, res) => {
           transactionType: "deposit",
           method: "auto",
           processBy: "admin",
+          bankid: "69247c9f7ef1ac832d86e65f",
           amount: roundedAmount,
           walletamount: user.wallet,
           remark: "-",
