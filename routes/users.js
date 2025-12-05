@@ -4225,11 +4225,10 @@ router.get(
         query.$and = [
           ...(query.$and || []),
           {
-            $or: [
-              { lastLogin: { $lt: cutoffDate } },
-              { lastLogin: { $exists: false } },
-              { lastLogin: null },
-            ],
+            lastLogin: {
+              $lt: cutoffDate,
+              $ne: null,
+            },
           },
         ];
       }
