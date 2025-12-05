@@ -73,11 +73,7 @@ function generateOnCasinoSign(params, secret) {
     .map((key) => `${key}=${params[key]}`)
     .join("&");
 
-  // Correct format: paramString + &key= + secret
   const stringToSign = paramString + "&key=" + secret;
-
-  console.log("=== Sign Generation ===");
-  console.log("String to Sign:", stringToSign);
 
   return crypto.createHash("md5").update(stringToSign).digest("hex");
 }
@@ -120,7 +116,7 @@ router.post("/api/oncasino/launchGame", authenticateToken, async (req, res) => {
       });
     }
 
-    if (user.gameLock.sbobet.lock) {
+    if (user.gameLock.oncasino.lock) {
       return res.status(200).json({
         success: false,
         message: {
@@ -149,34 +145,31 @@ router.post("/api/oncasino/launchGame", authenticateToken, async (req, res) => {
       lang = "zh-TW";
     }
 
-    let platform = 1;
+    let platform = 0;
     if (clientPlatform === "web") {
       platform = 0;
     } else if (clientPlatform === "mobile") {
       platform = 1;
     }
 
+    const token = `${user.gameId}:${generateRandomCode()}`;
+
     const nonceStr = generateNonceStr();
-    const timestamp = Date.now();
 
     const requestBody = {
       lang,
       userName: user.gameId,
       loginSrc: platform,
       agent: oncasinoAgent,
-      // nickName: user.username,
-      // backUrl: webURL,
-      // testFlag: 0,
+      nickName: user.username,
+      backUrl: webURL,
+      testFlag: 0,
       nonceStr,
-      // timestamp,
     };
 
     const sign = generateOnCasinoSign(requestBody, oncasinoSecret);
     requestBody.sign = sign;
-    console.log(requestBody);
 
-    console.log("OnCasino request body:", requestBody);
-    console.log(`${oncasinoAPIURL}/api/game-center/login`);
     const response = await axios.post(
       `${oncasinoAPIURL}/api/game-center/login`,
       requestBody,
@@ -184,50 +177,47 @@ router.post("/api/oncasino/launchGame", authenticateToken, async (req, res) => {
         headers: {
           "Content-Type": "application/json;charset=UTF-8",
           "x-session-platform-code": "WE88",
-          "x-lang": lang,
+          "x-plat-token": token,
         },
       }
     );
-    console.log(response.data);
-    if (response.data.error.id !== 0) {
-      console.log("SBOBET error in launching game", response.data);
 
-      if (response.data.ErrorCode === 104) {
-        return res.status(200).json({
-          success: false,
-          message: {
-            en: "Game under maintenance. Please try again later.",
-            zh: "游戏正在维护中，请稍后再试。",
-            ms: "Permainan sedang diselenggara, sila cuba lagi nanti.",
-            zh_hk: "遊戲正在維護中，請稍後再試。",
-            id: "Permainan sedang dalam pemeliharaan. Silakan coba lagi nanti.",
-          },
-        });
-      }
+    if (response.data.code !== 0) {
+      console.log("ON CASINO error in launching game", response.data);
 
       return res.status(200).json({
         success: false,
         message: {
-          en: "SBOBET: Game launch failed. Please try again or customer service for assistance.",
-          zh: "SBOBET: 游戏启动失败，请重试或联系客服以获得帮助。",
-          ms: "SBOBET: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
-          zh_hk: "SBOBET: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
-          id: "SBOBET: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+          en: "ON CASINO: Game launch failed. Please try again or customer service for assistance.",
+          zh: "ON CASINO: 游戏启动失败，请重试或联系客服以获得帮助。",
+          ms: "ON CASINO: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          zh_hk: "ON CASINO: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+          id: "ON CASINO: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
         },
       });
     }
+
+    const updatedUser = await User.findOneAndUpdate(
+      { _id: user._id },
+      {
+        oncasinoGameToken: token,
+      },
+      { new: true }
+    );
 
     await GameWalletLogAttempt(
       user.username,
       "Transfer In",
       "Seamless",
       roundToTwoDecimals(user.wallet),
-      "SBOBET"
+      "ON CASINO"
     );
+
+    const gameUrl = `${response.data.t.domain}${response.data.t.token}`;
 
     return res.status(200).json({
       success: true,
-      gameLobby: response.data.url,
+      gameLobby: gameUrl,
       message: {
         en: "Game launched successfully.",
         zh: "游戏启动成功。",
@@ -237,16 +227,72 @@ router.post("/api/oncasino/launchGame", authenticateToken, async (req, res) => {
       },
     });
   } catch (error) {
-    console.log("SBOBET error in launching game", error);
+    console.log("ON CASINO error in launching game", error);
     return res.status(200).json({
       success: false,
       message: {
-        en: "SBOBET: Game launch failed. Please try again or customer service for assistance.",
-        zh: "SBOBET: 游戏启动失败，请重试或联系客服以获得帮助。",
-        ms: "SBOBET: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
-        zh_hk: "SBOBET: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
-        id: "SBOBET: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+        en: "ON CASINO: Game launch failed. Please try again or customer service for assistance.",
+        zh: "ON CASINO: 游戏启动失败，请重试或联系客服以获得帮助。",
+        ms: "ON CASINO: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+        zh_hk: "ON CASINO: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+        id: "ON CASINO: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
       },
+    });
+  }
+});
+
+router.post("/api/oncasino/getBalance", async (req, res) => {
+  try {
+    console.log("----", req.headers, "----- request header");
+    console.log("----", req.body, "----- request body");
+    return;
+    const validationResult = validateRequest(req);
+    if (validationResult.error) {
+      return res.status(200).json(validationResult.response);
+    }
+
+    const { AgentCode, Params, Sign } = req.body;
+
+    const decryptedParams = aesDecrypt(Params, fachaiSecret);
+    if (!verifySignature(decryptedParams, Sign)) {
+      return res.status(200).json({
+        Result: 604,
+        MainPoints: 0,
+        ErrorText: "Verification failed",
+      });
+    }
+
+    const originalPayload = JSON.parse(decryptedParams);
+
+    const { Ts, MemberAccount, Currency, GameID } = originalPayload;
+
+    const currentUser = await User.findOne(
+      { gameId: MemberAccount },
+      { wallet: 1 }
+    ).lean();
+
+    if (!currentUser) {
+      return res.status(200).json({
+        Result: 500,
+        MainPoints: 0,
+        ErrorText: "Player ID not exist",
+      });
+    }
+
+    return res.status(200).json({
+      Result: 0,
+      MainPoints: roundToTwoDecimals(currentUser.wallet),
+      ErrorText: "Success",
+    });
+  } catch (error) {
+    console.error(
+      "FACHAI: Error in game provider calling ae96 get balance api:",
+      error.message
+    );
+    return res.status(200).json({
+      Result: 999,
+      MainPoints: 0,
+      ErrorText: "Unknown errors",
     });
   }
 });
