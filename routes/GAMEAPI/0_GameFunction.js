@@ -257,6 +257,10 @@ router.post("/admin/api/getAllTurnoverForRebate", async (req, res) => {
         url: `${PUBLIC_APIURL}api/huawei/getturnoverforrebate`,
         name: "GRAND DRAGON",
       },
+      {
+        url: `${PUBLIC_APIURL}api/wmcasino/getturnoverforrebate`,
+        name: "WM CASINO",
+      },
     ];
 
     const routePromises = routes.map((route) =>

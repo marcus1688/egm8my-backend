@@ -1006,7 +1006,6 @@ if (process.env.NODE_ENV !== "development") {
     }
   );
 }
-
 // cron.schedule(
 //   "0 0 * * *", // runs at 00:00 (12 AM) every day
 //   async () => {
