@@ -44,6 +44,7 @@ const modulePermissions = {
       { value: "promocodereport", label: "Promo Code Report" },
       { value: "mission", label: "Mission" },
       { value: "missionreport", label: "Mission Report" },
+      { value: "inactiveuser", label: "Inactive User" },
     ],
   },
   agent: {
