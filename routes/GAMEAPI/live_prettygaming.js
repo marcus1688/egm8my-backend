@@ -13,6 +13,7 @@ const { v4: uuidv4 } = require("uuid");
 const jwt = require("jsonwebtoken");
 const moment = require("moment");
 const GameWalletLog = require("../../models/gamewalletlog.model");
+const LivePrettyGamingModal = require("../../models/live_prettygaming.model");
 const Decimal = require("decimal.js");
 require("dotenv").config();
 
@@ -121,7 +122,6 @@ router.post(
         playerUsername: user.gameId,
         betLimit: [3001],
       };
-
       const response = await axios.post(
         `${prettygamingAPIURL}/member/loginRequest`,
         requestBody,
@@ -190,57 +190,142 @@ router.post(
 
 router.post("/api/prettygaming", async (req, res) => {
   try {
-    console.log(req.body, "hi");
-    return;
-    const validationResult = validateRequest(req);
-    if (validationResult.error) {
-      return res.status(200).json(validationResult.response);
+    const { service, data } = req.body;
+
+    if (!service || !data) {
+      return res.status(200).json({ code: 911009 });
     }
 
-    const { AgentCode, Params, Sign } = req.body;
+    const { playerUsername, ticketId, totalBetAmt, totalPayOutAmt } = data;
+    const gameId = playerUsername?.toUpperCase();
 
-    const decryptedParams = aesDecrypt(Params, fachaiSecret);
-    if (!verifySignature(decryptedParams, Sign)) {
-      return res.status(200).json({
-        Result: 604,
-        MainPoints: 0,
-        ErrorText: "Verification failed",
-      });
+    switch (service) {
+      case "GetUserBalance": {
+        const currentUser = await User.findOne(
+          { gameId },
+          { wallet: 1 }
+        ).lean();
+
+        if (!currentUser) {
+          return res.status(200).json({ code: 911008 });
+        }
+
+        return res.status(200).json({
+          code: 0,
+          balance: roundToTwoDecimals(currentUser.wallet),
+        });
+      }
+
+      case "UserPlaceBet": {
+        const [currentUser, existingBet] = await Promise.all([
+          User.findOne(
+            { gameId },
+            { wallet: 1, "gameLock.prettygaming.lock": 1 }
+          ).lean(),
+          LivePrettyGamingModal.findOne({ betId: ticketId }, { _id: 1 }).lean(),
+        ]);
+
+        if (!currentUser) {
+          return res.status(200).json({ code: 911008 });
+        }
+
+        if (currentUser.gameLock?.prettygaming?.lock) {
+          return res.status(200).json({ code: 911002 });
+        }
+
+        if (existingBet) {
+          return res.status(200).json({ code: 911005 });
+        }
+
+        const betAmount = roundToTwoDecimals(Math.abs(totalBetAmt));
+
+        const updatedUserBalance = await User.findOneAndUpdate(
+          { gameId, wallet: { $gte: betAmount } },
+          { $inc: { wallet: -betAmount } },
+          { new: true, projection: { wallet: 1 } }
+        ).lean();
+
+        if (!updatedUserBalance) {
+          return res.status(200).json({ code: 911001 });
+        }
+
+        await LivePrettyGamingModal.create({
+          username: gameId,
+          betId: ticketId,
+          bet: true,
+          betamount: betAmount,
+        });
+
+        return res.status(200).json({ code: 0 });
+      }
+
+      case "UserPlaceBetCancel": {
+        const existingBet = await LivePrettyGamingModal.findOne(
+          { betId: ticketId },
+          { cancel: 1, settle: 1, betamount: 1 }
+        ).lean();
+
+        if (!existingBet) {
+          return res.status(200).json({ code: 51102 });
+        }
+
+        if (existingBet.cancel || existingBet.settle) {
+          return res.status(200).json({ code: 51101 });
+        }
+
+        const refundAmount = roundToTwoDecimals(Math.abs(totalBetAmt));
+
+        await Promise.all([
+          User.updateOne({ gameId }, { $inc: { wallet: refundAmount } }),
+          LivePrettyGamingModal.updateOne(
+            { betId: ticketId, cancel: { $ne: true }, settle: { $ne: true } },
+            { $set: { cancel: true } }
+          ),
+        ]);
+
+        return res.status(200).json({ code: 0 });
+      }
+
+      case "UserPlacePayout": {
+        const existingBet = await LivePrettyGamingModal.findOne(
+          { betId: ticketId },
+          { cancel: 1, settle: 1 }
+        ).lean();
+
+        if (!existingBet) {
+          return res.status(200).json({ code: 51102 });
+        }
+
+        if (existingBet.cancel || existingBet.settle) {
+          return res.status(200).json({ code: 51101 });
+        }
+
+        await Promise.all([
+          User.updateOne(
+            { gameId },
+            { $inc: { wallet: roundToTwoDecimals(totalPayOutAmt) } }
+          ),
+          LivePrettyGamingModal.updateOne(
+            { betId: ticketId },
+            {
+              $set: {
+                settle: true,
+                settleamount: roundToTwoDecimals(totalPayOutAmt),
+              },
+            }
+          ),
+        ]);
+
+        return res.status(200).json({ code: 0 });
+      }
+
+      default: {
+        return res.status(200).json({ code: 911009 });
+      }
     }
-
-    const originalPayload = JSON.parse(decryptedParams);
-
-    const { Ts, MemberAccount, Currency, GameID } = originalPayload;
-
-    const currentUser = await User.findOne(
-      { gameId: MemberAccount },
-      { wallet: 1 }
-    ).lean();
-
-    if (!currentUser) {
-      return res.status(200).json({
-        Result: 500,
-        MainPoints: 0,
-        ErrorText: "Player ID not exist",
-      });
-    }
-
-    return res.status(200).json({
-      Result: 0,
-      MainPoints: roundToTwoDecimals(currentUser.wallet),
-      ErrorText: "Success",
-    });
   } catch (error) {
-    console.error(
-      "FACHAI: Error in game provider calling ae96 get balance api:",
-      error.message
-    );
-    return res.status(200).json({
-      Result: 999,
-      MainPoints: 0,
-      ErrorText: "Unknown errors",
-    });
+    console.error("Pretty Gaming callback error:", error.message);
+    return res.status(200).json({ code: 911009 });
   }
 });
-
 module.exports = router;
