@@ -183,12 +183,12 @@ router.post("/api/oncasino/launchGame", authenticateToken, async (req, res) => {
       {
         headers: {
           "Content-Type": "application/json;charset=UTF-8",
-          "x-session-platform-code": "IG",
+          "x-session-platform-code": "WE88",
           "x-lang": lang,
         },
       }
     );
-
+    console.log(response.data);
     if (response.data.error.id !== 0) {
       console.log("SBOBET error in launching game", response.data);
 

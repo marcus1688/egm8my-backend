@@ -342,6 +342,7 @@ const userSchema = new mongoose.Schema(
       sabasport: { type: gameLockSchema, default: () => ({}) },
       yggdrasil: { type: gameLockSchema, default: () => ({}) },
       ibex: { type: gameLockSchema, default: () => ({}) },
+      prettygaming: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       mega888: { type: gameStatusSchema, default: () => ({}) },
