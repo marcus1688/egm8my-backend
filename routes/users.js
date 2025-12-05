@@ -4196,6 +4196,192 @@ router.get("/admin/api/allusers", authenticateAdminToken, async (req, res) => {
   }
 });
 
+// Admin Get All Users (For Not Login 7 Days Above)
+router.get(
+  "/admin/api/allusers/checknotlogin",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const search = req.query.search || "";
+      const sortKey = req.query.sortKey || "createdAt";
+      const sortOrder = req.query.sortOrder || "desc";
+      const inactiveDays = parseInt(req.query.inactiveDays) || 7;
+      const skip = (page - 1) * limit;
+
+      let query = {};
+
+      if (search) {
+        query.$or = [
+          { username: new RegExp(search, "i") },
+          { fullname: new RegExp(search, "i") },
+          { phonenumber: new RegExp(search, "i") },
+        ];
+      }
+
+      if (inactiveDays > 0) {
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - inactiveDays);
+        query.$and = [
+          ...(query.$and || []),
+          {
+            lastLogin: {
+              $lt: cutoffDate,
+              $ne: null,
+            },
+          },
+        ];
+      }
+
+      const sortKeyMap = {
+        vipLevel: "viplevel",
+        username: "username",
+        fullname: "fullname",
+        wallet: "walletAmount",
+        verified: "isVerified",
+        creationDate: "createdAt",
+        lastLoginDate: "lastLogin",
+        status: "status",
+        totalDeposit: "totaldeposit",
+        totalWithdraw: "totalwithdraw",
+        winLose: "winlose",
+      };
+
+      // Optimized aggregation pipeline
+      const pipeline = [
+        // Match stage first for better performance
+        { $match: query },
+
+        // Computed fields stage
+        {
+          $addFields: {
+            isVerified: {
+              $or: ["$isPhoneVerified", "$isEmailVerified"],
+            },
+            // 添加：判断是否有登录记录
+            hasLastLogin: {
+              $cond: [{ $ifNull: ["$lastLogin", false] }, 1, 0],
+            },
+          },
+        },
+
+        {
+          $addFields: {
+            winlose: {
+              $subtract: ["$totaldeposit", "$totalwithdraw"],
+            },
+            walletAmount: {
+              $toDouble: "$wallet",
+            },
+          },
+        },
+
+        // Sorting stage
+        {
+          $sort: (() => {
+            if (sortKey === "verified") {
+              return {
+                isVerified: sortOrder === "asc" ? 1 : -1,
+                hasLastLogin: -1,
+                createdAt: -1,
+              };
+            }
+
+            if (sortKey === "wallet") {
+              return {
+                hasLastLogin: -1,
+                walletAmount: sortOrder === "asc" ? 1 : -1,
+                _id: 1,
+              };
+            }
+
+            if (sortKey === "lastLoginDate") {
+              return {
+                hasLastLogin: -1, // 有登录记录的优先
+                lastLogin: sortOrder === "asc" ? 1 : -1,
+                _id: 1,
+              };
+            }
+
+            if (sortKey === "creationDate") {
+              return {
+                hasLastLogin: -1,
+                createdAt: sortOrder === "asc" ? 1 : -1,
+                _id: 1,
+              };
+            }
+
+            return {
+              hasLastLogin: -1,
+              [sortKeyMap[sortKey] || "createdAt"]:
+                sortOrder === "asc" ? 1 : -1,
+              _id: 1,
+            };
+          })(),
+        },
+
+        // Pagination
+        { $skip: skip },
+        { $limit: limit },
+
+        // Project only needed fields
+        {
+          $project: {
+            _id: 1,
+            username: 1,
+            fullname: 1,
+            viplevel: 1,
+            isPhoneVerified: 1,
+            isEmailVerified: 1,
+            phonenumber: 1,
+            createdAt: 1,
+            lastLogin: 1,
+            lastLoginIp: 1,
+            status: 1,
+            duplicateIP: 1,
+            isVerified: 1,
+            totaldeposit: 1,
+            totalwithdraw: 1,
+            winlose: 1,
+            wallet: "$walletAmount",
+            userType: 1,
+          },
+        },
+      ];
+
+      const [users, totalUsers] = await Promise.all([
+        User.aggregate(pipeline).allowDiskUse(true).exec(),
+        User.countDocuments(query).lean(),
+      ]);
+
+      const totalPages = Math.ceil(totalUsers / limit);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          users,
+          pagination: {
+            page,
+            totalPages,
+            totalUsers,
+            limit,
+            hasNextPage: page < totalPages,
+            hasPrevPage: page > 1,
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({
+        success: false,
+        message: "Error fetching all users",
+        error: error.message,
+      });
+    }
+  }
+);
+
 // Admin Register User
 router.post(
   "/admin/api/registeruser",
