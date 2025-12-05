@@ -261,105 +261,77 @@ router.post("/api/ibex/launchGame", authenticateToken, async (req, res) => {
 
 router.post("/api/ibex", async (req, res) => {
   try {
-    console.log(req.body, "req.body");
-    console.log(req.headers, "req headers");
-    return;
-    const { OperatorId, Signature, PlayerId, AuthToken, RequestDateTime } =
-      req.body;
+    const { operator_token, secret_key, operator_player_session } = req.body;
 
-    if (
-      !OperatorId ||
-      !Signature ||
-      !PlayerId ||
-      !AuthToken ||
-      !RequestDateTime
-    ) {
+    if (!operator_token || !secret_key || !operator_player_session) {
       return res.status(200).json({
-        Status: 900406,
-        Description: "Incoming Request Info Incomplete",
-        ResponseDateTime: RequestDateTime,
-        Balance: 0,
+        data: null,
+        error: {
+          code: "1034",
+          message: "Invalid request",
+        },
       });
     }
 
-    if (OperatorId !== epicWinOperatorID) {
+    if (operator_token !== ibexOperatorToken || secret_key !== ibexSecret) {
       return res.status(200).json({
-        Status: 900405,
-        Description: "Operator ID Error",
-        ResponseDateTime: RequestDateTime,
-        Balance: 0,
+        data: null,
+        error: {
+          code: "1034",
+          message: "Invalid request",
+        },
       });
     }
 
-    const functionName = "GetBalance";
-
-    const signature = generateSignature(
-      functionName,
-      RequestDateTime,
-      epicWinOperatorID,
-      epicWinSecret,
-      PlayerId
-    );
-    if (signature !== Signature) {
-      return res.status(200).json({
-        Status: 900407,
-        Description: "Invalid Signature",
-        ResponseDateTime: RequestDateTime,
-        Balance: 0,
-      });
-    }
-
-    const tokenParts = AuthToken.split(":");
+    const tokenParts = operator_player_session.split(":");
 
     const username = tokenParts[0];
 
     const currentUser = await User.findOne(
       { gameId: username },
-      { wallet: 1, epicwinGameToken: 1 }
+      { wallet: 1, ibexGameToken: 1, username: 1 }
     ).lean();
-    if (!currentUser || currentUser.epicwinGameToken !== AuthToken) {
+
+    if (!currentUser) {
       return res.status(200).json({
-        Status: 900500,
-        Description: "Internal Server Error",
-        ResponseDateTime: RequestDateTime,
-        Balance: 0,
+        data: null,
+        error: {
+          code: "1305",
+          message: "Invalid player",
+        },
       });
     }
 
-    const walletValue = Number(currentUser.wallet);
-
-    const finalBalance = new Decimal(walletValue).toDecimalPlaces(4);
+    if (currentUser.ibexGameToken !== operator_player_session) {
+      return res.status(200).json({
+        data: null,
+        error: {
+          code: "1300",
+          message: "Invalid player session",
+        },
+      });
+    }
 
     return res.status(200).json({
-      Status: 200,
-      Description: "OK",
-      ResponseDateTime: RequestDateTime,
-      Balance: finalBalance.toNumber(),
+      data: {
+        player_name: username,
+        nickname: currentUser.username,
+        currency: "MYR",
+      },
+      error: null,
     });
   } catch (error) {
     console.error(
-      "EPICWIN: Error in game provider calling ae96 get balance api:",
+      "IBEX: Error in game provider calling ae96 get balance api:",
       error.message
     );
-    if (
-      error.message === "jwt expired" ||
-      error.message === "invalid token" ||
-      error.message === "jwt malformed"
-    ) {
-      return res.status(200).json({
-        Status: 900500,
-        Description: "Internal Server Error",
-        ResponseDateTime: getCurrentFormattedDate(),
-        Balance: 0,
-      });
-    } else {
-      return res.status(200).json({
-        Status: 900500,
-        Description: "Internal Server Error",
-        ResponseDateTime: getCurrentFormattedDate(),
-        Balance: 0,
-      });
-    }
+    return res.status(200).json({
+      data: null,
+      error: {
+        code: "1303",
+        message: "Server error occurs",
+      },
+    });
   }
 });
 
