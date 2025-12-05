@@ -37,7 +37,7 @@ const sportM9BETschema = new mongoose.Schema(
   }
 );
 
-sportM9BETschema.index({ createdAt: -1 }, { expireAfterSeconds: 172800 });
+sportM9BETschema.index({ createdAt: -1 }, { expireAfterSeconds: 604800 });
 
 const SportM9BetModal = mongoose.model("SportM9BetModal", sportM9BETschema);
 

@@ -70,7 +70,7 @@ const sportSabaSportschema = new mongoose.Schema(
   }
 );
 
-sportSabaSportschema.index({ createdAt: -1 }, { expireAfterSeconds: 172800 });
+sportSabaSportschema.index({ createdAt: -1 }, { expireAfterSeconds: 604800 });
 
 const SportSabaSportModal = mongoose.model(
   "SportSabaSportModal",

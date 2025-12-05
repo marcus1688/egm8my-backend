@@ -39,7 +39,7 @@ const esportTfGamingschema = new mongoose.Schema(
   }
 );
 
-esportTfGamingschema.index({ createdAt: -1 }, { expireAfterSeconds: 172800 });
+esportTfGamingschema.index({ createdAt: -1 }, { expireAfterSeconds: 604800 });
 
 const EsportTfGamingModal = mongoose.model(
   "EsportTfGamingModal",

@@ -43,7 +43,7 @@ const sportSBOBETschema = new mongoose.Schema(
   }
 );
 
-sportSBOBETschema.index({ createdAt: -1 }, { expireAfterSeconds: 172800 });
+sportSBOBETschema.index({ createdAt: -1 }, { expireAfterSeconds: 604800 });
 
 const SportSBOBETModal = mongoose.model("SportSBOBETModal", sportSBOBETschema);
 
