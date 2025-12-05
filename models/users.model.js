@@ -344,7 +344,9 @@ const userSchema = new mongoose.Schema(
       ibex: { type: gameLockSchema, default: () => ({}) },
       prettygaming: { type: gameLockSchema, default: () => ({}) },
       oncasino: { type: gameLockSchema, default: () => ({}) },
+      wmcasino: { type: gameLockSchema, default: () => ({}) },
     },
+
     gameStatus: {
       mega888: { type: gameStatusSchema, default: () => ({}) },
       kiss918: { type: gameStatusSchema, default: () => ({}) },
@@ -527,6 +529,9 @@ const userSchema = new mongoose.Schema(
       type: String,
     },
     oncasinoGameToken: {
+      type: String,
+    },
+    wmCasinoGamePW: {
       type: String,
     },
   },

@@ -19,9 +19,8 @@ require("dotenv").config();
 
 const sbobetSecret = process.env.SBOBET_SECRET;
 const webURL = "https://www.bm8my.vip/";
-const sbobetAPIURL = "https://ex-api-demo-yy.568win.com";
-const sbobetAgent = "EGM8MYR";
-const sbobetCreatedAgent = "BM8MYR";
+const sbobetAPIURL = "https://ex-api-yy2.ttbbyyllyy.com";
+const sbobetCreatedAgent = "BM8MYRPROD";
 
 function roundToTwoDecimals(num) {
   return Math.round(num * 100) / 100;
@@ -76,7 +75,7 @@ async function registerSBOBETAgent() {
     const requestData = {
       CompanyKey: sbobetSecret,
       ServerID: generateTraceCode(),
-      Username: "BM8MYR",
+      Username: "BM8MYRPROD",
       Password: "Qwer1234",
       Currency: "MYR",
       Min: 10,
@@ -121,7 +120,6 @@ async function registerSBOBETAgent() {
   }
 }
 
-// registerSBOBETAgent();
 async function registerSBOBETUser(user) {
   try {
     const requestData = {
