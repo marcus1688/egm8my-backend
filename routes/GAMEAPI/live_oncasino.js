@@ -78,6 +78,24 @@ function generateOnCasinoSign(params, secret) {
   return crypto.createHash("md5").update(stringToSign).digest("hex");
 }
 
+function verifyOnCasinoSign(params, secret) {
+  const { agent, userName, taskNo, nonceStr } = params;
+
+  const signParams = { agent, userName, taskNo, nonceStr };
+
+  const sortedKeys = Object.keys(signParams)
+    .filter((key) => signParams[key] !== null && signParams[key] !== undefined)
+    .sort();
+
+  const paramString = sortedKeys
+    .map((key) => `${key}=${signParams[key]}`)
+    .join("&");
+
+  const stringToSign = paramString + "&key=" + secret;
+
+  return crypto.createHash("md5").update(stringToSign).digest("hex");
+}
+
 async function GameWalletLogAttempt(
   username,
   transactiontype,
@@ -243,56 +261,53 @@ router.post("/api/oncasino/launchGame", authenticateToken, async (req, res) => {
 
 router.post("/api/oncasino/getBalance", async (req, res) => {
   try {
-    console.log("----", req.headers, "----- request header");
-    console.log("----", req.body, "----- request body");
-    return;
-    const validationResult = validateRequest(req);
-    if (validationResult.error) {
-      return res.status(200).json(validationResult.response);
-    }
+    const sessiontoken = req.headers["x-plat-token"];
 
-    const { AgentCode, Params, Sign } = req.body;
+    const { agent, userName, taskNo, sign, nonceStr } = req.body;
 
-    const decryptedParams = aesDecrypt(Params, fachaiSecret);
-    if (!verifySignature(decryptedParams, Sign)) {
+    const expectedSign = verifyOnCasinoSign(
+      { agent, userName, taskNo, nonceStr },
+      oncasinoSecret
+    );
+    if (sign !== expectedSign) {
       return res.status(200).json({
-        Result: 604,
-        MainPoints: 0,
-        ErrorText: "Verification failed",
+        success: false,
+        msg: "Invalid Sign",
+        code: 500,
       });
     }
 
-    const originalPayload = JSON.parse(decryptedParams);
-
-    const { Ts, MemberAccount, Currency, GameID } = originalPayload;
-
     const currentUser = await User.findOne(
-      { gameId: MemberAccount },
-      { wallet: 1 }
+      { gameId: userName },
+      { wallet: 1, oncasinoGameToken: 1 }
     ).lean();
 
-    if (!currentUser) {
+    if (!currentUser || currentUser.oncasinoGameToken !== sessiontoken) {
       return res.status(200).json({
-        Result: 500,
-        MainPoints: 0,
-        ErrorText: "Player ID not exist",
+        success: false,
+        msg: "Invalid User",
+        code: 8050,
       });
     }
 
     return res.status(200).json({
-      Result: 0,
-      MainPoints: roundToTwoDecimals(currentUser.wallet),
-      ErrorText: "Success",
+      success: true,
+      msg: "Success",
+      code: 0,
+      t: {
+        balance: roundToTwoDecimals(currentUser.wallet),
+        currency: "MYR",
+      },
     });
   } catch (error) {
     console.error(
-      "FACHAI: Error in game provider calling ae96 get balance api:",
+      "ONCASINO: Error in game provider calling ae96 get balance api:",
       error.message
     );
     return res.status(200).json({
-      Result: 999,
-      MainPoints: 0,
-      ErrorText: "Unknown errors",
+      success: false,
+      msg: "Internal Server Error",
+      code: 500,
     });
   }
 });
