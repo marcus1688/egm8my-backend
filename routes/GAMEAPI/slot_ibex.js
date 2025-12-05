@@ -311,7 +311,7 @@ router.post("/api/ibex", async (req, res) => {
         },
       });
     }
-
+    console.log("opasss");
     return res.status(200).json({
       data: {
         player_name: username,
