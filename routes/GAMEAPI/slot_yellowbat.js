@@ -93,7 +93,7 @@ router.post("/api/yellowbat/getprovidergamelist", async (req, res) => {
     console.log("hi");
     const { gameLang } = req.body;
 
-    let lang;
+    let lang = "en";
 
     if (gameLang === "en") {
       lang = "en";
@@ -107,7 +107,7 @@ router.post("/api/yellowbat/getprovidergamelist", async (req, res) => {
       parent: yellowbatParent,
       lang: lang,
     };
-
+    console.log(data);
     const encryptedPayload = AESEncrypt(
       JSON.stringify(data),
       yellowbatKEY,
@@ -119,14 +119,14 @@ router.post("/api/yellowbat/getprovidergamelist", async (req, res) => {
         "Content-Type": "application/x-www-form-urlencoded",
       },
     });
-
+    console.log(`${yellowbatAPIURL}/apiRequest.do`);
     const response = await axiosInstance.post(
       `${yellowbatAPIURL}/apiRequest.do`,
       qs.stringify({ dc: yellowbatDC, x: encryptedPayload })
     );
 
     const responseData = response.data;
-
+    console.log(responseData);
     if (responseData.status !== "0000") {
       console.log("YWLLOABAT error fetching game list:", responseData);
       return res.status(200).json({

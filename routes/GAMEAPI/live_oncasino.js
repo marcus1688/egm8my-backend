@@ -49,20 +49,6 @@ const generatePassword = () => {
   return result;
 };
 
-function generateOnCasinoSign(params, secret) {
-  const sortedKeys = Object.keys(params)
-    .filter((key) => key !== "sign")
-    .sort();
-
-  const paramString = sortedKeys
-    .map((key) => `${key}=${params[key]}`)
-    .join("&");
-
-  const stringToSign = paramString + secret;
-
-  return crypto.createHash("md5").update(stringToSign).digest("hex");
-}
-
 function generateNonceStr() {
   const characters =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -72,6 +58,28 @@ function generateNonceStr() {
     result += characters[randomIndex];
   }
   return result;
+}
+
+function generateOnCasinoSign(params, secret) {
+  const sortedKeys = Object.keys(params)
+    .filter((key) => {
+      if (key === "sign") return false;
+      const value = params[key];
+      return value !== null && value !== undefined && value !== "";
+    })
+    .sort();
+
+  const paramString = sortedKeys
+    .map((key) => `${key}=${params[key]}`)
+    .join("&");
+
+  // Correct format: paramString + &key= + secret
+  const stringToSign = paramString + "&key=" + secret;
+
+  console.log("=== Sign Generation ===");
+  console.log("String to Sign:", stringToSign);
+
+  return crypto.createHash("md5").update(stringToSign).digest("hex");
 }
 
 async function GameWalletLogAttempt(
@@ -156,18 +164,19 @@ router.post("/api/oncasino/launchGame", authenticateToken, async (req, res) => {
       userName: user.gameId,
       loginSrc: platform,
       agent: oncasinoAgent,
-      nickName: user.username,
-      backUrl: webURL,
-      testFlag: 0,
+      // nickName: user.username,
+      // backUrl: webURL,
+      // testFlag: 0,
       nonceStr,
-      timestamp,
+      // timestamp,
     };
 
     const sign = generateOnCasinoSign(requestBody, oncasinoSecret);
     requestBody.sign = sign;
+    console.log(requestBody);
 
     console.log("OnCasino request body:", requestBody);
-
+    console.log(`${oncasinoAPIURL}/api/game-center/login`);
     const response = await axios.post(
       `${oncasinoAPIURL}/api/game-center/login`,
       requestBody,

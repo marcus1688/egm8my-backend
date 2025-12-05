@@ -15,6 +15,7 @@ const { v4: uuidv4 } = require("uuid");
 const GameWalletLog = require("../../models/gamewalletlog.model");
 const GameYGGDrasilGameModal = require("../../models/slot_dctyggdrasilDatabase.model");
 const SlotDCTGameYggDrasilModal = require("../../models/slot_dctyggdrasil.model");
+const qs = require("querystring");
 
 require("dotenv").config();
 
@@ -23,7 +24,7 @@ const dctyggdrasilTopORG = "GamingsoftGroup";
 const dctyggdrasilORG = "EGM8VIPMYR";
 const dctyggdrasilGameKey = process.env.DCTGAME_YGGDRASIL_SECRET;
 const webURL = "https://www.bm8my.vip/";
-const dctyggdrasilGameAPIURL = "https://atp.dcgames.asia";
+const dctyggdrasilGameAPIURL = "https://atpt.dcgames.asia";
 
 const generateRandomCode = () => {
   const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -41,23 +42,15 @@ function roundToTwoDecimals(num) {
   return Math.round(num * 100) / 100;
 }
 
-function generateSignature(options) {
-  const { params = [], brandId, apiKey } = options;
-
-  // Start with brandId if it exists
-  let message = brandId || "";
-
-  // Add all parameters in order
-  if (params && params.length > 0) {
-    message += params.join("");
-  }
-
-  // Add API key at the end
-  message += apiKey;
-  // Generate MD5 hash and return in uppercase
-  return crypto.createHash("md5").update(message).digest("hex").toUpperCase();
-}
-
+const generateSignature = ({ topOrg, org, key }) => {
+  const signString = topOrg + org + key;
+  console.log("Sign String:", signString);
+  return crypto
+    .createHash("md5")
+    .update(signString)
+    .digest("hex")
+    .toUpperCase();
+};
 async function GameWalletLogAttempt(
   username,
   transactiontype,
@@ -349,24 +342,37 @@ router.post("/api/yggdrasil/comparegamenames", async (req, res) => {
       sign,
       type: "yg",
     };
-    console.log(payload);
-    console.log(`${dctyggdrasilGameAPIURL}/ata/getGameList`);
+
+    console.log("Payload:", payload);
+    console.log("URL:", `${dctyggdrasilGameAPIURL}/ata/getGameList`);
+
+    // Convert payload to URL-encoded string
     const response = await axios.post(
       `${dctyggdrasilGameAPIURL}/ata/getGameList`,
-      payload,
+      qs.stringify(payload), // Encode as form data
       {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
         },
       }
     );
-    console.log(response.data, "hiohi");
+
+    console.log("Response:", response.data);
+
+    if (response.data.code !== 0) {
+      return res.status(200).json({
+        success: false,
+        message: response.data.msg || "Failed to get game list",
+        code: response.data.code,
+      });
+    }
+
     // Get all games from database
     const dbGames = await GameYGGDrasilGameModal.find({}).lean();
 
     // Extract game names from API response
     const apiGameNames = new Set(
-      response.data.data.map((game) => game.game_name)
+      response.data.data.map((game) => game.GameName)
     );
 
     // Extract game names from database
@@ -374,22 +380,23 @@ router.post("/api/yggdrasil/comparegamenames", async (req, res) => {
 
     // Find missing games (in API but not in DB)
     const missingGames = response.data.data.filter(
-      (game) => !dbGameNames.has(game.game_name)
+      (game) => !dbGameNames.has(game.GameName)
     );
 
-    // Find extra games (in DB but not in API) - just for info
+    // Find extra games (in DB but not in API)
     const extraGames = dbGames.filter(
       (game) => !apiGameNames.has(game.gameNameEN)
     );
 
     // Format missing games for response
     const missingGamesFormatted = missingGames.map((game) => ({
-      game_id: game.game_id,
-      game_name: game.game_name,
-      provider: game.provider,
-      game_name_cn: game.game_name_cn,
-      game_icon: game.game_icon,
-      rtp: game.rtp,
+      game_id: game.GameID,
+      game_name: game.GameName,
+      game_name_cn: game.GameNameCN,
+      provider: game.CP,
+      game_icon: game.GameIcon,
+      rtp: game.RTP,
+      game_type: game.GameType,
     }));
 
     // Format extra games for response

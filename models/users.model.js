@@ -341,6 +341,7 @@ const userSchema = new mongoose.Schema(
       pplive: { type: gameLockSchema, default: () => ({}) },
       sabasport: { type: gameLockSchema, default: () => ({}) },
       yggdrasil: { type: gameLockSchema, default: () => ({}) },
+      ibex: { type: gameLockSchema, default: () => ({}) },
     },
     gameStatus: {
       mega888: { type: gameStatusSchema, default: () => ({}) },
@@ -518,6 +519,9 @@ const userSchema = new mongoose.Schema(
       type: String,
     },
     sabasportGameID: {
+      type: String,
+    },
+    ibexGameToken: {
       type: String,
     },
   },
