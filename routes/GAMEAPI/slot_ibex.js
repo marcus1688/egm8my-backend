@@ -262,7 +262,7 @@ router.post("/api/ibex/launchGame", authenticateToken, async (req, res) => {
 router.post("/api/ibex", async (req, res) => {
   try {
     const { operator_token, secret_key, operator_player_session } = req.body;
-
+    console.log(req.body, "hihiih");
     if (!operator_token || !secret_key || !operator_player_session) {
       return res.status(200).json({
         data: null,
