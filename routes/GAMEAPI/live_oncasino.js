@@ -471,12 +471,21 @@ router.post("/api/oncasino/cancelBet", async (req, res) => {
       });
     }
 
-    const hasProcessed = existingBets.some((bet) => bet.settle || bet.cancel);
-    if (hasProcessed) {
+    const allCancelled = existingBets.every((bet) => bet.cancel);
+    if (allCancelled) {
       return res.status(200).json({
         success: true,
         msg: "ok",
         code: 0,
+      });
+    }
+
+    const hasSettled = existingBets.some((bet) => bet.settle);
+    if (hasSettled) {
+      return res.status(200).json({
+        success: false,
+        msg: "Bet already settled",
+        code: 8053,
       });
     }
 
