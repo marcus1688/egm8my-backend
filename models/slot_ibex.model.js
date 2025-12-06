@@ -1,17 +1,20 @@
 const mongoose = require("mongoose");
 const moment = require("moment");
 
-const liveoncasinoschema = new mongoose.Schema(
+const slotibexschema = new mongoose.Schema(
   {
-    username: {
-      type: String,
-    },
     betId: {
       type: String,
     },
-    tranId: {
+    betTranId: {
       type: String,
-      default: null,
+    },
+    settleTranId: {
+      type: String,
+    },
+
+    cancelBetId: {
+      type: String,
     },
     betamount: {
       type: Number,
@@ -19,8 +22,16 @@ const liveoncasinoschema = new mongoose.Schema(
     settleamount: {
       type: Number,
     },
-    tipamount: {
+
+    balanceattime: {
       type: Number,
+    },
+    endroundbalanceattime: {
+      type: Number,
+    },
+
+    username: {
+      type: String,
     },
     bet: {
       type: Boolean,
@@ -28,9 +39,16 @@ const liveoncasinoschema = new mongoose.Schema(
     cancel: {
       type: Boolean,
     },
+
+    amend: {
+      type: Boolean,
+    },
     settle: {
       type: Boolean,
       default: false,
+    },
+    cancelRefund: {
+      type: Boolean,
     },
   },
   {
@@ -40,11 +58,8 @@ const liveoncasinoschema = new mongoose.Schema(
   }
 );
 
-liveoncasinoschema.index({ createdAt: -1 }, { expireAfterSeconds: 172800 });
+slotibexschema.index({ createdAt: -1 }, { expireAfterSeconds: 172800 });
 
-const LiveOnCasinoModal = mongoose.model(
-  "LiveOnCasinoModal",
-  liveoncasinoschema
-);
+const SlotIBEXModal = mongoose.model("SlotIBEXModal", slotibexschema);
 
-module.exports = LiveOnCasinoModal;
+module.exports = SlotIBEXModal;

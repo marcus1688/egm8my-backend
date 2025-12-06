@@ -162,6 +162,7 @@ const kiss918CheckBalance = async (user) => {
         maxRedirects: 0,
       }
     );
+
     return {
       success: response.data.error === 0,
       balance: response.data.playerBalance || 0,
@@ -490,6 +491,8 @@ router.post(
       const balanceResponse = await kiss918CheckBalance(user);
 
       if (!balanceResponse.success) {
+        console.log("918kiss faileed to fget balance");
+        console.log(balanceResponse);
         return res.status(200).json({
           success: false,
           message: {
