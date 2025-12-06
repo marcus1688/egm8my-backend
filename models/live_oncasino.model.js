@@ -19,7 +19,9 @@ const liveoncasinoschema = new mongoose.Schema(
     settleamount: {
       type: Number,
     },
-
+    tipamount: {
+      type: Number,
+    },
     bet: {
       type: Boolean,
     },

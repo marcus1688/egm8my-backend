@@ -370,7 +370,7 @@ router.post("/api/oncasino/placeBet", async (req, res) => {
       });
     }
 
-    if (existingTransaction) {
+    if (existingTransaction.length > 0) {
       return res.status(200).json({
         success: false,
         msg: "Duplicate Bet",
@@ -410,7 +410,7 @@ router.post("/api/oncasino/placeBet", async (req, res) => {
       msg: "Success",
       code: 0,
       t: {
-        balance: roundToTwoDecimals(currentUser.wallet),
+        balance: roundToTwoDecimals(updatedUserBalance.wallet),
         currency: "MYR",
       },
     });
@@ -822,6 +822,180 @@ router.post("/api/oncasino/reSettle", async (req, res) => {
         { new: true, projection: { wallet: 1 } }
       ).lean(),
       LiveOnCasinoModal.bulkWrite(bulkOps),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      msg: "ok",
+      code: 0,
+    });
+  } catch (error) {
+    console.error(
+      "Oncasino: Error in game provider calling  settle bet api:",
+      error.message
+    );
+    return res.status(200).json({
+      success: false,
+      msg: "Internal Server Error",
+      code: 500,
+    });
+  }
+});
+
+router.post("/api/oncasino/dealerReward", async (req, res) => {
+  try {
+    const { agent, userName, taskNo, sign, nonceStr, rewardRecord } = req.body;
+
+    const expectedSign = verifyOnCasinoSign(
+      { agent, userName, taskNo, nonceStr },
+      oncasinoSecret
+    );
+    if (sign !== expectedSign) {
+      return res.status(200).json({
+        success: false,
+        msg: "Invalid Sign",
+        code: 500,
+      });
+    }
+
+    const { orderNo, changeMoney } = rewardRecord;
+
+    const [currentUser, existingBet] = await Promise.all([
+      User.findOne({ gameId: userName }, { wallet: 1, _id: 1 }).lean(),
+      LiveOnCasinoModal.findOne({ betId: orderNo }, { _id: 1 }).lean(),
+    ]);
+
+    if (!currentUser) {
+      return res.status(200).json({
+        success: false,
+        msg: "Invalid User",
+        code: 8050,
+      });
+    }
+
+    if (existingBets) {
+      return res.status(200).json({
+        success: false,
+        msg: "Duplicate Bet",
+        code: 8053,
+      });
+    }
+
+    const updatedUserBalance = await User.findOneAndUpdate(
+      {
+        gameId: userName,
+        wallet: { $gte: roundToTwoDecimals(Math.abs(changeMoney)) },
+      },
+      { $inc: { wallet: roundToTwoDecimals(changeMoney) } },
+      { new: true, projection: { wallet: 1 } }
+    ).lean();
+
+    if (!updatedUserBalance) {
+      return res.status(200).json({
+        success: false,
+        msg: "Insufficient Balance",
+        code: 8052,
+      });
+    }
+
+    await LiveOnCasinoModal.create({
+      betId: orderNo,
+      tranId: taskNo,
+      username: userName,
+      betamount: 0,
+      bet: true,
+      settle: true,
+      settleamount: 0,
+      tipamount: roundToTwoDecimals(Math.abs(changeMoney)),
+    });
+
+    return res.status(200).json({
+      success: true,
+      msg: "ok",
+      code: 0,
+      t: {
+        balance: roundToTwoDecimals(updatedUserBalance.wallet),
+        currency: "MYR",
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Oncasino: Error in game provider calling  settle bet api:",
+      error.message
+    );
+    return res.status(200).json({
+      success: false,
+      msg: "Internal Server Error",
+      code: 500,
+    });
+  }
+});
+
+router.post("/api/oncasino/cancelReward", async (req, res) => {
+  try {
+    const {
+      agent,
+      userName,
+      taskNo,
+      sign,
+      nonceStr,
+      totalChangeMoney,
+      orderNoList,
+    } = req.body;
+
+    const expectedSign = verifyOnCasinoSign(
+      { agent, userName, taskNo, nonceStr },
+      oncasinoSecret
+    );
+    if (sign !== expectedSign) {
+      return res.status(200).json({
+        success: false,
+        msg: "Invalid Sign",
+        code: 500,
+      });
+    }
+
+    const [currentUser, existingBets] = await Promise.all([
+      User.findOne({ gameId: userName }, { wallet: 1, _id: 1 }).lean(),
+      LiveOnCasinoModal.find(
+        { betId: { $in: orderNoList } },
+        { betId: 1, cancel: 1, settle: 1 }
+      ).lean(),
+    ]);
+
+    if (!currentUser) {
+      return res.status(200).json({
+        success: false,
+        msg: "Invalid User",
+        code: 8050,
+      });
+    }
+
+    const existingBetIds = new Set(existingBets.map((bet) => bet.betId));
+    const allExist = orderNoList.every((orderNo) =>
+      existingBetIds.has(orderNo)
+    );
+
+    if (!allExist) {
+      return res.status(200).json({
+        success: false,
+        msg: "Order not found",
+        code: 8054,
+      });
+    }
+
+    const [updatedUserBalance] = await Promise.all([
+      User.findOneAndUpdate(
+        { gameId: userName },
+        { $inc: { wallet: roundToTwoDecimals(totalChangeMoney) } },
+        { new: true, projection: { wallet: 1 } }
+      ).lean(),
+      LiveOnCasinoModal.updateMany(
+        {
+          betId: { $in: orderNoList },
+        },
+        { $set: { cancel: true } }
+      ),
     ]);
 
     return res.status(200).json({
