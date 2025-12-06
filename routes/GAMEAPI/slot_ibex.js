@@ -10,14 +10,13 @@ const {
   adminUserWalletLog,
   GameDataLog,
 } = require("../../models/users.model");
-const SlotRich88Modal = require("../../models/slot_rich88.model");
 const { v4: uuidv4 } = require("uuid");
 const jwt = require("jsonwebtoken");
 const moment = require("moment");
 const qs = require("querystring");
 const GameWalletLog = require("../../models/gamewalletlog.model");
-const GameRich88GameModal = require("../../models/slot_rich88Database.model");
-const GameRich88GeneralGameModal = require("../../models/slot_rich88General.model");
+const GameIBexGameModal = require("../../models/slot_ibexDatabase.model");
+const SlotIBEXModal = require("../../models/slot_ibex.model");
 const Decimal = require("decimal.js");
 require("dotenv").config();
 
@@ -30,6 +29,10 @@ const ibexGameURL = "https://pgf-thek60.com/gameredirect";
 
 function roundToTwoDecimals(num) {
   return Math.round(num * 100) / 100;
+}
+
+function generateUpdatedTimeUTC() {
+  return moment.utc().add(10, "hours").valueOf();
 }
 
 const generateRandomCode = () => {
@@ -84,6 +87,298 @@ function generateIBEXAuthHeaders(bodyString) {
     Authorization: authorization,
   };
 }
+
+// async function updateIBEXManualOrderTimestamps() {
+//   try {
+//     // List of game names in order (first = latest, last = oldest)
+//     const gameNames = [
+//       "MAHJONG WIN 2",
+//       "MAHJONG WIN",
+//       "AZTEC EMPIRE",
+//       "LUCKY MEOW",
+//       "WILD HUNT SHOWDOWN",
+//       "HIGHWAY HERO",
+//       "LEGENDS OF THE QILIN",
+//       "Moto GG",
+//       "BANDITO FIESTA",
+//       "FORTUNE TIGGER",
+//     ];
+
+//     /**
+//      * Normalize string for comparison
+//      * - Convert to lowercase
+//      * - Remove all spaces
+//      */
+//     const normalizeString = (str) => {
+//       if (!str) return "";
+//       return str.toLowerCase().replace(/\s+/g, "");
+//     };
+
+//     // Get all games from database
+//     const allGames = await GameIBexGameModal.find(
+//       {},
+//       { gameID: 1, gameNameEN: 1, _id: 1 }
+//     ).lean();
+
+//     // Create lookup map: normalizedName -> game document
+//     const dbGameMap = new Map();
+//     allGames.forEach((game) => {
+//       const normalizedName = normalizeString(game.gameNameEN);
+//       dbGameMap.set(normalizedName, game);
+//     });
+
+//     console.log(`\n=== IBEX Manual Order Timestamp Update ===`);
+//     console.log(`Database has ${allGames.length} games`);
+//     console.log(`Processing ${gameNames.length} game names\n`);
+
+//     // Start from current time + 1 month for the latest game
+//     const currentTime = new Date();
+//     const startTime = new Date(
+//       currentTime.getTime() + 30 * 24 * 60 * 60 * 1000
+//     ); // Add 30 days
+
+//     let updatedCount = 0;
+//     let notFoundCount = 0;
+
+//     // Process each game name with 30-minute intervals
+//     for (let i = 0; i < gameNames.length; i++) {
+//       const gameName = gameNames[i];
+//       const normalizedName = normalizeString(gameName);
+
+//       // Calculate timestamp: latest game gets start time, each subsequent is 30 minutes older
+//       const timestamp = new Date(startTime.getTime() - i * 30 * 60 * 1000);
+
+//       // Find matching game in database
+//       const matchedGame = dbGameMap.get(normalizedName);
+
+//       if (matchedGame) {
+//         // Update directly in collection to bypass schema timestamps
+//         const result = await GameIBexGameModal.collection.updateOne(
+//           { _id: matchedGame._id },
+//           {
+//             $set: {
+//               createdAt: timestamp,
+//               updatedAt: timestamp,
+//             },
+//           }
+//         );
+
+//         if (result.matchedCount > 0) {
+//           console.log(
+//             `✅ Updated "${gameName}" (gameID: ${
+//               matchedGame.gameID
+//             }) -> ${timestamp.toISOString()}`
+//           );
+//           updatedCount++;
+//         }
+//       } else {
+//         console.log(
+//           `❌ Not found: "${gameName}" (normalized: "${normalizedName}")`
+//         );
+//         notFoundCount++;
+//       }
+//     }
+
+//     console.log(`\n=== Summary ===`);
+//     console.log(`Start time: ${startTime.toISOString()} (current + 1 month)`);
+//     console.log(`Updated: ${updatedCount}/${gameNames.length}`);
+//     console.log(`Not found: ${notFoundCount}`);
+
+//     // Verify the updates
+//     const normalizedNames = gameNames.map((name) => normalizeString(name));
+//     const matchedGameIds = allGames
+//       .filter((game) =>
+//         normalizedNames.includes(normalizeString(game.gameNameEN))
+//       )
+//       .map((game) => game.gameID);
+
+//     const updatedGames = await GameIBexGameModal.find(
+//       { gameID: { $in: matchedGameIds } },
+//       { gameID: 1, gameNameEN: 1, createdAt: 1, hot: 1 }
+//     ).sort({ createdAt: -1 });
+
+//     console.log(
+//       `\n=== Verification - Games ordered by createdAt (newest first) ===`
+//     );
+//     updatedGames.forEach((game, index) => {
+//       console.log(
+//         `${index + 1}. gameID: ${game.gameID}, name: "${
+//           game.gameNameEN
+//         }", createdAt: ${game.createdAt.toISOString()}, hot: ${game.hot}`
+//       );
+//     });
+
+//     return {
+//       success: true,
+//       updated: updatedCount,
+//       notFound: notFoundCount,
+//       total: gameNames.length,
+//     };
+//   } catch (error) {
+//     console.error("Error updating IBEX manual order timestamps:", error);
+//     return {
+//       success: false,
+//       error: error.message,
+//     };
+//   }
+// }
+
+// // Call the function
+// updateIBEXManualOrderTimestamps();
+
+router.post("/api/ibex/syncGameStatus", async (req, res) => {
+  try {
+    const { currency = "MYR", status = 1 } = req.body;
+
+    const traceId = uuidv4();
+
+    const bodyParams = {
+      operator_token: ibexOperatorToken,
+      secret_key: ibexSecret,
+      currency,
+      language: "en-us",
+      status,
+    };
+
+    const bodyString = qs.stringify(bodyParams);
+    const headers = generateIBEXAuthHeaders(bodyString);
+
+    const response = await axios.post(
+      `${ibexAPIURL}/Game/v2/Get?trace_id=${traceId}`,
+      bodyString,
+      { headers }
+    );
+
+    if (response.data.error) {
+      console.log("IBEX error:", response.data.error);
+      return res.status(200).json({
+        success: false,
+        message: "Failed to fetch game list from IBEX",
+      });
+    }
+
+    // Extract gameIds from API response
+    const apiGameList = response.data.data || [];
+    const apiGameIds = new Set(apiGameList.map((game) => String(game.gameId)));
+
+    console.log(`\n=== IBEX Game Sync ===`);
+    console.log(`API returned ${apiGameIds.size} games`);
+
+    // Get all games from database
+    const dbGames = await GameIBexGameModal.find(
+      {},
+      { gameID: 1, gameNameEN: 1, maintenance: 1, _id: 1 }
+    ).lean();
+
+    const dbGameIds = new Set(dbGames.map((game) => String(game.gameID)));
+
+    console.log(`Database has ${dbGameIds.size} games`);
+
+    // Find missing games (in API but not in DB)
+    const missingInDB = [];
+    for (const game of apiGameList) {
+      const gameId = String(game.gameId);
+      if (!dbGameIds.has(gameId)) {
+        missingInDB.push({
+          gameId: game.gameId,
+          gameName: game.gameName,
+          gameCode: game.gameCode,
+        });
+      }
+    }
+
+    if (missingInDB.length > 0) {
+      console.log(`\n❌ Missing in Database (${missingInDB.length} games):`);
+      missingInDB.forEach((game) => {
+        console.log(
+          `  - gameId: ${game.gameId}, name: ${game.gameName}, code: ${game.gameCode}`
+        );
+      });
+    } else {
+      console.log(`\n✅ No missing games in database`);
+    }
+
+    // Find extra games (in DB but not in API) -> set maintenance: true
+    // Find matching games (in both) -> set maintenance: false
+    const bulkOps = [];
+    const extraInDB = [];
+    const matchingGames = [];
+
+    for (const dbGame of dbGames) {
+      const gameId = String(dbGame.gameID);
+
+      if (!apiGameIds.has(gameId)) {
+        // Extra in DB -> set maintenance: true
+        extraInDB.push({
+          gameID: dbGame.gameID,
+          gameNameEN: dbGame.gameNameEN,
+        });
+
+        if (!dbGame.maintenance) {
+          bulkOps.push({
+            updateOne: {
+              filter: { _id: dbGame._id },
+              update: { $set: { maintenance: true } },
+            },
+          });
+        }
+      } else {
+        // Matching -> set maintenance: false
+        matchingGames.push(dbGame.gameID);
+
+        if (dbGame.maintenance) {
+          bulkOps.push({
+            updateOne: {
+              filter: { _id: dbGame._id },
+              update: { $set: { maintenance: false } },
+            },
+          });
+        }
+      }
+    }
+
+    if (extraInDB.length > 0) {
+      console.log(
+        `\n⚠️ Extra in Database - Setting maintenance: true (${extraInDB.length} games):`
+      );
+      extraInDB.forEach((game) => {
+        console.log(`  - gameID: ${game.gameID}, name: ${game.gameNameEN}`);
+      });
+    } else {
+      console.log(`\n✅ No extra games in database`);
+    }
+
+    // Execute bulk update
+    let modifiedCount = 0;
+    if (bulkOps.length > 0) {
+      const result = await GameIBexGameModal.bulkWrite(bulkOps);
+      modifiedCount = result.modifiedCount;
+      console.log(`\n📝 Updated ${modifiedCount} games`);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Game sync completed",
+      summary: {
+        apiGameCount: apiGameIds.size,
+        dbGameCount: dbGameIds.size,
+        matchingGames: matchingGames.length,
+        missingInDB: missingInDB.length,
+        extraInDB: extraInDB.length,
+        updatedGames: modifiedCount,
+      },
+      missingInDB: missingInDB,
+      extraInDB: extraInDB,
+    });
+  } catch (error) {
+    console.error("IBEX sync error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to sync game status",
+      error: error.message,
+    });
+  }
+});
 
 router.post("/api/ibex/getprovidergamelist", async (req, res) => {
   try {
@@ -147,6 +442,66 @@ router.post("/api/ibex/getprovidergamelist", async (req, res) => {
       success: false,
       message: {
         en: "IBEX: Unable to retrieve game list. Please contact customer service for assistance.",
+        zh: "IBEX: 无法获取游戏列表，请联系客服以获取帮助。",
+        ms: "IBEX: Tidak dapat mendapatkan senarai permainan. Sila hubungi khidmat pelanggan untuk bantuan.",
+        zh_hk: "IBEX: 無法獲取遊戲列表，請聯絡客服以獲取幫助。",
+        id: "IBEX: Tidak dapat mengambil daftar permainan. Silakan hubungi layanan pelanggan untuk bantuan.",
+      },
+    });
+  }
+});
+
+router.post("/api/ibex/getgamelist", async (req, res) => {
+  try {
+    const games = await GameIBexGameModal.find({
+      $and: [
+        {
+          $or: [{ maintenance: false }, { maintenance: { $exists: false } }],
+        },
+        {
+          imageUrlEN: { $exists: true, $ne: null, $ne: "" },
+        },
+      ],
+    }).sort({
+      hot: -1,
+      createdAt: -1,
+    });
+
+    if (!games || games.length === 0) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "No games found. Please try again later.",
+          zh: "未找到游戏。请稍后再试。",
+          ms: "Tiada permainan ditemui. Sila cuba lagi kemudian.",
+          zh_hk: "未找到遊戲。請稍後再試。",
+          id: "Tidak ada permainan ditemukan. Silakan coba lagi nanti.",
+        },
+      });
+    }
+
+    const reformattedGamelist = games.map((game) => ({
+      GameCode: game.gameID,
+      GameNameEN: game.gameNameEN,
+      GameNameZH: game.gameNameCN,
+      GameNameHK: game.gameNameHK,
+      GameType: game.gameType,
+      GameImage: game.imageUrlEN || "",
+      GameImageZH: game.imageUrlCN || "",
+      Hot: game.hot,
+      RTP: game.rtpRate,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      gamelist: reformattedGamelist,
+    });
+  } catch (error) {
+    console.error("IBEX Error fetching game list:", error.message);
+    return res.status(200).json({
+      success: false,
+      message: {
+        en: "IBEX: Unable to retrieve game lists. Please contact customer service for assistance.",
         zh: "IBEX: 无法获取游戏列表，请联系客服以获取帮助。",
         ms: "IBEX: Tidak dapat mendapatkan senarai permainan. Sila hubungi khidmat pelanggan untuk bantuan.",
         zh_hk: "IBEX: 無法獲取遊戲列表，請聯絡客服以獲取幫助。",
@@ -259,33 +614,25 @@ router.post("/api/ibex/launchGame", authenticateToken, async (req, res) => {
   }
 });
 
-router.post("/api/ibex", async (req, res) => {
+router.post("/api/ibex/verifysession", async (req, res) => {
   try {
     const { operator_token, secret_key, operator_player_session } = req.body;
-    console.log(req.body, "hihiih");
-    if (!operator_token || !secret_key || !operator_player_session) {
+
+    if (
+      !operator_token ||
+      !secret_key ||
+      !operator_player_session ||
+      operator_token !== ibexOperatorToken ||
+      secret_key !== ibexSecret
+    ) {
       return res.status(200).json({
         data: null,
-        error: {
-          code: "1034",
-          message: "Invalid request",
-        },
+        error: { code: "1034", message: "Invalid request" },
       });
     }
 
-    if (operator_token !== ibexOperatorToken || secret_key !== ibexSecret) {
-      return res.status(200).json({
-        data: null,
-        error: {
-          code: "1034",
-          message: "Invalid request",
-        },
-      });
-    }
-
-    const tokenParts = operator_player_session.split(":");
-
-    const username = tokenParts[0];
+    const decodedSession = decodeURIComponent(operator_player_session);
+    const username = decodedSession.split(":")[0];
 
     const currentUser = await User.findOne(
       { gameId: username },
@@ -296,8 +643,8 @@ router.post("/api/ibex", async (req, res) => {
       return res.status(200).json({
         data: null,
         error: {
-          code: "1305",
-          message: "Invalid player",
+          code: "3004",
+          message: `Player does not exist`,
         },
       });
     }
@@ -307,11 +654,11 @@ router.post("/api/ibex", async (req, res) => {
         data: null,
         error: {
           code: "1300",
-          message: "Invalid player session",
+          message: `Invalid player session`,
         },
       });
     }
-    console.log("opasss");
+
     return res.status(200).json({
       data: {
         player_name: username,
@@ -322,17 +669,329 @@ router.post("/api/ibex", async (req, res) => {
     });
   } catch (error) {
     console.error(
-      "IBEX: Error in game provider calling ae96 get balance api:",
+      "IBEX: Error in game provider calling  get balance api:",
       error.message
     );
     return res.status(200).json({
       data: null,
       error: {
-        code: "1303",
-        message: "Server error occurs",
+        code: "1200",
+        message: `Internal server error`,
       },
     });
   }
 });
 
+router.post("/api/ibex/getbalance", async (req, res) => {
+  try {
+    const { operator_token, secret_key, operator_player_session, player_name } =
+      req.body;
+
+    if (
+      !operator_token ||
+      !secret_key ||
+      !operator_player_session ||
+      operator_token !== ibexOperatorToken ||
+      secret_key !== ibexSecret
+    ) {
+      return res.status(200).json({
+        data: null,
+        error: { code: "1034", message: "Invalid request" },
+      });
+    }
+
+    const currentUser = await User.findOne(
+      { gameId: player_name },
+      { wallet: 1, _id: 1 }
+    ).lean();
+
+    if (!currentUser) {
+      console.log("failed 1");
+      return res.status(200).json({
+        data: null,
+        error: {
+          code: "3004",
+          message: `Player does not exist`,
+        },
+      });
+    }
+
+    return res.status(200).json({
+      data: {
+        currency_code: "MYR",
+        balance_amount: roundToTwoDecimals(currentUser.wallet),
+        updated_time: generateUpdatedTimeUTC(),
+      },
+      error: null,
+    });
+  } catch (error) {
+    console.error(
+      "IBEX: Error in game provider calling getbalance api:",
+      error.message
+    );
+    return res.status(200).json({
+      data: null,
+      error: {
+        code: "1200",
+        message: `Internal server error`,
+      },
+    });
+  }
+});
+
+router.post("/api/ibex/betpayout", async (req, res) => {
+  try {
+    const {
+      operator_token,
+      secret_key,
+      player_name,
+      parent_bet_id,
+      bet_id,
+      updated_time,
+      bet_amount,
+      win_amount,
+      transfer_amount,
+      transaction_id,
+      currency_code,
+    } = req.body;
+
+    if (
+      !operator_token ||
+      !secret_key ||
+      !player_name ||
+      operator_token !== ibexOperatorToken ||
+      secret_key !== ibexSecret
+    ) {
+      return res.status(200).json({
+        data: null,
+        error: { code: "1034", message: "Invalid request" },
+      });
+    }
+
+    if (currency_code !== "MYR") {
+      return res.status(200).json({
+        data: null,
+        error: { code: "1034", message: "Invalid request" },
+      });
+    }
+
+    const parsedBet = roundToTwoDecimals(Number(bet_amount) || 0);
+    const parsedWin = roundToTwoDecimals(Number(win_amount) || 0);
+    const parsedTransfer = roundToTwoDecimals(Number(transfer_amount) || 0);
+
+    const [currentUser, existingTransaction] = await Promise.all([
+      User.findOne(
+        { gameId: player_name },
+        {
+          username: 1,
+          wallet: 1,
+          "gameLock.ibex.lock": 1,
+          _id: 1,
+        }
+      ).lean(),
+      SlotIBEXModal.findOne({ betTranId: transaction_id }, { _id: 1 }).lean(),
+    ]);
+
+    if (!currentUser || currentUser.gameLock?.ibex?.lock) {
+      return res.status(200).json({
+        data: null,
+        error: { code: "3004", message: "Player does not exist" },
+      });
+    }
+
+    if (existingTransaction) {
+      return res.status(200).json({
+        data: {
+          currency_code: "MYR",
+          balance_amount: roundToTwoDecimals(currentUser.wallet),
+          updated_time,
+        },
+        error: null,
+      });
+    }
+
+    const updatedUserBalance = await User.findOneAndUpdate(
+      {
+        gameId: player_name,
+        wallet: { $gte: parsedBet },
+      },
+      { $inc: { wallet: parsedTransfer } },
+      { new: true, projection: { wallet: 1 } }
+    ).lean();
+
+    if (!updatedUserBalance) {
+      return res.status(200).json({
+        data: null,
+        error: {
+          code: "3202",
+          message: `Insufficient player balance`,
+        },
+      });
+    }
+
+    await SlotIBEXModal.create({
+      betId: parent_bet_id,
+      betTranId: transaction_id,
+      bet: true,
+      settle: true,
+      username: player_name,
+      betamount: parsedBet,
+      settleamount: parsedWin,
+    });
+
+    return res.status(200).json({
+      data: {
+        currency_code: "MYR",
+        balance_amount: roundToTwoDecimals(updatedUserBalance.wallet),
+        updated_time,
+      },
+      error: null,
+    });
+  } catch (error) {
+    console.error(
+      "IBEX: Error in game provider calling betninfo api:",
+      error.message
+    );
+    return res.status(200).json({
+      data: null,
+      error: {
+        code: "1200",
+        message: `Internal server error`,
+      },
+    });
+  }
+});
+
+router.post("/api/ibex/adjustment", async (req, res) => {
+  try {
+    const {
+      operator_token,
+      secret_key,
+      player_name,
+      currency_code,
+      transfer_amount,
+      adjustment_id,
+      adjustment_transaction_id,
+      promotion_id,
+      adjustment_time,
+    } = req.body;
+
+    if (
+      !operator_token ||
+      !secret_key ||
+      !player_name ||
+      operator_token !== ibexOperatorToken ||
+      secret_key !== ibexSecret
+    ) {
+      return res.status(200).json({
+        data: null,
+        error: { code: "1034", message: "Invalid request" },
+      });
+    }
+
+    if (currency_code !== "MYR") {
+      return res.status(200).json({
+        data: null,
+        error: { code: "1034", message: "Invalid request" },
+      });
+    }
+
+    const roundedTransfer = roundToTwoDecimals(transfer_amount);
+    const absTransfer = roundToTwoDecimals(Math.abs(transfer_amount));
+    const isDeduction = roundToTwoDecimals(transfer_amount || 0) < 0;
+
+    const [currentUser, existingTransaction] = await Promise.all([
+      User.findOne(
+        { gameId: player_name },
+        {
+          username: 1,
+          wallet: 1,
+          _id: 1,
+        }
+      ).lean(),
+      SlotIBEXModal.findOne(
+        { betTranId: adjustment_transaction_id },
+        { _id: 1, balanceattime: 1 }
+      ).lean(),
+    ]);
+
+    if (!currentUser) {
+      return res.status(200).json({
+        data: null,
+        error: {
+          code: "3004",
+          message: `Player does not exist`,
+        },
+      });
+    }
+
+    if (existingTransaction) {
+      return res.status(200).json({
+        data: {
+          adjust_amount: transfer_amount,
+          balance_before: roundToTwoDecimals(existingTransaction.balanceattime),
+          balance_after: roundToTwoDecimals(currentUser.wallet),
+          updated_time: adjustment_time,
+        },
+        error: null,
+      });
+    }
+
+    const updateQuery = isDeduction
+      ? {
+          gameId: player_name,
+          wallet: { $gte: absTransfer },
+        }
+      : {
+          gameId: player_name,
+        };
+
+    const updatedUserBalance = await User.findOneAndUpdate(
+      updateQuery,
+      { $inc: { wallet: roundedTransfer } },
+      { new: true, projection: { wallet: 1 } }
+    ).lean();
+
+    if (!updatedUserBalance) {
+      return res.status(200).json({
+        data: null,
+        error: {
+          code: "3202",
+          message: `Insufficient player balance`,
+        },
+      });
+    }
+    await SlotIBEXModal.create({
+      betId: adjustment_id,
+      betTranId: adjustment_transaction_id,
+      bet: true,
+      settle: true,
+      username: player_name,
+      settleamount: roundedTransfer,
+      balanceattime: roundToTwoDecimals(currentUser.wallet),
+    });
+
+    return res.status(200).json({
+      data: {
+        adjust_amount: transfer_amount,
+        balance_before: roundToTwoDecimals(currentUser.wallet),
+        balance_after: roundToTwoDecimals(updatedUserBalance.wallet),
+        updated_time: adjustment_time,
+      },
+      error: null,
+    });
+  } catch (error) {
+    console.error(
+      "IBEX: Error in game provider calling betninfo api:",
+      error.message
+    );
+    return res.status(200).json({
+      data: null,
+      error: {
+        code: "1200",
+        message: `Internal server error`,
+      },
+    });
+  }
+});
 module.exports = router;

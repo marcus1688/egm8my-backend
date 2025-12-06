@@ -44,6 +44,7 @@ const GameSpadeGamingGameModal = require("../../models/slot_spadegamingDatabase.
 const GamePPGameModal = require("../../models/slot_live_ppDatabase.model");
 const GameYellowBatGameModal = require("../../models/slot_yellowbatDatabase.model");
 const GameYGGDrasilGameModal = require("../../models/slot_dctyggdrasilDatabase.model");
+const GameIBexGameModal = require("../../models/slot_ibexDatabase.model");
 
 const { S3Client, ListObjectsV2Command } = require("@aws-sdk/client-s3");
 const multer = require("multer");
@@ -286,7 +287,7 @@ router.post("/api/importGameList/168168", async (req, res) => {
         .json({ success: false, message: "No valid games to import." });
     }
 
-    await GameYGGDrasilGameModal.insertMany(games);
+    await GameIBexGameModal.insertMany(games);
     res.status(200).json({
       success: true,
       imported: games.length,
@@ -300,54 +301,46 @@ router.post("/api/importGameList/168168", async (req, res) => {
   }
 });
 
-router.post("/api/importImgUrl/yggdrasil", async (req, res) => {
+router.post("/api/importImgUrl/ibex", async (req, res) => {
   try {
     const bucket = "allgameslist";
-    const basePathEN = "yggdrasil/en/";
+    const basePathEN = "ibex/en/";
+    const basePathCN = "ibex/zh/";
 
     // Get all games from the database that need images
-    const allGames = await GameYGGDrasilGameModal.find(
+    const allGames = await GameIBexGameModal.find(
       {
-        $or: [{ imageUrlEN: { $exists: false } }, { imageUrlEN: "" }],
-        gameNameEN: { $exists: true, $ne: "" },
+        $or: [
+          { imageUrlEN: { $exists: false } },
+          { imageUrlEN: "" },
+          { imageUrlEN: null },
+          { imageUrlCN: { $exists: false } },
+          { imageUrlCN: "" },
+          { imageUrlCN: null },
+        ],
+        gameID: { $exists: true, $ne: "" },
       },
       { gameID: 1, gameNameEN: 1, _id: 1 }
     ).lean();
 
     if (!allGames.length) {
-      return res.status(404).json({
-        success: false,
-        message: "No games found in database to sync",
+      return res.status(200).json({
+        success: true,
+        message: "No games found needing image sync",
       });
     }
 
     console.log(`Found ${allGames.length} games needing image sync`);
 
     /**
-     * Normalize string for comparison
-     * - Remove all special characters
-     * - Convert to lowercase
-     * - Remove all spaces
+     * Extract gameID from filename
+     * Format: "123.png" -> "123"
      */
-    const normalizeString = (str) => {
-      if (!str) return "";
-      return str.toLowerCase().replace(/[^a-z0-9]/g, ""); // Keep only letters and numbers
+    const extractGameIDFromFilename = (filename) => {
+      return filename.replace(/\.(jpg|jpeg|png|gif|webp)$/i, "");
     };
 
-    /**
-     * Extract game name from filename and normalize
-     * Format: "GameName.png" -> "gamename"
-     */
-    const extractGameNameFromFilename = (filename) => {
-      // Remove file extension
-      const nameWithoutExt = filename.replace(
-        /\.(jpg|jpeg|png|gif|webp)$/i,
-        ""
-      );
-      return normalizeString(nameWithoutExt);
-    };
-
-    // Get all objects from S3
+    // Get all objects from S3 - EN
     const enObjectsResult = await s3Client.send(
       new ListObjectsV2Command({
         Bucket: bucket,
@@ -355,8 +348,17 @@ router.post("/api/importImgUrl/yggdrasil", async (req, res) => {
       })
     );
 
-    // Create lookup map based on normalized game name
+    // Get all objects from S3 - CN
+    const cnObjectsResult = await s3Client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: basePathCN,
+      })
+    );
+
+    // Create lookup maps based on gameID
     const enImageMap = {};
+    const cnImageMap = {};
 
     console.log("\n=== Processing EN Images ===");
     if (enObjectsResult.Contents) {
@@ -368,72 +370,96 @@ router.post("/api/importImgUrl/yggdrasil", async (req, res) => {
           return;
         }
 
-        const normalizedName = extractGameNameFromFilename(filename);
+        const gameID = extractGameIDFromFilename(filename);
 
-        if (normalizedName) {
+        if (gameID) {
           const imageUrl = `https://${bucket}.s3.ap-southeast-1.amazonaws.com/${object.Key}`;
-          enImageMap[normalizedName] = imageUrl;
-          console.log(`  ✅ Mapped "${normalizedName}" -> ${imageUrl}`);
+          enImageMap[gameID] = imageUrl;
         }
       });
     }
+    console.log(`EN Image Map: ${Object.keys(enImageMap).length} entries`);
 
-    console.log(`\nEN Image Map: ${Object.keys(enImageMap).length} entries`);
+    console.log("\n=== Processing CN Images ===");
+    if (cnObjectsResult.Contents) {
+      cnObjectsResult.Contents.forEach((object) => {
+        const filename = object.Key.split("/").pop();
+
+        // Only process image files
+        if (!filename.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+          return;
+        }
+
+        const gameID = extractGameIDFromFilename(filename);
+
+        if (gameID) {
+          const imageUrl = `https://${bucket}.s3.ap-southeast-1.amazonaws.com/${object.Key}`;
+          cnImageMap[gameID] = imageUrl;
+        }
+      });
+    }
+    console.log(`CN Image Map: ${Object.keys(cnImageMap).length} entries`);
 
     // Build bulk operations
     const bulkOps = [];
 
     for (const game of allGames) {
-      const normalizedGameName = normalizeString(game.gameNameEN);
-
-      console.log(
-        `\nProcessing: "${game.gameNameEN}" -> normalized: "${normalizedGameName}"`
-      );
+      const gameID = game.gameID;
 
       // 100% match required
-      if (enImageMap[normalizedGameName]) {
+      const enImage = enImageMap[gameID];
+      const cnImage = cnImageMap[gameID];
+
+      if (enImage || cnImage) {
+        const updateFields = {};
+
+        if (enImage) {
+          updateFields.imageUrlEN = enImage;
+        }
+        if (cnImage) {
+          updateFields.imageUrlCN = cnImage;
+        }
+
         bulkOps.push({
           updateOne: {
             filter: { _id: game._id },
-            update: { $set: { imageUrlEN: enImageMap[normalizedGameName] } },
+            update: { $set: updateFields },
           },
         });
+
         console.log(
-          `  ✅ Matched: "${game.gameNameEN}" -> ${enImageMap[normalizedGameName]}`
+          `✅ Matched gameID: ${gameID} -> EN: ${!!enImage}, CN: ${!!cnImage}`
         );
       } else {
-        console.log(
-          `  ❌ No match for: "${game.gameNameEN}" (normalized: "${normalizedGameName}")`
-        );
+        console.log(`❌ No match for gameID: ${gameID}`);
       }
     }
 
     // Execute bulk update
     let updatedCount = 0;
     if (bulkOps.length) {
-      const result = await GameYGGDrasilGameModal.bulkWrite(bulkOps);
+      const result = await GameIBexGameModal.bulkWrite(bulkOps);
       updatedCount = result.modifiedCount;
     }
 
-    // Get unmatched games
+    // Get unmatched games (first 10)
     const unmatchedGames = allGames
-      .filter((game) => !enImageMap[normalizeString(game.gameNameEN)])
+      .filter((game) => !enImageMap[game.gameID] && !cnImageMap[game.gameID])
       .slice(0, 10)
       .map((game) => ({
-        gameNameEN: game.gameNameEN,
-        normalizedName: normalizeString(game.gameNameEN),
         gameID: game.gameID,
+        gameNameEN: game.gameNameEN,
       }));
 
-    // Get matched games
+    // Get matched games (first 5)
     const matchedGames = allGames
-      .filter((game) => enImageMap[normalizeString(game.gameNameEN)])
+      .filter((game) => enImageMap[game.gameID] || cnImageMap[game.gameID])
       .slice(0, 5)
       .map((game) => ({
-        gameNameEN: game.gameNameEN,
-        normalizedName: normalizeString(game.gameNameEN),
         gameID: game.gameID,
-        imageUrlEN: enImageMap[normalizeString(game.gameNameEN)],
+        gameNameEN: game.gameNameEN,
+        imageUrlEN: enImageMap[game.gameID] || null,
+        imageUrlCN: cnImageMap[game.gameID] || null,
       }));
 
     return res.status(200).json({
@@ -443,11 +469,12 @@ router.post("/api/importImgUrl/yggdrasil", async (req, res) => {
       updatedGames: updatedCount,
       unmatchedGames: allGames.length - bulkOps.length,
       enImagesAvailable: Object.keys(enImageMap).length,
+      cnImagesAvailable: Object.keys(cnImageMap).length,
       matchedExamples: matchedGames,
       unmatchedExamples: unmatchedGames,
     });
   } catch (error) {
-    console.error("Error syncing YGGDrasil images:", error);
+    console.error("Error syncing IBEX images:", error);
 
     return res.status(500).json({
       success: false,
@@ -456,7 +483,6 @@ router.post("/api/importImgUrl/yggdrasil", async (req, res) => {
     });
   }
 });
-
 // Add this route to your existing file
 
 router.post("/api/cleanupGameImages/168168", async (req, res) => {
