@@ -862,7 +862,7 @@ router.post("/api/ibex/betpayout", async (req, res) => {
   }
 });
 
-router.post("/api/ibex/adjustment", async (req, res) => {
+router.post("/api/ibex/balanceadjustment", async (req, res) => {
   try {
     const {
       operator_token,
