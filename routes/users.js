@@ -73,6 +73,7 @@ const SportM9BetModal = require("../models/sport_m9bet.model");
 const slot918KissModal = require("../models/slot_918kiss.model");
 const LotteryHuaweiModal = require("../models/other_huaweilottery.model");
 const LiveWMCasinoRebateModal = require("../models/live_wmcasinorebate.model");
+const SlotIBEXModal = require("../models/slot_ibex.model");
 
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
@@ -6329,6 +6330,11 @@ router.get(
             },
             "betTime"
           ),
+
+          getAllUsersTurnover(SlotIBEXModal, {
+            cancel: { $ne: true },
+            settle: true,
+          }),
         ];
 
         const todayGameResults = await Promise.allSettled(todayGamePromises);
