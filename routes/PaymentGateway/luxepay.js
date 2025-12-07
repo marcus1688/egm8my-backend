@@ -888,6 +888,7 @@ router.post("/api/luxepay/qrpay", async (req, res) => {
     }
 
     const statusMapping = {
+      0: "Pending",
       2: "Reject",
       1: "Success",
       3: "Success",
