@@ -1172,8 +1172,8 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    // Step 1: Fetch user and VIP config in parallel
-    const [user, vipData, currentPromotion] = await Promise.all([
+    // Step 1: Fetch user, VIP config, promotion, and kiosk settings in parallel
+    const [user, vipData, currentPromotion, kioskSettings] = await Promise.all([
       User.findById(userId)
         .select(
           "_id gameId username viplevel wallet fullname duplicateIP duplicateBank"
@@ -1183,26 +1183,44 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
       Promotion.findById("69086feb032af34b3af2e37d")
         .select("_id maintitle maintitleEN")
         .lean(),
+      kioskbalance.findOne({}).lean(),
     ]);
 
     if (!user) {
-      return res.status(404).json({
+      return res.status(200).json({
         success: false,
         message: {
-          en: "User not found",
-          zh: "用户未找到",
-          ms: "Pengguna tidak ditemui",
+          en: "User not found. Please try again or contact customer service for assistance.",
+          zh: "用户未找到，请重试或联系客服以获取帮助。",
+          ms: "Pengguna tidak ditemui, sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          zh_hk: "用戶未找到，請重試或聯絡客服以獲取幫助。",
+          id: "Pengguna tidak ditemukan. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
         },
       });
     }
 
     if (!vipData?.vipLevels?.length) {
-      return res.status(500).json({
+      return res.status(200).json({
         success: false,
         message: {
-          en: "VIP configuration not found",
-          zh: "VIP配置未找到",
-          ms: "Konfigurasi VIP tidak ditemui",
+          en: "Service temporarily unavailable. Please try again later or contact customer service.",
+          zh: "服务暂时不可用，请稍后再试或联系客服。",
+          ms: "Perkhidmatan tidak tersedia buat sementara waktu. Sila cuba lagi kemudian atau hubungi khidmat pelanggan.",
+          zh_hk: "服務暫時不可用，請稍後再試或聯絡客服。",
+          id: "Layanan sementara tidak tersedia. Silakan coba lagi nanti atau hubungi layanan pelanggan.",
+        },
+      });
+    }
+
+    if (!currentPromotion) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "Rebate is currently unavailable. Please try again later or contact customer service.",
+          zh: "返水功能暂时不可用，请稍后再试或联系客服。",
+          ms: "Rebat tidak tersedia buat masa ini. Sila cuba lagi kemudian atau hubungi khidmat pelanggan.",
+          zh_hk: "返水功能暫時不可用，請稍後再試或聯絡客服。",
+          id: "Rebat saat ini tidak tersedia. Silakan coba lagi nanti atau hubungi layanan pelanggan.",
         },
       });
     }
@@ -1263,12 +1281,14 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
     );
 
     if (totalTurnover <= 0) {
-      return res.status(400).json({
+      return res.status(200).json({
         success: false,
         message: {
-          en: "No turnover records found",
-          zh: "没有找到流水记录",
-          ms: "Tiada rekod pusing ganti ditemui",
+          en: "No turnover records available for rebate.",
+          zh: "没有可用于返水的流水记录。",
+          ms: "Tiada rekod pusing ganti tersedia untuk rebat.",
+          zh_hk: "沒有可用於返水的流水記錄。",
+          id: "Tidak ada catatan turnover yang tersedia untuk rebat.",
         },
       });
     }
@@ -1276,7 +1296,7 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
     // Step 5: Process turnover requirement if user has bonus
     let eligibleRecords = allRecords;
     let disqualifiedRecords = [];
-    let pendingRecords = []; // Records waiting for turnover requirement
+    let pendingRecords = [];
     let turnoverRequirementInfo = null;
 
     if (
@@ -1294,9 +1314,7 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
       );
 
       if (!turnoverResult.met) {
-        // Check if there are eligible records before bonus
         if (turnoverResult.eligibleRecords.length > 0) {
-          // User has some eligible records before bonus, continue with those
           console.log(
             `⚠️ Turnover requirement not met, but ${turnoverResult.eligibleRecords.length} records eligible from before bonus`
           );
@@ -1305,8 +1323,8 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
           );
 
           eligibleRecords = turnoverResult.eligibleRecords;
-          disqualifiedRecords = []; // Don't disqualify anything
-          pendingRecords = turnoverResult.pendingRecords; // Track but don't update
+          disqualifiedRecords = [];
+          pendingRecords = turnoverResult.pendingRecords;
 
           turnoverRequirementInfo = {
             required: qualification.turnoverRequired,
@@ -1319,7 +1337,6 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
             status: "partial",
           };
         } else {
-          // No eligible records at all
           return res.status(400).json({
             success: false,
             message: {
@@ -1350,7 +1367,7 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
         turnoverRequirementInfo = {
           required: qualification.turnoverRequired,
           usedForRequirement: turnoverResult.turnoverUsedForRequirement,
-          excessTurnover: turnoverResult.excessTurnover, // Add this!
+          excessTurnover: turnoverResult.excessTurnover,
           requirementMetDate: turnoverResult.requirementMetDate,
           disqualifiedCount: disqualifiedRecords.length,
           eligibleCount: eligibleRecords.length,
@@ -1383,7 +1400,6 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
         console.log(`   Disqualified records: ${disqualifiedRecords.length}`);
       }
     } else if (qualification.qualifyFromDate) {
-      // No bonus requirement - filter by qualifyFromDate only
       const qualifyDate = new Date(qualification.qualifyFromDate);
       eligibleRecords = allRecords.filter(
         (r) => new Date(r.createdAt) >= qualifyDate
@@ -1417,12 +1433,10 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
       [CATEGORIES.LOTTERY]: [],
     };
 
-    // Process eligible records
     eligibleRecords.forEach((record) => {
       breakdown[record.category] += record.turnover || 0;
     });
 
-    // Add excess turnover to the category of the last disqualified record
     let excessTurnover = 0;
     if (
       turnoverRequirementInfo?.excessTurnover > 0 &&
@@ -1442,7 +1456,6 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
       );
     }
 
-    // Aggregate by game name for response
     const gameAggregation = {};
     eligibleRecords.forEach((record) => {
       const key = `${record.category}_${record.gameName}`;
@@ -1458,7 +1471,6 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
       gameAggregation[key].count += 1;
     });
 
-    // Add excess to game aggregation if exists
     if (excessTurnover > 0 && disqualifiedRecords.length > 0) {
       const lastDisqualifiedRecord =
         disqualifiedRecords[disqualifiedRecords.length - 1];
@@ -1472,7 +1484,6 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
         };
       }
       gameAggregation[key].turnover += excessTurnover;
-      // Don't increment count since it's excess from disqualified record
     }
 
     Object.values(gameAggregation).forEach((game) => {
@@ -1511,12 +1522,14 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
     console.log(`   Rebatable: ${rebatableTurnover.toFixed(2)}`);
 
     if (rebatableTurnover <= 0) {
-      return res.status(400).json({
+      return res.status(200).json({
         success: false,
         message: {
-          en: "No rebatable turnover available (Fishing and Lottery have 0% rebate)",
-          zh: "没有可返水的流水（捕鱼和彩票返水为0%）",
-          ms: "Tiada pusing ganti rebat tersedia (Memancing dan Loteri 0% rebat)",
+          en: "No valid turnover available for rebate.",
+          zh: "没有可用于返水的有效流水。",
+          ms: "Tiada pusing ganti sah tersedia untuk rebat.",
+          zh_hk: "沒有可用於返水的有效流水。",
+          id: "Tidak ada turnover valid yang tersedia untuk rebat.",
         },
         turnoverDetails: turnoverRequirementInfo,
       });
@@ -1565,17 +1578,19 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
     console.log(`   Total: ${totalCommission}`);
 
     if (totalCommission <= 0) {
-      return res.status(400).json({
+      return res.status(200).json({
         success: false,
         message: {
-          en: "Commission amount is too low to claim",
-          zh: "佣金金额太低无法领取",
-          ms: "Jumlah komisen terlalu rendah untuk dituntut",
+          en: "Rebate amount is too low to claim. Please accumulate more turnover.",
+          zh: "返水金额太低，无法领取。请累积更多流水。",
+          ms: "Jumlah rebat terlalu rendah untuk dituntut. Sila kumpulkan lebih banyak pusing ganti.",
+          zh_hk: "返水金額太低，無法領取。請累積更多流水。",
+          id: "Jumlah rebat terlalu rendah untuk diklaim. Silakan kumpulkan lebih banyak turnover.",
         },
       });
     }
 
-    // Step 8: Build formula string
+    // Step 8: Build formula and remark
     const formulaParts = [];
     if (breakdown[CATEGORIES.LIVE_CASINO] > 0) {
       formulaParts.push(
@@ -1609,7 +1624,6 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
       " + "
     )} = ${totalCommission}`;
 
-    // Step 9: Build remark
     let remark = `VIP Rebate - ${qualification.reason}`;
     if (turnoverRequirementInfo) {
       if (turnoverRequirementInfo.status === "met") {
@@ -1627,116 +1641,188 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
 
     const transactionId = uuidv4();
 
-    const kioskSettings = await kioskbalance.findOne({});
-    if (kioskSettings && kioskSettings.status) {
-      const kioskResult = await updateKioskBalance(
-        "subtract",
-        totalCommission,
-        {
-          username: user.username,
-          transactionType: "bonus approval",
-          remark: `Bonus ID: ${transactionId}`,
-          processBy: "admin",
-        }
-      );
+    // Step 9: Update kiosk balance (non-blocking - don't stop if fails)
+    let kioskUpdateResult = { success: false, skipped: true };
+    if (kioskSettings?.status) {
+      try {
+        kioskUpdateResult = await updateKioskBalance(
+          "subtract",
+          totalCommission,
+          {
+            username: user.username,
+            transactionType: "bonus approval",
+            remark: `Bonus ID: ${transactionId}`,
+            processBy: "admin",
+          }
+        );
 
-      if (!kioskResult.success) {
-        return res.status(200).json({
-          success: false,
-          message: {
-            en: "Failed to update kiosk balance",
-            zh: "更新Kiosk余额失败",
-          },
-        });
+        if (!kioskUpdateResult.success) {
+          console.warn(
+            `⚠️ Kiosk balance update failed for ${user.username}: ${
+              kioskUpdateResult.message || "Unknown error"
+            }`
+          );
+        } else {
+          console.log(`✅ Kiosk balance updated: -${totalCommission}`);
+        }
+      } catch (kioskError) {
+        console.error(
+          `❌ Kiosk balance error (non-blocking):`,
+          kioskError.message
+        );
+        kioskUpdateResult = { success: false, error: kioskError.message };
       }
+    } else {
+      console.log(`ℹ️ Kiosk balance update skipped (disabled)`);
     }
 
-    // Step 10: Update wallet and create RebateLog
-    const [updatedUser, rebateRecord, newBonus, newuserwalletlog] =
-      await Promise.all([
-        User.findByIdAndUpdate(
-          userId,
-          { $inc: { wallet: totalCommission, totalbonus: totalCommission } },
-          { new: true, projection: { wallet: 1 } }
-        ).lean(),
+    // Step 10: Update wallet and create records (critical operations)
+    let updatedUser, rebateRecord, newBonus, newUserWalletLog;
 
-        RebateLog.create({
-          username: user.username,
-          totaldeposit: 0,
-          totalwithdraw: 0,
-          totalbonus: 0,
-          totalwinlose: 0,
-          totalRebate: totalCommission,
-          rebateissuesdate: new Date(),
-          type: "VIP Instant Rebate",
-          formula,
-          remark,
-          totalturnover: totalTurnover,
-          eligibleTurnover,
-          rebatableTurnover,
-          slot: breakdown[CATEGORIES.SLOT],
-          livecasino: breakdown[CATEGORIES.LIVE_CASINO],
-          sports: breakdown[CATEGORIES.SPORTS],
-          fishing: breakdown[CATEGORIES.FISHING],
-          esports: breakdown[CATEGORIES.ESPORTS],
-          lottery: breakdown[CATEGORIES.LOTTERY],
-          poker: 0,
-          mahjong: 0,
-          horse: 0,
-          claimed: true,
-          claimedBy: user.gameId,
-          claimedAt: new Date(),
-        }),
+    try {
+      [updatedUser, rebateRecord, newBonus, newUserWalletLog] =
+        await Promise.all([
+          User.findByIdAndUpdate(
+            userId,
+            { $inc: { wallet: totalCommission, totalbonus: totalCommission } },
+            { new: true, projection: { wallet: 1 } }
+          ).lean(),
 
-        Bonus.create({
-          transactionId: transactionId,
-          userId: user._id,
-          username: user.username,
-          fullname: user.fullname || "unknown",
-          transactionType: "bonus",
-          processBy: "admin",
-          amount: totalCommission,
-          walletamount: user.wallet,
-          status: "approved",
-          method: "manual",
-          remark: "-",
-          promotionname: currentPromotion.maintitle,
-          promotionnameEN: currentPromotion.maintitleEN,
-          promotionId: currentPromotion._id,
-          duplicateIP: user.duplicateIP,
-          duplicateBank: user.duplicateBank,
-        }),
+          RebateLog.create({
+            username: user.username,
+            totaldeposit: 0,
+            totalwithdraw: 0,
+            totalbonus: 0,
+            totalwinlose: 0,
+            totalRebate: totalCommission,
+            rebateissuesdate: new Date(),
+            type: "VIP Instant Rebate",
+            formula,
+            remark,
+            totalturnover: totalTurnover,
+            eligibleTurnover,
+            rebatableTurnover,
+            slot: breakdown[CATEGORIES.SLOT],
+            livecasino: breakdown[CATEGORIES.LIVE_CASINO],
+            sports: breakdown[CATEGORIES.SPORTS],
+            fishing: breakdown[CATEGORIES.FISHING],
+            esports: breakdown[CATEGORIES.ESPORTS],
+            lottery: breakdown[CATEGORIES.LOTTERY],
+            poker: 0,
+            mahjong: 0,
+            horse: 0,
+            claimed: true,
+            claimedBy: user.gameId,
+            claimedAt: new Date(),
+          }),
 
-        UserWalletLog.create({
-          userId: user._id,
-          transactionid: transactionId,
-          transactiontime: new Date(),
-          transactiontype: "bonus",
-          amount: totalCommission,
-          status: "approved",
-          promotionnameCN: currentPromotion.maintitle,
-          promotionnameEN: currentPromotion.maintitleEN,
-        }),
-      ]);
+          Bonus.create({
+            transactionId: transactionId,
+            userId: user._id,
+            username: user.username,
+            fullname: user.fullname || "unknown",
+            transactionType: "bonus",
+            processBy: "admin",
+            amount: totalCommission,
+            walletamount: user.wallet,
+            status: "approved",
+            method: "manual",
+            remark: formula,
+            promotionname: currentPromotion.maintitle,
+            promotionnameEN: currentPromotion.maintitleEN,
+            promotionId: currentPromotion._id,
+            duplicateIP: user.duplicateIP,
+            duplicateBank: user.duplicateBank,
+          }),
 
-    if (!updatedUser) {
-      await RebateLog.findByIdAndDelete(rebateRecord._id);
-      return res.status(500).json({
+          UserWalletLog.create({
+            userId: user._id,
+            transactionid: transactionId,
+            transactiontime: new Date(),
+            transactiontype: "bonus",
+            amount: totalCommission,
+            status: "approved",
+            promotionnameCN: currentPromotion.maintitle,
+            promotionnameEN: currentPromotion.maintitleEN,
+          }),
+        ]);
+    } catch (dbError) {
+      console.error(
+        `❌ Database error during wallet/record creation:`,
+        dbError
+      );
+
+      // Attempt to rollback kiosk if it was successful
+      if (kioskUpdateResult.success) {
+        try {
+          await updateKioskBalance("add", totalCommission, {
+            username: user.username,
+            transactionType: "bonus rollback",
+            remark: `Rollback Bonus ID: ${transactionId}`,
+            processBy: "system",
+          });
+          console.log(`🔄 Kiosk balance rolled back: +${totalCommission}`);
+        } catch (rollbackError) {
+          console.error(`❌ Kiosk rollback failed:`, rollbackError.message);
+        }
+      }
+
+      return res.status(200).json({
         success: false,
         message: {
-          en: "Failed to update wallet",
-          zh: "更新钱包失败",
-          ms: "Gagal mengemas kini dompet",
+          en: "Failed to process rebate. Please try again later or contact customer service.",
+          zh: "处理返水失败，请稍后再试或联系客服。",
+          ms: "Gagal memproses rebat. Sila cuba lagi kemudian atau hubungi khidmat pelanggan.",
+          zh_hk: "處理返水失敗，請稍後再試或聯絡客服。",
+          id: "Gagal memproses rebat. Silakan coba lagi nanti atau hubungi layanan pelanggan.",
         },
       });
     }
 
-    await updateUserGameLocks(user._id);
+    if (!updatedUser) {
+      // Cleanup created records
+      await Promise.all(
+        [
+          rebateRecord?._id && RebateLog.findByIdAndDelete(rebateRecord._id),
+          newBonus?._id && Bonus.findByIdAndDelete(newBonus._id),
+          newUserWalletLog?._id &&
+            UserWalletLog.findByIdAndDelete(newUserWalletLog._id),
+        ].filter(Boolean)
+      );
 
-    // Step 11: Batch update records - mark as claimed/disqualified
+      // Rollback kiosk
+      if (kioskUpdateResult.success) {
+        try {
+          await updateKioskBalance("add", totalCommission, {
+            username: user.username,
+            transactionType: "bonus rollback",
+            remark: `Rollback Bonus ID: ${transactionId}`,
+            processBy: "system",
+          });
+        } catch (rollbackError) {
+          console.error(`❌ Kiosk rollback failed:`, rollbackError.message);
+        }
+      }
+
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "Failed to process rebate. Please try again later or contact customer service.",
+          zh: "处理返水失败，请稍后再试或联系客服。",
+          ms: "Gagal memproses rebat. Sila cuba lagi kemudian atau hubungi khidmat pelanggan.",
+          zh_hk: "處理返水失敗，請稍後再試或聯絡客服。",
+          id: "Gagal memproses rebat. Silakan coba lagi nanti atau hubungi layanan pelanggan.",
+        },
+      });
+    }
+
+    // Step 11: Update game locks (non-blocking)
+    updateUserGameLocks(user._id).catch((err) => {
+      console.error(`⚠️ Failed to update game locks:`, err.message);
+    });
+
+    // Step 12: Batch update records - mark as claimed/disqualified
     const updatePromises = [];
-
-    // Group by model for efficient updates
     const eligibleByModel = new Map();
     const disqualifiedByModel = new Map();
 
@@ -1756,7 +1842,6 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
       disqualifiedByModel.get(modelName).ids.push(r._id);
     });
 
-    // Update eligible records as claimed
     eligibleByModel.forEach(({ model, ids }) => {
       if (ids.length > 0) {
         updatePromises.push(
@@ -1765,7 +1850,6 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
       }
     });
 
-    // Update disqualified records
     disqualifiedByModel.forEach(({ model, ids }) => {
       if (ids.length > 0) {
         updatePromises.push(
@@ -1788,13 +1872,15 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
       `\n✅ Completed in ${executionTime}ms | Records updated: ${totalUpdated}`
     );
 
-    // Step 12: Return success response
+    // Step 13: Return success response
     return res.status(200).json({
       success: true,
       message: {
         en: `Rebate claimed successfully! +${totalCommission.toFixed(2)}`,
-        zh: `返水领取成功! +${totalCommission.toFixed(2)}`,
+        zh: `返水领取成功！+${totalCommission.toFixed(2)}`,
         ms: `Rebat berjaya dituntut! +${totalCommission.toFixed(2)}`,
+        zh_hk: `返水領取成功！+${totalCommission.toFixed(2)}`,
+        id: `Rebat berhasil diklaim! +${totalCommission.toFixed(2)}`,
       },
       data: {
         username: user.gameId,
@@ -1836,19 +1922,24 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
         turnoverRequirement: turnoverRequirementInfo,
         newWallet: parseFloat(updatedUser.wallet.toString()),
         rebateLogId: rebateRecord._id,
+        bonusId: newBonus._id,
+        transactionId,
         recordsUpdated: totalUpdated,
         qualificationReason: qualification.reason,
+        kioskUpdated: kioskUpdateResult.success,
         executionTime: `${executionTime}ms`,
       },
     });
   } catch (error) {
     console.error("❌ VIP Rebate Error:", error);
-    return res.status(500).json({
+    return res.status(200).json({
       success: false,
       message: {
-        en: "Internal Server Error. Please contact customer support.",
-        zh: "内部服务器错误，请联系客服。",
-        ms: "Ralat dalaman pelayan. Sila hubungi sokongan pelanggan.",
+        en: "Something went wrong. Please try again later or contact customer service.",
+        zh: "出了点问题，请稍后再试或联系客服。",
+        ms: "Sesuatu tidak kena. Sila cuba lagi kemudian atau hubungi khidmat pelanggan.",
+        zh_hk: "出了點問題，請稍後再試或聯絡客服。",
+        id: "Terjadi kesalahan. Silakan coba lagi nanti atau hubungi layanan pelanggan.",
       },
     });
   }
