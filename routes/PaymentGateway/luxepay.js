@@ -859,7 +859,7 @@ router.post("/api/luxepay/qrpay", async (req, res) => {
       ReceiverBank,
       ReceiverAccount,
     } = req.body;
-
+    console.log(req.body, "qrpay");
     if (!RefId || Amount === undefined || Status === undefined) {
       console.log("Missing required parameters:", { RefId, Amount, Status });
       return res.status(200).json({
