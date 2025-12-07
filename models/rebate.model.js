@@ -37,6 +37,14 @@ const rebateLogSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    eligibleTurnover: {
+      type: Number,
+      default: 0,
+    },
+    rebatableTurnover: {
+      type: Number,
+      default: 0,
+    },
     slot: {
       type: Number,
       default: 0,
