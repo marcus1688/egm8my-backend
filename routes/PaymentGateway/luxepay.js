@@ -490,7 +490,7 @@ router.post("/api/luxepay/payin", async (req, res) => {
     }
 
     if (
-      (status === "1" || status === "3") &&
+      (statusCode === "1" || statusCode === "3") &&
       existingTrx.status === "Success"
     ) {
       console.log("Transaction already processed successfully, skipping");
@@ -501,7 +501,7 @@ router.post("/api/luxepay/payin", async (req, res) => {
     }
 
     if (
-      (status === "1" || status === "3") &&
+      (statusCode === "1" || statusCode === "3") &&
       existingTrx.status !== "Success"
     ) {
       const [user, gateway, kioskSettings, bank] = await Promise.all([
@@ -859,7 +859,6 @@ router.post("/api/luxepay/qrpay", async (req, res) => {
       ReceiverBank,
       ReceiverAccount,
     } = req.body;
-    console.log(req.body, "qrpay");
     if (!RefId || Amount === undefined || Status === undefined) {
       console.log("Missing required parameters:", { RefId, Amount, Status });
       return res.status(200).json({
@@ -927,7 +926,7 @@ router.post("/api/luxepay/qrpay", async (req, res) => {
     }
 
     if (
-      (Status === "1" || Status === "3") &&
+      (statusCode === "1" || statusCode === "3") &&
       existingTrx.status === "Success"
     ) {
       console.log("Transaction already processed successfully, skipping");
@@ -938,7 +937,7 @@ router.post("/api/luxepay/qrpay", async (req, res) => {
     }
 
     if (
-      (Status === "1" || Status === "3") &&
+      (statusCode === "1" || statusCode === "3") &&
       existingTrx.status !== "Success"
     ) {
       const [user, gateway, kioskSettings, bank] = await Promise.all([
@@ -1648,7 +1647,7 @@ router.post("/api/luxepay/payout", async (req, res) => {
     }
 
     if (
-      (Status === "1" || Status === "3") &&
+      (statusCode === "1" || statusCode === "3") &&
       existingTrx.status === "Success"
     ) {
       console.log("Transaction already processed successfully, skipping");
@@ -1659,7 +1658,7 @@ router.post("/api/luxepay/payout", async (req, res) => {
     }
 
     if (
-      (Status === "1" || Status === "3") &&
+      (statusCode === "1" || statusCode === "3") &&
       existingTrx.status !== "Success"
     ) {
       const [user, gateway] = await Promise.all([
@@ -1726,7 +1725,7 @@ router.post("/api/luxepay/payout", async (req, res) => {
         playerusername: user.username,
         processby: "system",
       });
-    } else if (Status === "2" && existingTrx.status !== "Reject") {
+    } else if (statusCode === "2" && existingTrx.status !== "Reject") {
       const [, , withdraw, updatedUser] = await Promise.all([
         luxepayModal.findByIdAndUpdate(existingTrx._id, {
           $set: { status: statusText },
