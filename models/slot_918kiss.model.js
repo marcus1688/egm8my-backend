@@ -32,6 +32,10 @@ const slot918kissechema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    disqualified: {
+      type: Boolean,
+      default: false,
+    },
     betTime: {
       type: Date,
     },

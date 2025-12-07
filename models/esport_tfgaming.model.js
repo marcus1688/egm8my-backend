@@ -31,6 +31,14 @@ const esportTfGamingschema = new mongoose.Schema(
     resettle: {
       type: Boolean,
     },
+    claimed: {
+      type: Boolean,
+      default: false,
+    },
+    disqualified: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: {

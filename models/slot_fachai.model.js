@@ -39,6 +39,14 @@ const slotfachaiSchema = new mongoose.Schema(
     gametype: {
       type: String,
     },
+    claimed: {
+      type: Boolean,
+      default: false,
+    },
+    disqualified: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: {

@@ -45,6 +45,10 @@ const slotlivePlayAceschema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    disqualified: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: {

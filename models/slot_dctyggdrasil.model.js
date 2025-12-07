@@ -44,6 +44,14 @@ const slotDCTYGGDrasilGamechema = new mongoose.Schema(
     provider: {
       type: String,
     },
+    claimed: {
+      type: Boolean,
+      default: false,
+    },
+    disqualified: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: {

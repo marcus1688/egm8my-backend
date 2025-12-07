@@ -39,6 +39,14 @@ const slotlivemicrogamingschema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    claimed: {
+      type: Boolean,
+      default: false,
+    },
+    disqualified: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: {

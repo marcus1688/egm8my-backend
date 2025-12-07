@@ -36,12 +36,17 @@ const lotteryHUAWEIschema = new mongoose.Schema(
     betTime: {
       type: Date,
     },
+
+    status: {
+      type: String,
+    },
     claimed: {
       type: Boolean,
       default: false,
     },
-    status: {
-      type: String,
+    disqualified: {
+      type: Boolean,
+      default: false,
     },
   },
   {

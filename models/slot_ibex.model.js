@@ -50,6 +50,14 @@ const slotibexschema = new mongoose.Schema(
     cancelRefund: {
       type: Boolean,
     },
+    claimed: {
+      type: Boolean,
+      default: false,
+    },
+    disqualified: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: {

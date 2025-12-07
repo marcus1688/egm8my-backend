@@ -104,6 +104,49 @@ const generateDuitNowHash = (
   return CryptoJS.HmacSHA256(dataToHash, secretKey).toString();
 };
 
+const generateDepositCallbackHash = (
+  transaction_id,
+  status,
+  currency,
+  amount,
+  created_at,
+  secretKey
+) => {
+  const dataToHash = transaction_id + status + currency + amount + created_at;
+  return CryptoJS.HmacSHA256(dataToHash, secretKey).toString();
+};
+
+const generateQRPAYCallbackHash = (
+  invoiceno,
+  receiverbank,
+  receiveraccount,
+  currency,
+  amount,
+  paymentdate,
+  secretKey
+) => {
+  const dataToHash =
+    invoiceno +
+    receiverbank +
+    receiveraccount +
+    currency +
+    amount +
+    paymentdate;
+  return CryptoJS.HmacSHA256(dataToHash, secretKey).toString();
+};
+
+const generateWithdrawCallbackHash = (
+  invoiceno,
+  status,
+  currency,
+  amount,
+  paymentdate,
+  secretKey
+) => {
+  const dataToHash = invoiceno + status + currency + amount + paymentdate;
+  return CryptoJS.HmacSHA256(dataToHash, secretKey).toString();
+};
+
 function generateTransactionId(prefix = "") {
   const uuid = uuidv4().replace(/-/g, "").substring(0, 16);
   return prefix ? `${prefix}${uuid}` : uuid;
@@ -373,17 +416,38 @@ router.post("/api/luxepay/payin", async (req, res) => {
     const {
       status,
       ItemID,
+      Currency,
       decline_reason,
       Amount,
       bank_reference,
       transaction,
+      created_at,
+      signature2,
     } = req.body;
-    console.log(req.body, "luxepay");
+
     if (!ItemID || Amount === undefined || status === undefined) {
       console.log("Missing required parameters:", { ItemID, Amount, status });
       return res.status(200).json({
         error_code: 3,
         message: "Invalid Parameter",
+      });
+    }
+
+    const ourhash = generateDepositCallbackHash(
+      transaction,
+      status,
+      Currency,
+      Amount,
+      created_at,
+      luxepaySecret
+    );
+
+    if (ourhash !== signature2) {
+      console.log("invalid hash", ourhash);
+      console.log("invalid sign", signature2);
+      return res.status(200).json({
+        error_code: 4,
+        message: "Operation Failed",
       });
     }
 
@@ -782,6 +846,442 @@ router.post("/api/luxepay/payin", async (req, res) => {
   }
 });
 
+router.post("/api/luxepay/qrpay", async (req, res) => {
+  try {
+    const {
+      Status,
+      RefId,
+      Currency,
+      Amount,
+      InvoiceNo,
+      PaymentDate,
+      Signature,
+      ReceiverBank,
+      ReceiverAccount,
+    } = req.body;
+
+    if (!RefId || Amount === undefined || Status === undefined) {
+      console.log("Missing required parameters:", { RefId, Amount, Status });
+      return res.status(200).json({
+        error_code: 3,
+        message: "Invalid Parameter",
+      });
+    }
+
+    const ourhash = generateQRPAYCallbackHash(
+      InvoiceNo,
+      ReceiverBank,
+      ReceiverAccount,
+      Currency,
+      Amount,
+      PaymentDate,
+      luxepaySecret
+    );
+
+    if (ourhash !== Signature) {
+      console.log("invalid hash", ourhash);
+      console.log("invalid sign", Signature);
+      return res.status(200).json({
+        error_code: 4,
+        message: "Operation Failed",
+      });
+    }
+
+    const statusMapping = {
+      2: "Reject",
+      1: "Success",
+      3: "Success",
+    };
+
+    const statusCode = String(Status);
+    const statusText = statusMapping[statusCode] || "Unknown";
+    const roundedAmount = roundToTwoDecimals(Amount);
+
+    const existingTrx = await luxepayModal
+      .findOne(
+        { ourRefNo: RefId },
+        { _id: 1, username: 1, status: 1, createdAt: 1, promotionId: 1 }
+      )
+      .lean();
+
+    if (!existingTrx) {
+      console.log(`Transaction not found: ${RefId}, creating record`);
+
+      await luxepayModal.create({
+        username: "N/A",
+        transfername: "N/A",
+        ourRefNo: RefId,
+        paymentGatewayRefNo: InvoiceNo,
+        amount: roundedAmount,
+        transactiontype: "deposit",
+        status: statusText,
+        platformCharge: 0,
+        remark: `No transaction found with reference: ${RefId}. Created from callback.`,
+      });
+
+      return res.status(200).json({
+        error_code: 1,
+        message: "Invalid/Incorrect Transaction",
+      });
+    }
+
+    if (
+      (Status === "1" || Status === "3") &&
+      existingTrx.status === "Success"
+    ) {
+      console.log("Transaction already processed successfully, skipping");
+      return res.status(200).json({
+        error_code: 0,
+        message: "Operation Success",
+      });
+    }
+
+    if (
+      (Status === "1" || Status === "3") &&
+      existingTrx.status !== "Success"
+    ) {
+      const [user, gateway, kioskSettings, bank] = await Promise.all([
+        User.findOne(
+          { username: existingTrx.username },
+          {
+            _id: 1,
+            username: 1,
+            fullname: 1,
+            wallet: 1,
+            totaldeposit: 1,
+            firstDepositDate: 1,
+            duplicateIP: 1,
+            duplicateBank: 1,
+          }
+        ).lean(),
+
+        paymentgateway
+          .findOne(
+            { name: { $regex: /^luxepay$/i } },
+            { _id: 1, name: 1, balance: 1 }
+          )
+          .lean(),
+
+        kioskbalance.findOne({}, { status: 1 }).lean(),
+
+        BankList.findById(banklistID, {
+          _id: 1,
+          bankname: 1,
+          ownername: 1,
+          bankaccount: 1,
+          qrimage: 1,
+          currentbalance: 1,
+        }).lean(),
+      ]);
+
+      if (!user) {
+        console.error(`User not found: ${existingTrx.username}`);
+        return res.status(200).json({
+          error_code: 4,
+          message: "Operation Failed",
+        });
+      }
+
+      if (!bank) {
+        console.error(`Bank not found: 69247c9f7ef1ac832d86e65f`);
+        return res.status(200).json({
+          error_code: 4,
+          message: "Operation Failed",
+        });
+      }
+
+      const isNewDeposit = !user.firstDepositDate;
+      const oldGatewayBalance = gateway?.balance || 0;
+      const oldBankBalance = bank.currentbalance || 0;
+      const [
+        updatedUser,
+        newDeposit,
+        ,
+        walletLog,
+        updatedGateway,
+        updatedBank,
+      ] = await Promise.all([
+        User.findByIdAndUpdate(
+          user._id,
+          {
+            $inc: {
+              wallet: roundedAmount,
+              totaldeposit: roundedAmount,
+            },
+            $set: {
+              lastdepositdate: new Date(),
+              ...(isNewDeposit && {
+                firstDepositDate: existingTrx.createdAt,
+              }),
+            },
+          },
+          { new: true, projection: { wallet: 1 } }
+        ).lean(),
+
+        Deposit.create({
+          userId: user._id,
+          username: user.username,
+          fullname: user.fullname || "unknown",
+          bankname: "LUXEPAY",
+          ownername: "Payment Gateway",
+          transfernumber: InvoiceNo,
+          walletType: "Main",
+          transactionType: "deposit",
+          method: "auto",
+          processBy: "admin",
+          amount: roundedAmount,
+          bankid: "69247c9f7ef1ac832d86e65f",
+          walletamount: user.wallet,
+          remark: "-",
+          status: "approved",
+          processtime: "00:00:00",
+          newDeposit: isNewDeposit,
+          transactionId: RefId,
+          duplicateIP: user.duplicateIP,
+          duplicateBank: user.duplicateBank,
+        }),
+
+        luxepayModal.findByIdAndUpdate(existingTrx._id, {
+          $set: { status: statusText },
+        }),
+
+        UserWalletLog.create({
+          userId: user._id,
+          transactionid: RefId,
+          transactiontime: new Date(),
+          transactiontype: "deposit",
+          amount: roundedAmount,
+          status: "approved",
+        }),
+
+        paymentgateway.findOneAndUpdate(
+          { name: { $regex: /^luxepay$/i } },
+          { $inc: { balance: roundedAmount } },
+          { new: true, projection: { _id: 1, name: 1, balance: 1 } }
+        ),
+
+        BankList.findByIdAndUpdate(
+          banklistID,
+          [
+            {
+              $set: {
+                totalDeposits: { $add: ["$totalDeposits", roundedAmount] },
+                currentbalance: {
+                  $subtract: [
+                    {
+                      $add: [
+                        "$startingbalance",
+                        { $add: ["$totalDeposits", roundedAmount] },
+                        "$totalCashIn",
+                      ],
+                    },
+                    {
+                      $add: ["$totalWithdrawals", "$totalCashOut"],
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+          { new: true, projection: { currentbalance: 1 } }
+        ).lean(),
+      ]);
+
+      await BankTransactionLog.create({
+        bankName: bank.bankname,
+        ownername: bank.ownername,
+        bankAccount: bank.bankaccount,
+        remark: "-",
+        lastBalance: oldBankBalance,
+        currentBalance:
+          updatedBank?.currentbalance || oldBankBalance + roundedAmount,
+        processby: "admin",
+        qrimage: bank.qrimage,
+        playerusername: user.username,
+        playerfullname: user.fullname,
+        transactiontype: "deposit",
+        amount: roundedAmount,
+      });
+
+      const depositCount = await LiveTransaction.countDocuments({
+        type: "deposit",
+      });
+
+      if (depositCount >= 5) {
+        await LiveTransaction.findOneAndUpdate(
+          { type: "deposit" },
+          {
+            $set: {
+              username: user.username,
+              amount: roundedAmount,
+              time: new Date(),
+            },
+          },
+          { sort: { time: 1 } }
+        );
+      } else {
+        await LiveTransaction.create({
+          type: "deposit",
+          username: user.username,
+          amount: roundedAmount,
+          time: new Date(),
+          status: "completed",
+        });
+      }
+
+      if (kioskSettings?.status) {
+        const kioskResult = await updateKioskBalance(
+          "subtract",
+          roundedAmount,
+          {
+            username: user.username,
+            transactionType: "deposit approval",
+            remark: `Deposit ID: ${newDeposit._id}`,
+            processBy: "admin",
+          }
+        );
+        if (!kioskResult.success) {
+          console.error("Failed to update kiosk balance for deposit");
+        }
+      }
+
+      setImmediate(() => {
+        checkAndUpdateVIPLevel(user._id).catch((error) => {
+          console.error(
+            `VIP level update error for user ${user._id}:`,
+            error.message
+          );
+        });
+        updateUserGameLocks(user._id);
+      });
+
+      await PaymentGatewayTransactionLog.create({
+        gatewayId: gateway?._id,
+        gatewayName: gateway?.name || "LUXEPAY",
+        transactiontype: "deposit",
+        amount: roundedAmount,
+        lastBalance: oldGatewayBalance,
+        currentBalance:
+          updatedGateway?.balance || oldGatewayBalance + roundedAmount,
+        remark: `Deposit from ${user.username}`,
+        playerusername: user.username,
+        processby: "system",
+        depositId: newDeposit._id,
+      });
+
+      if (existingTrx.promotionId) {
+        try {
+          const promotion = await Promotion.findById(existingTrx.promotionId, {
+            claimtype: 1,
+            bonuspercentage: 1,
+            bonusexact: 1,
+            maxbonus: 1,
+            maintitle: 1,
+            maintitleEN: 1,
+          }).lean();
+
+          if (!promotion) {
+            console.log("LUXEPAY, couldn't find promotion");
+          } else {
+            let bonusAmount = 0;
+
+            if (promotion.claimtype === "Percentage") {
+              bonusAmount =
+                (Number(Amount) * parseFloat(promotion.bonuspercentage)) / 100;
+              if (promotion.maxbonus > 0 && bonusAmount > promotion.maxbonus) {
+                bonusAmount = promotion.maxbonus;
+              }
+            } else if (promotion.claimtype === "Exact") {
+              bonusAmount = parseFloat(promotion.bonusexact);
+              if (promotion.maxbonus > 0 && bonusAmount > promotion.maxbonus) {
+                bonusAmount = promotion.maxbonus;
+              }
+            }
+
+            if (bonusAmount > 0) {
+              bonusAmount = roundToTwoDecimals(bonusAmount);
+              const bonusTransactionId = uuidv4();
+
+              const [, newBonus] = await Promise.all([
+                User.findByIdAndUpdate(user._id, {
+                  $inc: { wallet: bonusAmount },
+                }),
+
+                Bonus.create({
+                  transactionId: bonusTransactionId,
+                  userId: user._id,
+                  username: user.username,
+                  fullname: user.fullname || "unknown",
+                  transactionType: "bonus",
+                  processBy: "admin",
+                  amount: bonusAmount,
+                  walletamount: updatedUser?.wallet || user.wallet,
+                  status: "approved",
+                  method: "manual",
+                  remark: "-",
+                  promotionname: promotion.maintitle,
+                  promotionnameEN: promotion.maintitleEN,
+                  promotionId: existingTrx.promotionId,
+                  depositId: newDeposit._id,
+                  duplicateIP: user.duplicateIP,
+                }),
+
+                UserWalletLog.create({
+                  userId: user._id,
+                  transactionid: bonusTransactionId,
+                  transactiontime: new Date(),
+                  transactiontype: "bonus",
+                  amount: bonusAmount,
+                  status: "approved",
+                  promotionnameCN: promotion.maintitle,
+                  promotionnameEN: promotion.maintitleEN,
+                }),
+              ]);
+
+              if (kioskSettings?.status) {
+                const kioskResult = await updateKioskBalance(
+                  "subtract",
+                  bonusAmount,
+                  {
+                    username: user.username,
+                    transactionType: "bonus approval",
+                    remark: `Bonus ID: ${newBonus._id}`,
+                    processBy: "admin",
+                  }
+                );
+                if (!kioskResult.success) {
+                  console.error("Failed to update kiosk balance for bonus");
+                }
+              }
+            }
+          }
+        } catch (promotionError) {
+          console.error("Error processing promotion:", promotionError);
+        }
+      }
+    } else {
+      await luxepayModal.findByIdAndUpdate(existingTrx._id, {
+        $set: { status: statusText },
+      });
+    }
+    return res.status(200).json({
+      error_code: 0,
+      message: "Operation Success",
+    });
+  } catch (error) {
+    console.error("Payment callback processing error:", {
+      error: error.message,
+      body: req.body,
+      timestamp: moment().utc().format(),
+      stack: error.stack,
+    });
+    return res.status(200).json({
+      error_code: 4,
+      message: "Operation Failed",
+    });
+  }
+});
+
 router.post("/admin/api/luxepay/requesttransfer/:userId", async (req, res) => {
   try {
     const userId = req.params.userId;
@@ -831,7 +1331,7 @@ router.post("/admin/api/luxepay/requesttransfer/:userId", async (req, res) => {
       luxepayMerchantCode,
       transactionId,
       accountHolder,
-      "161.142.136.26",
+      clientIp,
       "MYR",
       formattedAmount,
       bankCode,
@@ -844,7 +1344,7 @@ router.post("/admin/api/luxepay/requesttransfer/:userId", async (req, res) => {
       merchant_code: luxepayMerchantCode,
       ref_id: transactionId,
       player_username: accountHolder,
-      player_ip: "161.142.136.26",
+      player_ip: clientIp,
       currency_code: "MYR",
       amount: formattedAmount,
       bank_code: bankCode,
@@ -852,56 +1352,51 @@ router.post("/admin/api/luxepay/requesttransfer/:userId", async (req, res) => {
       beneficiary_name: accountHolder,
       hash,
     };
-    console.log(requestBody);
-    console.log(luxepayPAYOUTAPIURL);
+
     const response = await axios.post(`${luxepayPAYOUTAPIURL}`, requestBody, {
       headers: { "Content-Type": "application/json" },
     });
-    console.log(response.data);
-    return;
-    if (response.data.error_code && !response.data.transaction) {
-      console.log(`TRUEPay API Error: ${JSON.stringify(response.data)}`);
+
+    if (response.data.error_code !== 0) {
+      console.log(`LUXPAY API Error: ${JSON.stringify(response.data)}`);
 
       return res.status(200).json({
         success: false,
         message: {
-          en: "Failed to generate payment link. Please try again or contact customer service for assistance.",
-          zh: "生成支付链接失败，请重试或联系客服以获取帮助。",
-          zh_hk: "生成支付連結失敗，麻煩老闆再試多次或者聯絡客服幫手。",
-          ms: "Gagal menjana pautan pembayaran. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
-          id: "Gagal membuat tautan pembayaran. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+          en: "Payout request failed",
+          zh: "申请代付失败",
+          zh_hk: "申請代付失敗",
+          ms: "Permintaan pembayaran gagal",
+          id: "Permintaan pembayaran gagal",
         },
       });
     }
 
     await Promise.all([
       luxepayModal.create({
-        ourRefNo: refno,
-        paymentGatewayRefNo: "",
+        ourRefNo: transactionId,
+        paymentGatewayRefNo: response.data.invoice_number,
         transfername: user.fullname,
         username: user.username,
-        amount: Number(trfAmt),
-        transferType: bankCode,
-        transactiontype: "deposit",
+        amount: Number(formattedAmount),
+        transferType: bankName || bankCode,
+        transactiontype: "withdraw",
         status: "Pending",
         platformCharge: 0,
         remark: "-",
-        promotionId: promotionId || null,
+        promotionId: null,
       }),
     ]);
-
-    const paymentUrl = response.data.redirect_to.replace("redirectlink=", "");
 
     return res.status(200).json({
       success: true,
       message: {
-        en: "Redirecting to payment page...",
-        zh: "正在跳转至支付页面...",
-        zh_hk: "正在跳緊去支付頁面...",
-        ms: "Mengalihkan ke halaman pembayaran...",
-        id: "Mengarahkan ke halaman pembayaran...",
+        en: "Payout request submitted successfully",
+        zh: "提交申请代付成功",
+        zh_hk: "提交申請代付成功",
+        ms: "Permintaan pembayaran berjaya diserahkan",
+        id: "Permintaan pembayaran berhasil diajukan",
       },
-      url: paymentUrl,
     });
   } catch (error) {
     console.error(
@@ -912,12 +1407,456 @@ router.post("/admin/api/luxepay/requesttransfer/:userId", async (req, res) => {
     return res.status(200).json({
       success: false,
       message: {
-        en: "Failed to generate payment link. Please try again or contact customer service for assistance.",
-        zh: "生成支付链接失败，请重试或联系客服以获取帮助。",
-        zh_hk: "生成支付連結失敗，麻煩老闆再試多次或者聯絡客服幫手。",
-        ms: "Gagal menjana pautan pembayaran. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
-        id: "Gagal membuat tautan pembayaran. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+        en: "Payout request failed",
+        zh: "申请代付失败",
+        zh_hk: "申請代付失敗",
+        ms: "Permintaan pembayaran gagal",
+        id: "Permintaan pembayaran gagal",
       },
+    });
+  }
+});
+
+async function handleRejectedWithdrawalApproval(
+  existingTrx,
+  refid,
+  roundedAmount,
+  user
+) {
+  const [, withdraw, updatedUser] = await Promise.all([
+    UserWalletLog.findOneAndUpdate(
+      { transactionid: refid },
+      { $set: { status: "approved" } }
+    ),
+
+    Withdraw.findOneAndUpdate(
+      { transactionId: refid },
+      {
+        $set: {
+          status: "approved",
+          processBy: "admin",
+          processtime: "00:00:00",
+        },
+      },
+      {
+        new: false,
+        projection: { _id: 1, amount: 1, withdrawbankid: 1, remark: 1 },
+      }
+    ).lean(),
+
+    User.findOneAndUpdate(
+      { username: existingTrx.username },
+      { $inc: { wallet: -roundedAmount } },
+      {
+        new: true,
+        projection: { _id: 1, username: 1, fullname: 1, wallet: 1 },
+      }
+    ).lean(),
+  ]);
+
+  if (!withdraw) {
+    console.error(`Withdraw record not found for refid: ${refid}`);
+    return;
+  }
+
+  const [kioskSettings, bank] = await Promise.all([
+    kioskbalance.findOne({}, { status: 1 }).lean(),
+    BankList.findById(withdraw.withdrawbankid, {
+      _id: 1,
+      bankname: 1,
+      ownername: 1,
+      bankaccount: 1,
+      qrimage: 1,
+      currentbalance: 1,
+    }).lean(),
+  ]);
+
+  if (!bank) {
+    console.error(
+      `Bank not found for withdrawbankid: ${withdraw.withdrawbankid}`
+    );
+    return;
+  }
+
+  if (kioskSettings?.status) {
+    const kioskResult = await updateKioskBalance("add", withdraw.amount, {
+      username: existingTrx.username,
+      transactionType: "withdraw approval",
+      remark: `Withdraw ID: ${withdraw._id}`,
+      processBy: "admin",
+    });
+
+    if (!kioskResult.success) {
+      console.error("Failed to update kiosk balance for withdraw approval");
+    }
+  }
+
+  await Promise.all([
+    BankList.findByIdAndUpdate(withdraw.withdrawbankid, {
+      $inc: {
+        currentbalance: -withdraw.amount,
+        totalWithdrawals: withdraw.amount,
+      },
+    }),
+
+    BankTransactionLog.create({
+      bankName: bank.bankname,
+      ownername: bank.ownername,
+      bankAccount: bank.bankaccount,
+      remark: withdraw.remark || "-",
+      lastBalance: bank.currentbalance,
+      currentBalance: bank.currentbalance - withdraw.amount,
+      processby: "admin",
+      transactiontype: "withdraw",
+      amount: withdraw.amount,
+      qrimage: bank.qrimage,
+      playerusername: updatedUser?.username || existingTrx.username,
+      playerfullname: updatedUser?.fullname || "N/A",
+    }),
+  ]);
+
+  console.log(
+    `Rejected withdrawal re-approved: ${refid}, User ${existingTrx.username}, Amount: ${roundedAmount}`
+  );
+}
+
+async function handleApprovedWithdrawalReject(
+  existingTrx,
+  refid,
+  roundedAmount,
+  user
+) {
+  const gateway = await paymentgateway
+    .findOne(
+      { name: { $regex: /^luxepay$/i } },
+      { _id: 1, name: 1, balance: 1 }
+    )
+    .lean();
+
+  if (!gateway) {
+    console.error("Gateway not found for withdrawal rejection");
+    return;
+  }
+
+  const oldGatewayBalance = gateway.balance || 0;
+
+  const updatedGateway = await paymentgateway.findOneAndUpdate(
+    { name: { $regex: /^luxepay$/i } },
+    { $inc: { balance: roundedAmount } },
+    { new: true, projection: { _id: 1, name: 1, balance: 1 } }
+  );
+
+  await PaymentGatewayTransactionLog.create({
+    gatewayId: gateway._id,
+    gatewayName: gateway.name || "LUXEPAY",
+    transactiontype: "reverted withdraw",
+    amount: roundedAmount,
+    lastBalance: oldGatewayBalance,
+    currentBalance:
+      updatedGateway?.balance || oldGatewayBalance + roundedAmount,
+    remark: `Revert withdraw from ${user.username}`,
+    playerusername: user.username,
+    processby: "system",
+  });
+
+  console.log(
+    `Approved withdrawal re-rejected: ${refid}, User ${existingTrx.username}, Amount: ${roundedAmount}`
+  );
+}
+
+router.post("/api/luxepay/payout", async (req, res) => {
+  try {
+    const {
+      InvoiceNo,
+      Status,
+      Currency,
+      PaymentDate,
+      StatusMessage,
+      MerchantCode,
+      Signature,
+      RefId,
+      Amount,
+    } = req.body;
+
+    if (!RefId || Amount == undefined || Status === undefined) {
+      console.log("Missing required parameters:", {
+        RefId,
+        Amount,
+        Status,
+      });
+      return res.status(200).json({
+        error_code: 3,
+        message: "Invalid Parameter",
+      });
+    }
+
+    const ourhash = generateWithdrawCallbackHash(
+      InvoiceNo,
+      Status,
+      Currency,
+      Amount,
+      PaymentDate,
+      luxepaySecret
+    );
+
+    if (ourhash !== Signature) {
+      console.log("invalid hash", ourhash);
+      console.log("invalid sign", Signature);
+      return res.status(200).json({
+        error_code: 1001,
+        message: "Invalid Signature",
+      });
+    }
+
+    const statusMapping = {
+      0: "Pending",
+      2: "Reject",
+      1: "Success",
+      3: "Success",
+    };
+
+    const statusCode = String(Status);
+    const statusText = statusMapping[statusCode] || "Unknown";
+    const roundedAmount = roundToTwoDecimals(Amount);
+
+    const existingTrx = await luxepayModal
+      .findOne(
+        { ourRefNo: RefId },
+        { _id: 1, username: 1, status: 1, createdAt: 1, promotionId: 1 }
+      )
+      .lean();
+
+    if (!existingTrx) {
+      console.log(`Transaction not found: ${RefId}, creating record`);
+      await luxepayModal.create({
+        username: "N/A",
+        transfername: "N/A",
+        ourRefNo: RefId,
+        paymentGatewayRefNo: InvoiceNo,
+        amount: roundedAmount,
+        transactiontype: "withdraw",
+        status: statusText,
+        platformCharge: 0,
+        remark: `No transaction found with reference: ${RefId}. Created from callback.`,
+      });
+
+      return res.status(200).json({
+        error_code: 1,
+        message: "Invalid/Incorrect Transaction",
+      });
+    }
+
+    if (
+      (Status === "1" || Status === "3") &&
+      existingTrx.status === "Success"
+    ) {
+      console.log("Transaction already processed successfully, skipping");
+      return res.status(200).json({
+        error_code: 0,
+        message: "Operation Success",
+      });
+    }
+
+    if (
+      (Status === "1" || Status === "3") &&
+      existingTrx.status !== "Success"
+    ) {
+      const [user, gateway] = await Promise.all([
+        User.findOne(
+          { username: existingTrx.username },
+          {
+            _id: 1,
+            username: 1,
+            fullname: 1,
+            wallet: 1,
+            duplicateIP: 1,
+            duplicateBank: 1,
+          }
+        ).lean(),
+
+        paymentgateway
+          .findOne(
+            { name: { $regex: /^luxepay$/i } },
+            { _id: 1, name: 1, balance: 1 }
+          )
+          .lean(),
+      ]);
+
+      if (!user) {
+        console.error(`User not found: ${existingTrx.username}`);
+        return res.status(200).json({
+          error_code: 3,
+          message: "Invalid Parameter",
+        });
+      }
+
+      if (existingTrx.status === "Reject") {
+        await handleRejectedWithdrawalApproval(
+          existingTrx,
+          RefId,
+          roundedAmount,
+          user
+        );
+      }
+
+      const oldGatewayBalance = gateway?.balance || 0;
+
+      const [, updatedGateway] = await Promise.all([
+        luxepayModal.findByIdAndUpdate(existingTrx._id, {
+          $set: { status: statusText },
+        }),
+
+        paymentgateway.findOneAndUpdate(
+          { name: { $regex: /^luxepay$/i } },
+          { $inc: { balance: -roundedAmount } },
+          { new: true, projection: { _id: 1, name: 1, balance: 1 } }
+        ),
+      ]);
+
+      await PaymentGatewayTransactionLog.create({
+        gatewayId: gateway?._id,
+        gatewayName: gateway?.name || "LUXEPAY",
+        transactiontype: "withdraw",
+        amount: roundedAmount,
+        lastBalance: oldGatewayBalance,
+        currentBalance:
+          updatedGateway?.balance || oldGatewayBalance - roundedAmount,
+        remark: `Withdraw from ${user.username}`,
+        playerusername: user.username,
+        processby: "system",
+      });
+    } else if (Status === "2" && existingTrx.status !== "Reject") {
+      const [, , withdraw, updatedUser] = await Promise.all([
+        luxepayModal.findByIdAndUpdate(existingTrx._id, {
+          $set: { status: statusText },
+        }),
+
+        UserWalletLog.findOneAndUpdate(
+          { transactionid: RefId },
+          { $set: { status: "cancel" } }
+        ),
+
+        Withdraw.findOneAndUpdate(
+          { transactionId: RefId },
+          {
+            $set: {
+              status: "reverted",
+              processBy: "admin",
+              processtime: "00:00:00",
+            },
+          },
+          {
+            new: false,
+            projection: { _id: 1, amount: 1, withdrawbankid: 1, remark: 1 },
+          }
+        ).lean(),
+
+        User.findOneAndUpdate(
+          { username: existingTrx.username },
+          { $inc: { wallet: roundedAmount } },
+          {
+            new: true,
+            projection: { _id: 1, username: 1, fullname: 1, wallet: 1 },
+          }
+        ).lean(),
+      ]);
+
+      if (existingTrx.status === "Success") {
+        await handleApprovedWithdrawalReject(
+          existingTrx,
+          RefId,
+          roundedAmount,
+          updatedUser
+        );
+      }
+
+      if (!withdraw) {
+        console.log(`Withdraw not found for RefId: ${RefId}`);
+        return res.status(200).json({
+          error_code: 3,
+          message: "Invalid Parameter",
+        });
+      }
+
+      const [kioskSettings, bank] = await Promise.all([
+        kioskbalance.findOne({}, { status: 1 }).lean(),
+        BankList.findById(withdraw.withdrawbankid, {
+          _id: 1,
+          bankname: 1,
+          ownername: 1,
+          bankaccount: 1,
+          qrimage: 1,
+          currentbalance: 1,
+        }).lean(),
+      ]);
+
+      if (!bank) {
+        console.log("Invalid bank luxepay callback");
+        return res.status(200).json({
+          error_code: 3,
+          message: "Invalid Parameter",
+        });
+      }
+
+      if (kioskSettings?.status) {
+        const kioskResult = await updateKioskBalance(
+          "subtract",
+          withdraw.amount,
+          {
+            username: existingTrx.username,
+            transactionType: "withdraw reverted",
+            remark: `Withdraw ID: ${withdraw._id}`,
+            processBy: "admin",
+          }
+        );
+        if (!kioskResult.success) {
+          console.error("Failed to update kiosk balance for withdraw revert");
+        }
+      }
+
+      await Promise.all([
+        BankList.findByIdAndUpdate(withdraw.withdrawbankid, {
+          $inc: {
+            currentbalance: withdraw.amount,
+            totalWithdrawals: -withdraw.amount,
+          },
+        }),
+
+        BankTransactionLog.create({
+          bankName: bank.bankname,
+          ownername: bank.ownername,
+          bankAccount: bank.bankaccount,
+          remark: withdraw.remark || "-",
+          lastBalance: bank.currentbalance,
+          currentBalance: bank.currentbalance + withdraw.amount,
+          processby: "admin",
+          transactiontype: "reverted withdraw",
+          amount: withdraw.amount,
+          qrimage: bank.qrimage,
+          playerusername: updatedUser?.username || existingTrx.username,
+          playerfullname: updatedUser?.fullname || "N/A",
+        }),
+      ]);
+
+      console.log(
+        `Transaction rejected: ${RefId}, User ${existingTrx.username} refunded ${roundedAmount}, New wallet: ${updatedUser?.wallet}`
+      );
+    }
+
+    return res.status(200).json({
+      error_code: 0,
+      message: "Operation Success",
+    });
+  } catch (error) {
+    console.error("Payment callback processing error:", {
+      error: error.message,
+      body: req.body,
+      timestamp: moment().utc().format(),
+      stack: error.stack,
+    });
+    return res.status(200).json({
+      error_code: 3,
+      message: "Invalid Parameter",
     });
   }
 });

@@ -52,6 +52,14 @@ const slotrsgSchema = new mongoose.Schema(
     withdrawamount: {
       type: Number,
     },
+    claimed: {
+      type: Boolean,
+      default: false,
+    },
+    disqualified: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: {

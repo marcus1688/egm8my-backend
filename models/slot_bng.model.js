@@ -29,6 +29,14 @@ const slotbngschema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    claimed: {
+      type: Boolean,
+      default: false,
+    },
+    disqualified: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: {

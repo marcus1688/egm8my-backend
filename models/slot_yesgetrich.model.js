@@ -44,6 +44,14 @@ const slotYGRschema = new mongoose.Schema(
     currentConnectToken: {
       type: String,
     },
+    claimed: {
+      type: Boolean,
+      default: false,
+    },
+    disqualified: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: {
