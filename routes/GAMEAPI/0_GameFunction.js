@@ -1715,13 +1715,8 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
 
           RebateLog.create({
             username: user.username,
-            totaldeposit: 0,
-            totalwithdraw: 0,
-            totalbonus: 0,
-            totalwinlose: 0,
             totalRebate: totalCommission,
             rebateissuesdate: new Date(),
-            type: "VIP Instant Rebate",
             formula,
             remark,
             totalturnover: totalTurnover,
@@ -1736,9 +1731,7 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
             poker: 0,
             mahjong: 0,
             horse: 0,
-            claimed: true,
-            claimedBy: user.gameId,
-            claimedAt: new Date(),
+            type: "turnover",
           }),
 
           Bonus.create({
