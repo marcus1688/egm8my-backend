@@ -3455,20 +3455,34 @@ router.post(
         }
       }
 
-      if (
-        user.firstDepositDate &&
-        moment(deposit.createdAt).isSame(moment(user.firstDepositDate))
-      ) {
-        user.firstDepositDate = null;
+      const isNewDeposit = deposit.newDeposit === true;
+
+      if (isNewDeposit) {
         deposit.newDeposit = false;
       }
 
-      const updatedUser = await User.findByIdAndUpdate(
+      let newLastDepositDate = user.lastdepositdate;
+      if (user.lastdepositdate) {
+        const previousDeposit = await Deposit.findOne({
+          userId: user._id,
+          status: "approved",
+          reverted: { $ne: true },
+          _id: { $ne: deposit._id },
+        }).sort({ createdAt: -1 });
+
+        newLastDepositDate = previousDeposit ? previousDeposit.createdAt : null;
+      }
+
+      await User.findByIdAndUpdate(
         user._id,
         {
           $inc: {
             wallet: -deposit.amount,
             totaldeposit: -deposit.amount,
+          },
+          $set: {
+            firstDepositDate: isNewDeposit ? null : user.firstDepositDate,
+            lastdepositdate: newLastDepositDate,
           },
         },
         { new: true }
