@@ -18,8 +18,9 @@ const Promotion = require("../../models/promotion.model");
 const Deposit = require("../../models/deposit.model");
 const Withdraw = require("../../models/withdraw.model");
 const vip = require("../../models/vip.model");
-const RebateLog = require("../../models/rebate.model");
-
+const { RebateLog } = require("../../models/rebate.model");
+const { updateKioskBalance } = require("../../services/kioskBalanceService");
+const kioskbalance = require("../../models/kioskbalance.model");
 const GameWalletLog = require("../../models/gamewalletlog.model");
 
 const SlotEpicWinModal = require("../../models/slot_epicwin.model");
@@ -755,15 +756,64 @@ const getVipRebateRates = (vipLevels, userVipLevel) => {
     [CATEGORIES.LOTTERY]: 0,
   };
 };
+
+/**
+ * Calculate turnover requirement from bonuses
+ */
+const calculateBonusTurnoverRequirement = async (bonuses) => {
+  const promotionIds = [
+    ...new Set(bonuses.map((b) => b.promotionId).filter(Boolean)),
+  ];
+  const promotions = await Promotion.find({
+    _id: { $in: promotionIds },
+  }).lean();
+  const promotionMap = new Map(promotions.map((p) => [String(p._id), p]));
+
+  let totalTurnoverRequired = 0;
+  const bonusDetails = [];
+
+  for (const bonus of bonuses) {
+    const promotion = promotionMap.get(String(bonus.promotionId));
+    const multiplier =
+      promotion?.turnoverrequiremnt || DEFAULT_TURNOVER_MULTIPLIER;
+    const bonusAmount = parseFloat(bonus.amount) || 0;
+    const requiredForThisBonus = bonusAmount * multiplier;
+
+    totalTurnoverRequired += requiredForThisBonus;
+
+    bonusDetails.push({
+      bonusId: bonus._id,
+      bonusAmount,
+      multiplier,
+      required: requiredForThisBonus,
+      promotionName: promotion?.name || "Unknown",
+      createdAt: bonus.createdAt,
+    });
+
+    console.log(
+      `   Bonus: ${bonusAmount} × ${multiplier}x = ${requiredForThisBonus} (${
+        promotion?.name || "Unknown"
+      })`
+    );
+  }
+
+  console.log(`📊 Total turnover required: ${totalTurnoverRequired}`);
+
+  return { totalTurnoverRequired, bonusDetails };
+};
+
 /**
  * Check user qualification for rebate
  *
  * Scenarios:
- * 1. No deposits AND no bonuses → Disqualified (nothing to claim)
- * 2. No deposits BUT has bonuses → Calculate turnover requirement (free bonus)
- * 3. Has deposits, no bonuses → Qualified from latest deposit
- * 4. Has deposits, pure deposit after latest bonus → Qualified from pure deposit
- * 5. Has deposits, all linked to bonuses → Calculate turnover requirement
+ * 1. No deposits AND no bonuses → Disqualified
+ * 2. No deposits BUT has bonuses (free bonus) → Check turnover requirement
+ * 3. Has deposits, no bonuses → Qualified from latest deposit (all eligible)
+ * 4. Has deposits, pure deposit after latest bonus → Qualified from pure deposit (all eligible)
+ * 5. Has deposits, bonus after pure deposit → Split:
+ *    - Bets from pure deposit to bonus date → eligible
+ *    - Bets after bonus → need turnover requirement
+ * 6. All deposits linked to bonuses → Check turnover requirement from start
  */
 const checkUserQualification = async (userId) => {
   try {
@@ -774,7 +824,7 @@ const checkUserQualification = async (userId) => {
         .sort({ createdAt: -1 })
         .lean(),
       Bonus.find({ userId, status: "approved", reverted: false })
-        .sort({ createdAt: 1 })
+        .sort({ createdAt: -1 })
         .lean(),
     ]);
 
@@ -791,59 +841,22 @@ const checkUserQualification = async (userId) => {
       return {
         qualified: false,
         reason: "No deposits and no bonuses found",
-        turnoverRequired: 0,
       };
     }
 
-    // SCENARIO 2: No deposits BUT has bonuses (free bonus) = check turnover requirement
+    // SCENARIO 2: No deposits BUT has bonuses (free bonus)
     if (!hasDeposits && hasBonuses) {
       console.log(
         `📊 User ${userId}: No deposits but has free bonuses, calculating turnover requirement...`
       );
-
-      const promotionIds = [
-        ...new Set(bonuses.map((b) => b.promotionId).filter(Boolean)),
-      ];
-      const promotions = await Promotion.find({
-        _id: { $in: promotionIds },
-      }).lean();
-      const promotionMap = new Map(promotions.map((p) => [String(p._id), p]));
-
-      let totalTurnoverRequired = 0;
-      const bonusDetails = [];
-
-      for (const bonus of bonuses) {
-        const promotion = promotionMap.get(String(bonus.promotionId));
-        const multiplier =
-          promotion?.turnoverrequiremnt || DEFAULT_TURNOVER_MULTIPLIER;
-        const bonusAmount = parseFloat(bonus.amount) || 0;
-        const requiredForThisBonus = bonusAmount * multiplier;
-
-        totalTurnoverRequired += requiredForThisBonus;
-
-        bonusDetails.push({
-          bonusId: bonus._id,
-          bonusAmount,
-          multiplier,
-          required: requiredForThisBonus,
-          promotionName: promotion?.name || "Unknown",
-          createdAt: bonus.createdAt,
-        });
-
-        console.log(
-          `   Free Bonus: ${bonusAmount} × ${multiplier}x = ${requiredForThisBonus} (${
-            promotion?.name || "Unknown"
-          })`
-        );
-      }
-
-      console.log(`📊 Total turnover required: ${totalTurnoverRequired}`);
+      const turnoverData = await calculateBonusTurnoverRequirement(bonuses);
 
       return {
         qualified: true,
         hasBonusTurnoverRequirement: true,
-        turnoverRequired: totalTurnoverRequired,
-        bonusDetails,
+        turnoverRequired: turnoverData.totalTurnoverRequired,
+        bonusDetails: turnoverData.bonusDetails,
+        bonusTurnoverStartDate: new Date(0), // From the beginning
         reason: "Free bonus - need to meet turnover requirement",
       };
     }
@@ -857,126 +870,154 @@ const checkUserQualification = async (userId) => {
         qualified: true,
         qualifyFromDate: deposits[0].createdAt,
         reason: "No bonuses claimed",
-        turnoverRequired: 0,
         hasBonusTurnoverRequirement: false,
       };
     }
 
-    // SCENARIO 4 & 5: Has both deposits and bonuses
-    // Check for pure deposit (not linked to any bonus)
+    // SCENARIO 4, 5, 6: Has both deposits and bonuses
     const linkedDepositIds = new Set(
       bonuses.filter((b) => b.depositId).map((b) => String(b.depositId))
     );
 
+    console.log(
+      `User ${userId}: Linked deposit IDs: [${Array.from(linkedDepositIds).join(
+        ", "
+      )}]`
+    );
+
+    // Find the latest pure deposit (not linked to any bonus)
     const latestPureDeposit = deposits.find(
       (d) => !linkedDepositIds.has(String(d.transactionId))
     );
 
-    // SCENARIO 4: Pure deposit exists and is more recent than latest bonus
-    if (latestPureDeposit) {
-      const latestBonus = bonuses[bonuses.length - 1]; // Most recent (sorted asc)
-      if (!latestBonus || latestPureDeposit.createdAt > latestBonus.createdAt) {
-        console.log(
-          `✅ User ${userId}: Pure deposit after bonus, qualified from ${latestPureDeposit.createdAt}`
-        );
-        return {
-          qualified: true,
-          qualifyFromDate: latestPureDeposit.createdAt,
-          reason: "Pure deposit without linked bonus",
-          turnoverRequired: 0,
-          hasBonusTurnoverRequirement: false,
-        };
-      }
-    }
-
-    // SCENARIO 5: All deposits linked to bonuses OR bonus claimed after pure deposit
-    // Calculate turnover requirement from ALL bonuses
     console.log(
-      `📊 User ${userId}: Calculating turnover requirement from bonuses...`
+      `User ${userId}: Latest pure deposit: ${
+        latestPureDeposit
+          ? `${latestPureDeposit.transactionId} at ${latestPureDeposit.createdAt}`
+          : "None found"
+      }`
     );
 
-    const promotionIds = [
-      ...new Set(bonuses.map((b) => b.promotionId).filter(Boolean)),
-    ];
-    const promotions = await Promotion.find({
-      _id: { $in: promotionIds },
-    }).lean();
-    const promotionMap = new Map(promotions.map((p) => [String(p._id), p]));
-
-    let totalTurnoverRequired = 0;
-    const bonusDetails = [];
-
-    for (const bonus of bonuses) {
-      const promotion = promotionMap.get(String(bonus.promotionId));
-      const multiplier =
-        promotion?.turnoverrequiremnt || DEFAULT_TURNOVER_MULTIPLIER;
-      const bonusAmount = parseFloat(bonus.amount) || 0;
-      const requiredForThisBonus = bonusAmount * multiplier;
-
-      totalTurnoverRequired += requiredForThisBonus;
-
-      bonusDetails.push({
-        bonusId: bonus._id,
-        bonusAmount,
-        multiplier,
-        required: requiredForThisBonus,
-        promotionName: promotion?.name || "Unknown",
-        createdAt: bonus.createdAt,
-      });
-
+    // SCENARIO 6: No pure deposit found = all deposits linked to bonuses
+    if (!latestPureDeposit) {
       console.log(
-        `   Bonus: ${bonusAmount} × ${multiplier}x = ${requiredForThisBonus} (${
-          promotion?.name || "Unknown"
-        })`
+        `📊 User ${userId}: All deposits linked to bonuses, calculating turnover requirement...`
       );
+      const turnoverData = await calculateBonusTurnoverRequirement(bonuses);
+
+      return {
+        qualified: true,
+        hasBonusTurnoverRequirement: true,
+        turnoverRequired: turnoverData.totalTurnoverRequired,
+        bonusDetails: turnoverData.bonusDetails,
+        bonusTurnoverStartDate: new Date(0), // From the beginning
+        reason:
+          "All deposits linked to bonuses - need to meet turnover requirement",
+      };
     }
 
-    console.log(`📊 Total turnover required: ${totalTurnoverRequired}`);
+    const latestBonus = bonuses[0]; // Most recent bonus (sorted desc)
+
+    console.log(
+      `User ${userId}: Latest bonus: ${
+        latestBonus ? `${latestBonus._id} at ${latestBonus.createdAt}` : "None"
+      }`
+    );
+
+    // SCENARIO 4: Pure deposit is more recent than latest bonus
+    if (!latestBonus || latestPureDeposit.createdAt > latestBonus.createdAt) {
+      console.log(
+        `✅ User ${userId}: Pure deposit after bonus, qualified from ${latestPureDeposit.createdAt}`
+      );
+      return {
+        qualified: true,
+        qualifyFromDate: latestPureDeposit.createdAt,
+        reason: "Pure deposit without linked bonus",
+        hasBonusTurnoverRequirement: false,
+      };
+    }
+
+    // SCENARIO 5: Bonus claimed after pure deposit
+    // - Bets from pure deposit to bonus → eligible for rebate
+    // - Bets after bonus → need to meet turnover requirement first
+    console.log(
+      `📊 User ${userId}: Bonus claimed after pure deposit, calculating split...`
+    );
+    console.log(`   Pure deposit date: ${latestPureDeposit.createdAt}`);
+    console.log(`   Latest bonus date: ${latestBonus.createdAt}`);
+
+    const turnoverData = await calculateBonusTurnoverRequirement(bonuses);
 
     return {
       qualified: true,
+      qualifyFromDate: latestPureDeposit.createdAt, // Bets from here are eligible
       hasBonusTurnoverRequirement: true,
-      turnoverRequired: totalTurnoverRequired,
-      bonusDetails,
-      reason: "Has bonus - need to meet turnover requirement",
+      turnoverRequired: turnoverData.totalTurnoverRequired,
+      bonusDetails: turnoverData.bonusDetails,
+      bonusTurnoverStartDate: latestBonus.createdAt, // Turnover requirement starts from here
+      reason: "Bonus claimed after pure deposit - split eligibility",
     };
   } catch (error) {
     console.error(`Error checking qualification for ${userId}:`, error);
     return {
       qualified: false,
       reason: "Error checking qualification",
-      turnoverRequired: 0,
     };
   }
 };
-
 /**
  * Process game records with turnover requirement
  *
  * Logic:
- * - Sort all records by date (oldest first)
- * - Accumulate turnover until requirement is met
- * - Records used to meet requirement → disqualified (no rebate)
- * - Records after requirement met → eligible for rebate
+ * - Records BEFORE bonus → eligible
+ * - Records AFTER bonus:
+ *   - Exactly turnoverRequired amount → disqualified
+ *   - Excess from the record that met requirement → eligible
+ *   - Records after requirement met → eligible
  */
 const processRecordsWithTurnoverRequirement = (
   allRecords,
-  turnoverRequired
+  turnoverRequired,
+  bonusTurnoverStartDate = null
 ) => {
   const sortedRecords = [...allRecords].sort(
     (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
   );
 
+  let eligibleBeforeBonus = [];
+  let recordsAfterBonus = [];
+
+  // If we have a bonusTurnoverStartDate, split records
+  if (bonusTurnoverStartDate) {
+    const bonusDate = new Date(bonusTurnoverStartDate);
+
+    sortedRecords.forEach((record) => {
+      if (new Date(record.createdAt) < bonusDate) {
+        eligibleBeforeBonus.push(record);
+      } else {
+        recordsAfterBonus.push(record);
+      }
+    });
+
+    console.log(`📅 Split by bonus date (${bonusDate.toISOString()}):`);
+    console.log(`   Before bonus (eligible): ${eligibleBeforeBonus.length}`);
+    console.log(`   After bonus (need turnover): ${recordsAfterBonus.length}`);
+  } else {
+    // No split - all records need to meet turnover requirement
+    recordsAfterBonus = sortedRecords;
+  }
+
+  // Process records after bonus for turnover requirement
   let cumulativeTurnover = 0;
   let requirementMetIndex = -1;
   let requirementMetDate = null;
 
-  for (let i = 0; i < sortedRecords.length; i++) {
-    cumulativeTurnover += sortedRecords[i].turnover || 0;
+  for (let i = 0; i < recordsAfterBonus.length; i++) {
+    cumulativeTurnover += recordsAfterBonus[i].turnover || 0;
 
     if (cumulativeTurnover >= turnoverRequired && requirementMetIndex === -1) {
       requirementMetIndex = i;
-      requirementMetDate = sortedRecords[i].createdAt;
+      requirementMetDate = recordsAfterBonus[i].createdAt;
       console.log(
         `✅ Turnover requirement met at record ${
           i + 1
@@ -988,29 +1029,62 @@ const processRecordsWithTurnoverRequirement = (
     }
   }
 
+  // Turnover requirement NOT met
   if (requirementMetIndex === -1) {
     return {
       met: false,
       currentTurnover: cumulativeTurnover,
       remainingTurnover: turnoverRequired - cumulativeTurnover,
-      eligibleRecords: [],
-      disqualifiedRecords: sortedRecords,
+      eligibleRecords: eligibleBeforeBonus,
+      disqualifiedRecords: [],
+      pendingRecords: recordsAfterBonus,
+      eligibleBeforeBonusCount: eligibleBeforeBonus.length,
+      pendingCount: recordsAfterBonus.length,
+      excessTurnover: 0,
     };
   }
 
-  const disqualifiedRecords = sortedRecords.slice(0, requirementMetIndex + 1);
-  const eligibleRecords = sortedRecords.slice(requirementMetIndex + 1);
+  // Turnover requirement met - calculate excess
+  const excessTurnover = cumulativeTurnover - turnoverRequired;
+
+  console.log(`   Required: ${turnoverRequired.toFixed(2)}`);
+  console.log(`   Cumulative at met: ${cumulativeTurnover.toFixed(2)}`);
+  console.log(`   Excess turnover: ${excessTurnover.toFixed(2)}`);
+
+  // Disqualified = records up to and including where requirement met
+  const disqualifiedRecords = recordsAfterBonus.slice(
+    0,
+    requirementMetIndex + 1
+  );
+
+  // Eligible after requirement = remaining records
+  const eligibleAfterRequirement = recordsAfterBonus.slice(
+    requirementMetIndex + 1
+  );
+
+  // Combine eligible: before bonus + after requirement met
+  const allEligibleRecords = [
+    ...eligibleBeforeBonus,
+    ...eligibleAfterRequirement,
+  ];
+
+  // Calculate eligible turnover = eligible records + excess
+  const eligibleRecordsTurnover = allEligibleRecords.reduce(
+    (sum, r) => sum + (r.turnover || 0),
+    0
+  );
 
   return {
     met: true,
     requirementMetDate,
-    turnoverUsedForRequirement: cumulativeTurnover,
-    eligibleRecords,
+    turnoverUsedForRequirement: turnoverRequired, // Exactly the required amount
+    excessTurnover, // Excess from last record that goes to eligible
+    eligibleRecords: allEligibleRecords,
     disqualifiedRecords,
-    eligibleTurnover: eligibleRecords.reduce(
-      (sum, r) => sum + (r.turnover || 0),
-      0
-    ),
+    pendingRecords: [],
+    eligibleTurnover: eligibleRecordsTurnover + excessTurnover, // Include excess!
+    eligibleBeforeBonusCount: eligibleBeforeBonus.length,
+    eligibleAfterRequirementCount: eligibleAfterRequirement.length,
   };
 };
 
@@ -1092,130 +1166,160 @@ const getGameTurnoverWithRecords = async (config, searchArray) => {
 // MAIN ROUTE
 // ============================================================
 
-router.post(
-  "/api/all/categorizedgamedatavip",
-  authenticateToken,
-  async (req, res) => {
-    const startTime = Date.now();
+router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
+  const startTime = Date.now();
 
-    try {
-      const userId = req.user.userId;
+  try {
+    const userId = req.user.userId;
 
-      // Step 1: Fetch user and VIP config in parallel
-      const [user, vipData] = await Promise.all([
-        User.findById(userId)
-          .select("_id gameId username viplevel wallet")
-          .lean(),
-        vip.findOne({}).lean(),
-      ]);
-
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: {
-            en: "User not found",
-            zh: "用户未找到",
-            ms: "Pengguna tidak ditemui",
-          },
-        });
-      }
-
-      if (!vipData?.vipLevels?.length) {
-        return res.status(500).json({
-          success: false,
-          message: {
-            en: "VIP configuration not found",
-            zh: "VIP配置未找到",
-            ms: "Konfigurasi VIP tidak ditemui",
-          },
-        });
-      }
-
-      console.log(
-        `\n🚀 Processing rebate for: ${user.gameId} [${user.viplevel}]`
-      );
-
-      // Step 2: Get VIP rates
-      const rates = getVipRebateRates(vipData.vipLevels, user.viplevel);
-      if (!rates) {
-        return res.status(400).json({
-          success: false,
-          message: {
-            en: `Invalid VIP level: ${user.viplevel}`,
-            zh: `无效VIP等级: ${user.viplevel}`,
-            ms: `Tahap VIP tidak sah: ${user.viplevel}`,
-          },
-        });
-      }
-
-      // Step 3: Check user qualification
-      const qualification = await checkUserQualification(userId);
-
-      if (!qualification.qualified) {
-        return res.status(400).json({
-          success: false,
-          message: {
-            en: qualification.reason,
-            zh: qualification.reason,
-            ms: qualification.reason,
-          },
-        });
-      }
-
-      const searchArray = buildUsernameSearchArray(user.gameId, user.username);
-
-      // Step 4: Fetch all game turnovers with individual records
-      const gameResults = await Promise.all(
-        GAME_CONFIG.map((config) =>
-          getGameTurnoverWithRecords(config, searchArray)
+    // Step 1: Fetch user and VIP config in parallel
+    const [user, vipData, currentPromotion] = await Promise.all([
+      User.findById(userId)
+        .select(
+          "_id gameId username viplevel wallet fullname duplicateIP duplicateBank"
         )
-      );
+        .lean(),
+      vip.findOne({}).lean(),
+      Promotion.findById("69086feb032af34b3af2e37d")
+        .select("_id maintitle maintitleEN")
+        .lean(),
+    ]);
 
-      // Combine all records from all games
-      let allRecords = [];
-      gameResults.forEach((result) => {
-        if (result?.records?.length) {
-          allRecords.push(...result.records);
-        }
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: {
+          en: "User not found",
+          zh: "用户未找到",
+          ms: "Pengguna tidak ditemui",
+        },
       });
+    }
 
-      console.log(`📊 Total records found: ${allRecords.length}`);
+    if (!vipData?.vipLevels?.length) {
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "VIP configuration not found",
+          zh: "VIP配置未找到",
+          ms: "Konfigurasi VIP tidak ditemui",
+        },
+      });
+    }
 
-      const totalTurnover = allRecords.reduce(
-        (sum, r) => sum + (r.turnover || 0),
-        0
+    console.log(
+      `\n🚀 Processing rebate for: ${user.gameId} [${user.viplevel}]`
+    );
+
+    // Step 2: Get VIP rates
+    const rates = getVipRebateRates(vipData.vipLevels, user.viplevel);
+    if (!rates) {
+      return res.status(400).json({
+        success: false,
+        message: {
+          en: `Invalid VIP level: ${user.viplevel}`,
+          zh: `无效VIP等级: ${user.viplevel}`,
+          ms: `Tahap VIP tidak sah: ${user.viplevel}`,
+        },
+      });
+    }
+
+    // Step 3: Check user qualification
+    const qualification = await checkUserQualification(userId);
+
+    if (!qualification.qualified) {
+      return res.status(400).json({
+        success: false,
+        message: {
+          en: qualification.reason,
+          zh: qualification.reason,
+          ms: qualification.reason,
+        },
+      });
+    }
+
+    const searchArray = buildUsernameSearchArray(user.gameId, user.username);
+
+    // Step 4: Fetch all game turnovers with individual records
+    const gameResults = await Promise.all(
+      GAME_CONFIG.map((config) =>
+        getGameTurnoverWithRecords(config, searchArray)
+      )
+    );
+
+    // Combine all records from all games
+    let allRecords = [];
+    gameResults.forEach((result) => {
+      if (result?.records?.length) {
+        allRecords.push(...result.records);
+      }
+    });
+
+    console.log(`📊 Total records found: ${allRecords.length}`);
+
+    const totalTurnover = allRecords.reduce(
+      (sum, r) => sum + (r.turnover || 0),
+      0
+    );
+
+    if (totalTurnover <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: {
+          en: "No turnover records found",
+          zh: "没有找到流水记录",
+          ms: "Tiada rekod pusing ganti ditemui",
+        },
+      });
+    }
+
+    // Step 5: Process turnover requirement if user has bonus
+    let eligibleRecords = allRecords;
+    let disqualifiedRecords = [];
+    let pendingRecords = []; // Records waiting for turnover requirement
+    let turnoverRequirementInfo = null;
+
+    if (
+      qualification.hasBonusTurnoverRequirement &&
+      qualification.turnoverRequired > 0
+    ) {
+      console.log(
+        `\n📋 Processing turnover requirement: ${qualification.turnoverRequired}`
       );
 
-      if (totalTurnover <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: {
-            en: "No turnover records found",
-            zh: "没有找到流水记录",
-            ms: "Tiada rekod pusing ganti ditemui",
-          },
-        });
-      }
+      const turnoverResult = processRecordsWithTurnoverRequirement(
+        allRecords,
+        qualification.turnoverRequired,
+        qualification.bonusTurnoverStartDate
+      );
 
-      // Step 5: Process turnover requirement if user has bonus
-      let eligibleRecords = allRecords;
-      let disqualifiedRecords = [];
-      let turnoverRequirementInfo = null;
+      if (!turnoverResult.met) {
+        // Check if there are eligible records before bonus
+        if (turnoverResult.eligibleRecords.length > 0) {
+          // User has some eligible records before bonus, continue with those
+          console.log(
+            `⚠️ Turnover requirement not met, but ${turnoverResult.eligibleRecords.length} records eligible from before bonus`
+          );
+          console.log(
+            `   ${turnoverResult.pendingCount} records pending for next claim`
+          );
 
-      if (
-        qualification.hasBonusTurnoverRequirement &&
-        qualification.turnoverRequired > 0
-      ) {
-        console.log(
-          `\n📋 Processing turnover requirement: ${qualification.turnoverRequired}`
-        );
+          eligibleRecords = turnoverResult.eligibleRecords;
+          disqualifiedRecords = []; // Don't disqualify anything
+          pendingRecords = turnoverResult.pendingRecords; // Track but don't update
 
-        const turnoverResult = processRecordsWithTurnoverRequirement(
-          allRecords,
-          qualification.turnoverRequired
-        );
-
-        if (!turnoverResult.met) {
+          turnoverRequirementInfo = {
+            required: qualification.turnoverRequired,
+            current: turnoverResult.currentTurnover,
+            remaining: turnoverResult.remainingTurnover,
+            disqualifiedCount: 0,
+            eligibleCount: eligibleRecords.length,
+            eligibleBeforeBonusCount: turnoverResult.eligibleBeforeBonusCount,
+            pendingCount: turnoverResult.pendingCount,
+            status: "partial",
+          };
+        } else {
+          // No eligible records at all
           return res.status(400).json({
             success: false,
             message: {
@@ -1233,19 +1337,28 @@ router.post(
               required: qualification.turnoverRequired,
               current: turnoverResult.currentTurnover,
               remaining: turnoverResult.remainingTurnover,
+              pendingCount: turnoverResult.pendingCount,
               bonusDetails: qualification.bonusDetails,
             },
           });
         }
-
+      } else {
         eligibleRecords = turnoverResult.eligibleRecords;
         disqualifiedRecords = turnoverResult.disqualifiedRecords;
+        pendingRecords = [];
+
         turnoverRequirementInfo = {
           required: qualification.turnoverRequired,
           usedForRequirement: turnoverResult.turnoverUsedForRequirement,
+          excessTurnover: turnoverResult.excessTurnover, // Add this!
           requirementMetDate: turnoverResult.requirementMetDate,
           disqualifiedCount: disqualifiedRecords.length,
           eligibleCount: eligibleRecords.length,
+          eligibleBeforeBonusCount:
+            turnoverResult.eligibleBeforeBonusCount || 0,
+          eligibleAfterRequirementCount:
+            turnoverResult.eligibleAfterRequirementCount || 0,
+          status: "met",
         };
 
         console.log(`✅ Turnover requirement met!`);
@@ -1254,366 +1367,491 @@ router.post(
             2
           )}`
         );
-        console.log(`   Disqualified records: ${disqualifiedRecords.length}`);
-        console.log(`   Eligible records: ${eligibleRecords.length}`);
-      } else if (qualification.qualifyFromDate) {
-        // No bonus requirement - filter by qualifyFromDate
-        const qualifyDate = new Date(qualification.qualifyFromDate);
-        eligibleRecords = allRecords.filter(
-          (r) => new Date(r.createdAt) >= qualifyDate
-        );
-        disqualifiedRecords = allRecords.filter(
-          (r) => new Date(r.createdAt) < qualifyDate
-        );
-
-        console.log(`📅 Filtering by qualifyFromDate: ${qualifyDate}`);
         console.log(
-          `   Eligible: ${eligibleRecords.length}, Disqualified: ${disqualifiedRecords.length}`
+          `   Excess turnover: ${turnoverResult.excessTurnover.toFixed(2)}`
         );
+        console.log(
+          `   Eligible before bonus: ${
+            turnoverResult.eligibleBeforeBonusCount || 0
+          }`
+        );
+        console.log(
+          `   Eligible after requirement: ${
+            turnoverResult.eligibleAfterRequirementCount || 0
+          }`
+        );
+        console.log(`   Disqualified records: ${disqualifiedRecords.length}`);
       }
-
-      // Step 6: Group eligible records by category
-      const breakdown = {
-        [CATEGORIES.LIVE_CASINO]: 0,
-        [CATEGORIES.SLOT]: 0,
-        [CATEGORIES.SPORTS]: 0,
-        [CATEGORIES.ESPORTS]: 0,
-        [CATEGORIES.FISHING]: 0,
-        [CATEGORIES.LOTTERY]: 0,
-      };
-
-      const gamesByCategory = {
-        [CATEGORIES.LIVE_CASINO]: [],
-        [CATEGORIES.SLOT]: [],
-        [CATEGORIES.SPORTS]: [],
-        [CATEGORIES.ESPORTS]: [],
-        [CATEGORIES.FISHING]: [],
-        [CATEGORIES.LOTTERY]: [],
-      };
-
-      // Process eligible records
-      eligibleRecords.forEach((record) => {
-        breakdown[record.category] += record.turnover || 0;
-      });
-
-      // Aggregate by game name for response
-      const gameAggregation = {};
-      eligibleRecords.forEach((record) => {
-        const key = `${record.category}_${record.gameName}`;
-        if (!gameAggregation[key]) {
-          gameAggregation[key] = {
-            category: record.category,
-            gameName: record.gameName,
-            turnover: 0,
-            count: 0,
-          };
-        }
-        gameAggregation[key].turnover += record.turnover || 0;
-        gameAggregation[key].count += 1;
-      });
-
-      Object.values(gameAggregation).forEach((game) => {
-        if (game.turnover > 0) {
-          gamesByCategory[game.category].push({
-            gameName: game.gameName,
-            turnover: game.turnover,
-            count: game.count,
-          });
-        }
-      });
-
-      const eligibleTurnover = Object.values(breakdown).reduce(
-        (sum, val) => sum + val,
-        0
+    } else if (qualification.qualifyFromDate) {
+      // No bonus requirement - filter by qualifyFromDate only
+      const qualifyDate = new Date(qualification.qualifyFromDate);
+      eligibleRecords = allRecords.filter(
+        (r) => new Date(r.createdAt) >= qualifyDate
       );
-      const rebatableTurnover =
-        breakdown[CATEGORIES.LIVE_CASINO] +
-        breakdown[CATEGORIES.SLOT] +
-        breakdown[CATEGORIES.SPORTS] +
-        breakdown[CATEGORIES.ESPORTS];
+      disqualifiedRecords = allRecords.filter(
+        (r) => new Date(r.createdAt) < qualifyDate
+      );
 
-      console.log(`\n💰 Eligible Turnover Breakdown:`);
+      console.log(`📅 Filtering by qualifyFromDate: ${qualifyDate}`);
       console.log(
-        `   Live Casino: ${breakdown[CATEGORIES.LIVE_CASINO].toFixed(2)}`
+        `   Eligible: ${eligibleRecords.length}, Disqualified: ${disqualifiedRecords.length}`
       );
-      console.log(`   Slot: ${breakdown[CATEGORIES.SLOT].toFixed(2)}`);
-      console.log(`   Sports: ${breakdown[CATEGORIES.SPORTS].toFixed(2)}`);
-      console.log(`   Esports: ${breakdown[CATEGORIES.ESPORTS].toFixed(2)}`);
-      console.log(
-        `   Fishing: ${breakdown[CATEGORIES.FISHING].toFixed(2)} (0% rebate)`
-      );
-      console.log(
-        `   Lottery: ${breakdown[CATEGORIES.LOTTERY].toFixed(2)} (0% rebate)`
-      );
-      console.log(`   Rebatable: ${rebatableTurnover.toFixed(2)}`);
+    }
 
-      if (rebatableTurnover <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: {
-            en: "No rebatable turnover available (Fishing and Lottery have 0% rebate)",
-            zh: "没有可返水的流水（捕鱼和彩票返水为0%）",
-            ms: "Tiada pusing ganti rebat tersedia (Memancing dan Loteri 0% rebat)",
-          },
-          turnoverDetails: turnoverRequirementInfo,
+    // Step 6: Group eligible records by category
+    const breakdown = {
+      [CATEGORIES.LIVE_CASINO]: 0,
+      [CATEGORIES.SLOT]: 0,
+      [CATEGORIES.SPORTS]: 0,
+      [CATEGORIES.ESPORTS]: 0,
+      [CATEGORIES.FISHING]: 0,
+      [CATEGORIES.LOTTERY]: 0,
+    };
+
+    const gamesByCategory = {
+      [CATEGORIES.LIVE_CASINO]: [],
+      [CATEGORIES.SLOT]: [],
+      [CATEGORIES.SPORTS]: [],
+      [CATEGORIES.ESPORTS]: [],
+      [CATEGORIES.FISHING]: [],
+      [CATEGORIES.LOTTERY]: [],
+    };
+
+    // Process eligible records
+    eligibleRecords.forEach((record) => {
+      breakdown[record.category] += record.turnover || 0;
+    });
+
+    // Add excess turnover to the category of the last disqualified record
+    let excessTurnover = 0;
+    if (
+      turnoverRequirementInfo?.excessTurnover > 0 &&
+      disqualifiedRecords.length > 0
+    ) {
+      excessTurnover = turnoverRequirementInfo.excessTurnover;
+      const lastDisqualifiedRecord =
+        disqualifiedRecords[disqualifiedRecords.length - 1];
+      const excessCategory = lastDisqualifiedRecord.category;
+
+      breakdown[excessCategory] += excessTurnover;
+
+      console.log(
+        `💫 Adding excess turnover ${excessTurnover.toFixed(
+          2
+        )} to ${excessCategory}`
+      );
+    }
+
+    // Aggregate by game name for response
+    const gameAggregation = {};
+    eligibleRecords.forEach((record) => {
+      const key = `${record.category}_${record.gameName}`;
+      if (!gameAggregation[key]) {
+        gameAggregation[key] = {
+          category: record.category,
+          gameName: record.gameName,
+          turnover: 0,
+          count: 0,
+        };
+      }
+      gameAggregation[key].turnover += record.turnover || 0;
+      gameAggregation[key].count += 1;
+    });
+
+    // Add excess to game aggregation if exists
+    if (excessTurnover > 0 && disqualifiedRecords.length > 0) {
+      const lastDisqualifiedRecord =
+        disqualifiedRecords[disqualifiedRecords.length - 1];
+      const key = `${lastDisqualifiedRecord.category}_${lastDisqualifiedRecord.gameName}`;
+      if (!gameAggregation[key]) {
+        gameAggregation[key] = {
+          category: lastDisqualifiedRecord.category,
+          gameName: lastDisqualifiedRecord.gameName,
+          turnover: 0,
+          count: 0,
+        };
+      }
+      gameAggregation[key].turnover += excessTurnover;
+      // Don't increment count since it's excess from disqualified record
+    }
+
+    Object.values(gameAggregation).forEach((game) => {
+      if (game.turnover > 0) {
+        gamesByCategory[game.category].push({
+          gameName: game.gameName,
+          turnover: game.turnover,
+          count: game.count,
         });
       }
+    });
 
-      // Step 7: Calculate commission
-      const commission = {
-        [CATEGORIES.LIVE_CASINO]:
-          breakdown[CATEGORIES.LIVE_CASINO] * rates[CATEGORIES.LIVE_CASINO],
-        [CATEGORIES.SLOT]: breakdown[CATEGORIES.SLOT] * rates[CATEGORIES.SLOT],
-        [CATEGORIES.SPORTS]:
-          breakdown[CATEGORIES.SPORTS] * rates[CATEGORIES.SPORTS],
-        [CATEGORIES.ESPORTS]:
-          breakdown[CATEGORIES.ESPORTS] * rates[CATEGORIES.ESPORTS],
-        [CATEGORIES.FISHING]: 0,
-        [CATEGORIES.LOTTERY]: 0,
-      };
+    const eligibleTurnover = Object.values(breakdown).reduce(
+      (sum, val) => sum + val,
+      0
+    );
+    const rebatableTurnover =
+      breakdown[CATEGORIES.LIVE_CASINO] +
+      breakdown[CATEGORIES.SLOT] +
+      breakdown[CATEGORIES.SPORTS] +
+      breakdown[CATEGORIES.ESPORTS];
 
-      const totalCommission = Number(
-        Object.values(commission)
-          .reduce((sum, val) => sum + val, 0)
-          .toFixed(2)
-      );
+    console.log(`\n💰 Eligible Turnover Breakdown:`);
+    console.log(
+      `   Live Casino: ${breakdown[CATEGORIES.LIVE_CASINO].toFixed(2)}`
+    );
+    console.log(`   Slot: ${breakdown[CATEGORIES.SLOT].toFixed(2)}`);
+    console.log(`   Sports: ${breakdown[CATEGORIES.SPORTS].toFixed(2)}`);
+    console.log(`   Esports: ${breakdown[CATEGORIES.ESPORTS].toFixed(2)}`);
+    console.log(
+      `   Fishing: ${breakdown[CATEGORIES.FISHING].toFixed(2)} (0% rebate)`
+    );
+    console.log(
+      `   Lottery: ${breakdown[CATEGORIES.LOTTERY].toFixed(2)} (0% rebate)`
+    );
+    console.log(`   Rebatable: ${rebatableTurnover.toFixed(2)}`);
 
-      console.log(`\n🧮 Commission Calculation:`);
-      console.log(
-        `   Live Casino: ${breakdown[CATEGORIES.LIVE_CASINO].toFixed(2)} × ${(
-          rates[CATEGORIES.LIVE_CASINO] * 100
-        ).toFixed(2)}% = ${commission[CATEGORIES.LIVE_CASINO].toFixed(2)}`
-      );
-      console.log(
-        `   Slot: ${breakdown[CATEGORIES.SLOT].toFixed(2)} × ${(
-          rates[CATEGORIES.SLOT] * 100
-        ).toFixed(2)}% = ${commission[CATEGORIES.SLOT].toFixed(2)}`
-      );
-      console.log(
-        `   Sports: ${breakdown[CATEGORIES.SPORTS].toFixed(2)} × ${(
-          rates[CATEGORIES.SPORTS] * 100
-        ).toFixed(2)}% = ${commission[CATEGORIES.SPORTS].toFixed(2)}`
-      );
-      console.log(
-        `   Esports: ${breakdown[CATEGORIES.ESPORTS].toFixed(2)} × ${(
-          rates[CATEGORIES.ESPORTS] * 100
-        ).toFixed(2)}% = ${commission[CATEGORIES.ESPORTS].toFixed(2)}`
-      );
-      console.log(`   Total: ${totalCommission}`);
-
-      if (totalCommission <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: {
-            en: "Commission amount is too low to claim",
-            zh: "佣金金额太低无法领取",
-            ms: "Jumlah komisen terlalu rendah untuk dituntut",
-          },
-        });
-      }
-
-      // Step 8: Build formula string
-      const formulaParts = [];
-      if (breakdown[CATEGORIES.LIVE_CASINO] > 0) {
-        formulaParts.push(
-          `LC:${breakdown[CATEGORIES.LIVE_CASINO].toFixed(2)}×${(
-            rates[CATEGORIES.LIVE_CASINO] * 100
-          ).toFixed(2)}%`
-        );
-      }
-      if (breakdown[CATEGORIES.SLOT] > 0) {
-        formulaParts.push(
-          `SL:${breakdown[CATEGORIES.SLOT].toFixed(2)}×${(
-            rates[CATEGORIES.SLOT] * 100
-          ).toFixed(2)}%`
-        );
-      }
-      if (breakdown[CATEGORIES.SPORTS] > 0) {
-        formulaParts.push(
-          `SP:${breakdown[CATEGORIES.SPORTS].toFixed(2)}×${(
-            rates[CATEGORIES.SPORTS] * 100
-          ).toFixed(2)}%`
-        );
-      }
-      if (breakdown[CATEGORIES.ESPORTS] > 0) {
-        formulaParts.push(
-          `ES:${breakdown[CATEGORIES.ESPORTS].toFixed(2)}×${(
-            rates[CATEGORIES.ESPORTS] * 100
-          ).toFixed(2)}%`
-        );
-      }
-      const formula = `[${user.viplevel}] ${formulaParts.join(
-        " + "
-      )} = ${totalCommission}`;
-
-      // Step 9: Update wallet and create rebate record
-      const [updatedUser, rebateRecord] = await Promise.all([
-        User.findByIdAndUpdate(
-          userId,
-          { $inc: { wallet: totalCommission } },
-          { new: true, projection: { wallet: 1 } }
-        ).lean(),
-
-        InstantRebate.create({
-          timeCalled: new Date(),
-          username: user.gameId,
-          vipLevel: user.viplevel,
-          rebateRates: {
-            liveCasino: rates[CATEGORIES.LIVE_CASINO] * 100,
-            slot: rates[CATEGORIES.SLOT] * 100,
-            sports: rates[CATEGORIES.SPORTS] * 100,
-            esports: rates[CATEGORIES.ESPORTS] * 100,
-            fishing: 0,
-            lottery: 0,
-          },
-          liveCasino: { games: gamesByCategory[CATEGORIES.LIVE_CASINO] },
-          slot: { games: gamesByCategory[CATEGORIES.SLOT] },
-          sports: { games: gamesByCategory[CATEGORIES.SPORTS] },
-          esports: { games: gamesByCategory[CATEGORIES.ESPORTS] },
-          fishing: { games: gamesByCategory[CATEGORIES.FISHING] },
-          lottery: { games: gamesByCategory[CATEGORIES.LOTTERY] },
-          totalCommission,
-          formula,
-          grandTotalTurnover: totalTurnover,
-          eligibleTurnover,
-          rebatableTurnover,
-          turnoverRequirement: turnoverRequirementInfo,
-          processed: true,
-        }),
-      ]);
-
-      if (!updatedUser) {
-        await InstantRebate.findByIdAndDelete(rebateRecord._id);
-        return res.status(500).json({
-          success: false,
-          message: {
-            en: "Failed to update wallet",
-            zh: "更新钱包失败",
-            ms: "Gagal mengemas kini dompet",
-          },
-        });
-      }
-
-      // Step 10: Batch update records - mark as claimed/disqualified
-      const updatePromises = [];
-
-      // Group by model for efficient updates
-      const eligibleByModel = new Map();
-      const disqualifiedByModel = new Map();
-
-      eligibleRecords.forEach((r) => {
-        const modelName = r.model.modelName;
-        if (!eligibleByModel.has(modelName)) {
-          eligibleByModel.set(modelName, { model: r.model, ids: [] });
-        }
-        eligibleByModel.get(modelName).ids.push(r._id);
-      });
-
-      disqualifiedRecords.forEach((r) => {
-        const modelName = r.model.modelName;
-        if (!disqualifiedByModel.has(modelName)) {
-          disqualifiedByModel.set(modelName, { model: r.model, ids: [] });
-        }
-        disqualifiedByModel.get(modelName).ids.push(r._id);
-      });
-
-      // Update eligible records as claimed
-      eligibleByModel.forEach(({ model, ids }) => {
-        if (ids.length > 0) {
-          updatePromises.push(
-            model.updateMany({ _id: { $in: ids } }, { $set: { claimed: true } })
-          );
-        }
-      });
-
-      // Update disqualified records
-      disqualifiedByModel.forEach(({ model, ids }) => {
-        if (ids.length > 0) {
-          updatePromises.push(
-            model.updateMany(
-              { _id: { $in: ids } },
-              { $set: { disqualified: true, claimed: true } }
-            )
-          );
-        }
-      });
-
-      const updateResults = await Promise.all(updatePromises);
-      const totalUpdated = updateResults.reduce(
-        (sum, r) => sum + (r.modifiedCount || 0),
-        0
-      );
-
-      const executionTime = Date.now() - startTime;
-      console.log(
-        `\n✅ Completed in ${executionTime}ms | Records updated: ${totalUpdated}`
-      );
-
-      // Step 11: Return success response
-      return res.status(200).json({
-        success: true,
-        message: {
-          en: `Rebate claimed successfully! +${totalCommission.toFixed(2)}`,
-          zh: `返水领取成功! +${totalCommission.toFixed(2)}`,
-          ms: `Rebat berjaya dituntut! +${totalCommission.toFixed(2)}`,
-        },
-        data: {
-          username: user.gameId,
-          vipLevel: user.viplevel,
-          rates: {
-            liveCasino: `${(rates[CATEGORIES.LIVE_CASINO] * 100).toFixed(2)}%`,
-            slot: `${(rates[CATEGORIES.SLOT] * 100).toFixed(2)}%`,
-            sports: `${(rates[CATEGORIES.SPORTS] * 100).toFixed(2)}%`,
-            esports: `${(rates[CATEGORIES.ESPORTS] * 100).toFixed(2)}%`,
-            fishing: "0.00%",
-            lottery: "0.00%",
-          },
-          turnover: {
-            total: Number(totalTurnover.toFixed(2)),
-            eligible: Number(eligibleTurnover.toFixed(2)),
-            rebatable: Number(rebatableTurnover.toFixed(2)),
-            liveCasino: Number(breakdown[CATEGORIES.LIVE_CASINO].toFixed(2)),
-            slot: Number(breakdown[CATEGORIES.SLOT].toFixed(2)),
-            sports: Number(breakdown[CATEGORIES.SPORTS].toFixed(2)),
-            esports: Number(breakdown[CATEGORIES.ESPORTS].toFixed(2)),
-            fishing: Number(breakdown[CATEGORIES.FISHING].toFixed(2)),
-            lottery: Number(breakdown[CATEGORIES.LOTTERY].toFixed(2)),
-          },
-          commission: {
-            liveCasino: Number(commission[CATEGORIES.LIVE_CASINO].toFixed(2)),
-            slot: Number(commission[CATEGORIES.SLOT].toFixed(2)),
-            sports: Number(commission[CATEGORIES.SPORTS].toFixed(2)),
-            esports: Number(commission[CATEGORIES.ESPORTS].toFixed(2)),
-            total: totalCommission,
-          },
-          games: {
-            liveCasino: gamesByCategory[CATEGORIES.LIVE_CASINO],
-            slot: gamesByCategory[CATEGORIES.SLOT],
-            sports: gamesByCategory[CATEGORIES.SPORTS],
-            esports: gamesByCategory[CATEGORIES.ESPORTS],
-            fishing: gamesByCategory[CATEGORIES.FISHING],
-            lottery: gamesByCategory[CATEGORIES.LOTTERY],
-          },
-          turnoverRequirement: turnoverRequirementInfo,
-          newWalletTwo: parseFloat(updatedUser.wallet.toString()),
-          rebateId: rebateRecord._id,
-          recordsUpdated: totalUpdated,
-          qualificationReason: qualification.reason,
-          executionTime: `${executionTime}ms`,
-        },
-      });
-    } catch (error) {
-      console.error("❌ VIP Rebate Error:", error);
-      return res.status(500).json({
+    if (rebatableTurnover <= 0) {
+      return res.status(400).json({
         success: false,
         message: {
-          en: "Internal Server Error. Please contact customer support.",
-          zh: "内部服务器错误，请联系客服。",
-          ms: "Ralat dalaman pelayan. Sila hubungi sokongan pelanggan.",
+          en: "No rebatable turnover available (Fishing and Lottery have 0% rebate)",
+          zh: "没有可返水的流水（捕鱼和彩票返水为0%）",
+          ms: "Tiada pusing ganti rebat tersedia (Memancing dan Loteri 0% rebat)",
+        },
+        turnoverDetails: turnoverRequirementInfo,
+      });
+    }
+
+    // Step 7: Calculate commission
+    const commission = {
+      [CATEGORIES.LIVE_CASINO]:
+        breakdown[CATEGORIES.LIVE_CASINO] * rates[CATEGORIES.LIVE_CASINO],
+      [CATEGORIES.SLOT]: breakdown[CATEGORIES.SLOT] * rates[CATEGORIES.SLOT],
+      [CATEGORIES.SPORTS]:
+        breakdown[CATEGORIES.SPORTS] * rates[CATEGORIES.SPORTS],
+      [CATEGORIES.ESPORTS]:
+        breakdown[CATEGORIES.ESPORTS] * rates[CATEGORIES.ESPORTS],
+      [CATEGORIES.FISHING]: 0,
+      [CATEGORIES.LOTTERY]: 0,
+    };
+
+    const totalCommission = Number(
+      Object.values(commission)
+        .reduce((sum, val) => sum + val, 0)
+        .toFixed(2)
+    );
+
+    console.log(`\n🧮 Commission Calculation:`);
+    console.log(
+      `   Live Casino: ${breakdown[CATEGORIES.LIVE_CASINO].toFixed(2)} × ${(
+        rates[CATEGORIES.LIVE_CASINO] * 100
+      ).toFixed(2)}% = ${commission[CATEGORIES.LIVE_CASINO].toFixed(2)}`
+    );
+    console.log(
+      `   Slot: ${breakdown[CATEGORIES.SLOT].toFixed(2)} × ${(
+        rates[CATEGORIES.SLOT] * 100
+      ).toFixed(2)}% = ${commission[CATEGORIES.SLOT].toFixed(2)}`
+    );
+    console.log(
+      `   Sports: ${breakdown[CATEGORIES.SPORTS].toFixed(2)} × ${(
+        rates[CATEGORIES.SPORTS] * 100
+      ).toFixed(2)}% = ${commission[CATEGORIES.SPORTS].toFixed(2)}`
+    );
+    console.log(
+      `   Esports: ${breakdown[CATEGORIES.ESPORTS].toFixed(2)} × ${(
+        rates[CATEGORIES.ESPORTS] * 100
+      ).toFixed(2)}% = ${commission[CATEGORIES.ESPORTS].toFixed(2)}`
+    );
+    console.log(`   Total: ${totalCommission}`);
+
+    if (totalCommission <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: {
+          en: "Commission amount is too low to claim",
+          zh: "佣金金额太低无法领取",
+          ms: "Jumlah komisen terlalu rendah untuk dituntut",
         },
       });
     }
+
+    // Step 8: Build formula string
+    const formulaParts = [];
+    if (breakdown[CATEGORIES.LIVE_CASINO] > 0) {
+      formulaParts.push(
+        `LC:${breakdown[CATEGORIES.LIVE_CASINO].toFixed(2)}×${(
+          rates[CATEGORIES.LIVE_CASINO] * 100
+        ).toFixed(2)}%`
+      );
+    }
+    if (breakdown[CATEGORIES.SLOT] > 0) {
+      formulaParts.push(
+        `SL:${breakdown[CATEGORIES.SLOT].toFixed(2)}×${(
+          rates[CATEGORIES.SLOT] * 100
+        ).toFixed(2)}%`
+      );
+    }
+    if (breakdown[CATEGORIES.SPORTS] > 0) {
+      formulaParts.push(
+        `SP:${breakdown[CATEGORIES.SPORTS].toFixed(2)}×${(
+          rates[CATEGORIES.SPORTS] * 100
+        ).toFixed(2)}%`
+      );
+    }
+    if (breakdown[CATEGORIES.ESPORTS] > 0) {
+      formulaParts.push(
+        `ES:${breakdown[CATEGORIES.ESPORTS].toFixed(2)}×${(
+          rates[CATEGORIES.ESPORTS] * 100
+        ).toFixed(2)}%`
+      );
+    }
+    const formula = `[${user.viplevel}] ${formulaParts.join(
+      " + "
+    )} = ${totalCommission}`;
+
+    // Step 9: Build remark
+    let remark = `VIP Rebate - ${qualification.reason}`;
+    if (turnoverRequirementInfo) {
+      if (turnoverRequirementInfo.status === "met") {
+        remark += ` | Req: ${turnoverRequirementInfo.required.toFixed(
+          2
+        )}, Used: ${turnoverRequirementInfo.usedForRequirement.toFixed(2)}`;
+      } else if (turnoverRequirementInfo.status === "partial") {
+        remark += ` | Req: ${turnoverRequirementInfo.required.toFixed(
+          2
+        )}, Pending: ${turnoverRequirementInfo.current.toFixed(
+          2
+        )}/${turnoverRequirementInfo.required.toFixed(2)}`;
+      }
+    }
+
+    const transactionId = uuidv4();
+
+    const kioskSettings = await kioskbalance.findOne({});
+    if (kioskSettings && kioskSettings.status) {
+      const kioskResult = await updateKioskBalance(
+        "subtract",
+        totalCommission,
+        {
+          username: user.username,
+          transactionType: "bonus approval",
+          remark: `Bonus ID: ${transactionId}`,
+          processBy: "admin",
+        }
+      );
+
+      if (!kioskResult.success) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Failed to update kiosk balance",
+            zh: "更新Kiosk余额失败",
+          },
+        });
+      }
+    }
+
+    // Step 10: Update wallet and create RebateLog
+    const [updatedUser, rebateRecord, newBonus, newuserwalletlog] =
+      await Promise.all([
+        User.findByIdAndUpdate(
+          userId,
+          { $inc: { wallet: totalCommission, totalbonus: totalCommission } },
+          { new: true, projection: { wallet: 1 } }
+        ).lean(),
+
+        RebateLog.create({
+          username: user.username,
+          totaldeposit: 0,
+          totalwithdraw: 0,
+          totalbonus: 0,
+          totalwinlose: 0,
+          totalRebate: totalCommission,
+          rebateissuesdate: new Date(),
+          type: "VIP Instant Rebate",
+          formula,
+          remark,
+          totalturnover: totalTurnover,
+          eligibleTurnover,
+          rebatableTurnover,
+          slot: breakdown[CATEGORIES.SLOT],
+          livecasino: breakdown[CATEGORIES.LIVE_CASINO],
+          sports: breakdown[CATEGORIES.SPORTS],
+          fishing: breakdown[CATEGORIES.FISHING],
+          esports: breakdown[CATEGORIES.ESPORTS],
+          lottery: breakdown[CATEGORIES.LOTTERY],
+          poker: 0,
+          mahjong: 0,
+          horse: 0,
+          claimed: true,
+          claimedBy: user.gameId,
+          claimedAt: new Date(),
+        }),
+
+        Bonus.create({
+          transactionId: transactionId,
+          userId: user._id,
+          username: user.username,
+          fullname: user.fullname || "unknown",
+          transactionType: "bonus",
+          processBy: "admin",
+          amount: totalCommission,
+          walletamount: user.wallet,
+          status: "approved",
+          method: "manual",
+          remark: "-",
+          promotionname: currentPromotion.maintitle,
+          promotionnameEN: currentPromotion.maintitleEN,
+          promotionId: currentPromotion._id,
+          duplicateIP: user.duplicateIP,
+          duplicateBank: user.duplicateBank,
+        }),
+
+        UserWalletLog.create({
+          userId: user._id,
+          transactionid: transactionId,
+          transactiontime: new Date(),
+          transactiontype: "bonus",
+          amount: totalCommission,
+          status: "approved",
+          promotionnameCN: currentPromotion.maintitle,
+          promotionnameEN: currentPromotion.maintitleEN,
+        }),
+      ]);
+
+    if (!updatedUser) {
+      await RebateLog.findByIdAndDelete(rebateRecord._id);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "Failed to update wallet",
+          zh: "更新钱包失败",
+          ms: "Gagal mengemas kini dompet",
+        },
+      });
+    }
+
+    await updateUserGameLocks(user._id);
+
+    // Step 11: Batch update records - mark as claimed/disqualified
+    const updatePromises = [];
+
+    // Group by model for efficient updates
+    const eligibleByModel = new Map();
+    const disqualifiedByModel = new Map();
+
+    eligibleRecords.forEach((r) => {
+      const modelName = r.model.modelName;
+      if (!eligibleByModel.has(modelName)) {
+        eligibleByModel.set(modelName, { model: r.model, ids: [] });
+      }
+      eligibleByModel.get(modelName).ids.push(r._id);
+    });
+
+    disqualifiedRecords.forEach((r) => {
+      const modelName = r.model.modelName;
+      if (!disqualifiedByModel.has(modelName)) {
+        disqualifiedByModel.set(modelName, { model: r.model, ids: [] });
+      }
+      disqualifiedByModel.get(modelName).ids.push(r._id);
+    });
+
+    // Update eligible records as claimed
+    eligibleByModel.forEach(({ model, ids }) => {
+      if (ids.length > 0) {
+        updatePromises.push(
+          model.updateMany({ _id: { $in: ids } }, { $set: { claimed: true } })
+        );
+      }
+    });
+
+    // Update disqualified records
+    disqualifiedByModel.forEach(({ model, ids }) => {
+      if (ids.length > 0) {
+        updatePromises.push(
+          model.updateMany(
+            { _id: { $in: ids } },
+            { $set: { disqualified: true, claimed: true } }
+          )
+        );
+      }
+    });
+
+    const updateResults = await Promise.all(updatePromises);
+    const totalUpdated = updateResults.reduce(
+      (sum, r) => sum + (r.modifiedCount || 0),
+      0
+    );
+
+    const executionTime = Date.now() - startTime;
+    console.log(
+      `\n✅ Completed in ${executionTime}ms | Records updated: ${totalUpdated}`
+    );
+
+    // Step 12: Return success response
+    return res.status(200).json({
+      success: true,
+      message: {
+        en: `Rebate claimed successfully! +${totalCommission.toFixed(2)}`,
+        zh: `返水领取成功! +${totalCommission.toFixed(2)}`,
+        ms: `Rebat berjaya dituntut! +${totalCommission.toFixed(2)}`,
+      },
+      data: {
+        username: user.gameId,
+        vipLevel: user.viplevel,
+        rates: {
+          liveCasino: `${(rates[CATEGORIES.LIVE_CASINO] * 100).toFixed(2)}%`,
+          slot: `${(rates[CATEGORIES.SLOT] * 100).toFixed(2)}%`,
+          sports: `${(rates[CATEGORIES.SPORTS] * 100).toFixed(2)}%`,
+          esports: `${(rates[CATEGORIES.ESPORTS] * 100).toFixed(2)}%`,
+          fishing: "0.00%",
+          lottery: "0.00%",
+        },
+        turnover: {
+          total: Number(totalTurnover.toFixed(2)),
+          eligible: Number(eligibleTurnover.toFixed(2)),
+          rebatable: Number(rebatableTurnover.toFixed(2)),
+          liveCasino: Number(breakdown[CATEGORIES.LIVE_CASINO].toFixed(2)),
+          slot: Number(breakdown[CATEGORIES.SLOT].toFixed(2)),
+          sports: Number(breakdown[CATEGORIES.SPORTS].toFixed(2)),
+          esports: Number(breakdown[CATEGORIES.ESPORTS].toFixed(2)),
+          fishing: Number(breakdown[CATEGORIES.FISHING].toFixed(2)),
+          lottery: Number(breakdown[CATEGORIES.LOTTERY].toFixed(2)),
+        },
+        commission: {
+          liveCasino: Number(commission[CATEGORIES.LIVE_CASINO].toFixed(2)),
+          slot: Number(commission[CATEGORIES.SLOT].toFixed(2)),
+          sports: Number(commission[CATEGORIES.SPORTS].toFixed(2)),
+          esports: Number(commission[CATEGORIES.ESPORTS].toFixed(2)),
+          total: totalCommission,
+        },
+        games: {
+          liveCasino: gamesByCategory[CATEGORIES.LIVE_CASINO],
+          slot: gamesByCategory[CATEGORIES.SLOT],
+          sports: gamesByCategory[CATEGORIES.SPORTS],
+          esports: gamesByCategory[CATEGORIES.ESPORTS],
+          fishing: gamesByCategory[CATEGORIES.FISHING],
+          lottery: gamesByCategory[CATEGORIES.LOTTERY],
+        },
+        turnoverRequirement: turnoverRequirementInfo,
+        newWallet: parseFloat(updatedUser.wallet.toString()),
+        rebateLogId: rebateRecord._id,
+        recordsUpdated: totalUpdated,
+        qualificationReason: qualification.reason,
+        executionTime: `${executionTime}ms`,
+      },
+    });
+  } catch (error) {
+    console.error("❌ VIP Rebate Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: {
+        en: "Internal Server Error. Please contact customer support.",
+        zh: "内部服务器错误，请联系客服。",
+        ms: "Ralat dalaman pelayan. Sila hubungi sokongan pelanggan.",
+      },
+    });
   }
-);
+});
 
 module.exports = router;
