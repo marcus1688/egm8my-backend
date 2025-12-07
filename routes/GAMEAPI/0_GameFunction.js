@@ -1200,30 +1200,6 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
       });
     }
 
-    if (user.wallet >= 1) {
-      const walletBalance = parseFloat(user.wallet?.toString() || "0");
-      return res.status(200).json({
-        success: false,
-        message: {
-          en: `Wallet balance must be less than 1 to claim rebate. Current balance: ${walletBalance.toFixed(
-            2
-          )}`,
-          zh: `钱包余额必须少于1才能领取返水。当前余额：${walletBalance.toFixed(
-            2
-          )}`,
-          ms: `Baki dompet mestilah kurang daripada 1 untuk menuntut rebat. Baki semasa: ${walletBalance.toFixed(
-            2
-          )}`,
-          zh_hk: `錢包餘額必須少於1才能領取返水。當前餘額：${walletBalance.toFixed(
-            2
-          )}`,
-          id: `Saldo dompet harus kurang dari 1 untuk mengklaim rebat. Saldo saat ini: ${walletBalance.toFixed(
-            2
-          )}`,
-        },
-      });
-    }
-
     if (!vipData?.vipLevels?.length) {
       return res.status(200).json({
         success: false,
@@ -1362,7 +1338,7 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
             status: "partial",
           };
         } else {
-          return res.status(400).json({
+          return res.status(200).json({
             success: false,
             message: {
               en: `Turnover requirement not met. Need ${turnoverResult.remainingTurnover.toFixed(
@@ -1601,6 +1577,30 @@ router.post("/api/rebatemanualclaim", authenticateToken, async (req, res) => {
     //   ).toFixed(2)}% = ${commission[CATEGORIES.ESPORTS].toFixed(2)}`
     // );
     // console.log(`   Total: ${totalCommission}`);
+
+    if (user.wallet >= 1) {
+      const walletBalance = parseFloat(user.wallet?.toString() || "0");
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: `Wallet balance must be less than 1 to claim rebate. Current balance: ${walletBalance.toFixed(
+            2
+          )}`,
+          zh: `钱包余额必须少于1才能领取返水。当前余额：${walletBalance.toFixed(
+            2
+          )}`,
+          ms: `Baki dompet mestilah kurang daripada 1 untuk menuntut rebat. Baki semasa: ${walletBalance.toFixed(
+            2
+          )}`,
+          zh_hk: `錢包餘額必須少於1才能領取返水。當前餘額：${walletBalance.toFixed(
+            2
+          )}`,
+          id: `Saldo dompet harus kurang dari 1 untuk mengklaim rebat. Saldo saat ini: ${walletBalance.toFixed(
+            2
+          )}`,
+        },
+      });
+    }
 
     if (totalCommission <= 0) {
       return res.status(200).json({
