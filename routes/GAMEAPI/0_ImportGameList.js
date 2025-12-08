@@ -45,6 +45,7 @@ const GamePPGameModal = require("../../models/slot_live_ppDatabase.model");
 const GameYellowBatGameModal = require("../../models/slot_yellowbatDatabase.model");
 const GameYGGDrasilGameModal = require("../../models/slot_dctyggdrasilDatabase.model");
 const GameIBexGameModal = require("../../models/slot_ibexDatabase.model");
+const GameExpansesStudiosGameModal = require("../../models/slot_expansestudioDatabase.model");
 
 const { S3Client, ListObjectsV2Command } = require("@aws-sdk/client-s3");
 const multer = require("multer");
@@ -287,7 +288,7 @@ router.post("/api/importGameList/168168", async (req, res) => {
         .json({ success: false, message: "No valid games to import." });
     }
 
-    await GameIBexGameModal.insertMany(games);
+    await GameExpansesStudiosGameModal.insertMany(games);
     res.status(200).json({
       success: true,
       imported: games.length,
@@ -301,24 +302,20 @@ router.post("/api/importGameList/168168", async (req, res) => {
   }
 });
 
-router.post("/api/importImgUrl/ibex", async (req, res) => {
+router.post("/api/importImgUrl/expansesstudios", async (req, res) => {
   try {
     const bucket = "allgameslist";
-    const basePathEN = "ibex/en/";
-    const basePathCN = "ibex/zh/";
+    const basePathEN = "expansesstudio/en/";
 
     // Get all games from the database that need images
-    const allGames = await GameIBexGameModal.find(
+    const allGames = await GameExpansesStudiosGameModal.find(
       {
         $or: [
           { imageUrlEN: { $exists: false } },
           { imageUrlEN: "" },
           { imageUrlEN: null },
-          { imageUrlCN: { $exists: false } },
-          { imageUrlCN: "" },
-          { imageUrlCN: null },
         ],
-        gameID: { $exists: true, $ne: "" },
+        gameNameEN: { $exists: true, $ne: "" },
       },
       { gameID: 1, gameNameEN: 1, _id: 1 }
     ).lean();
@@ -333,11 +330,28 @@ router.post("/api/importImgUrl/ibex", async (req, res) => {
     console.log(`Found ${allGames.length} games needing image sync`);
 
     /**
-     * Extract gameID from filename
-     * Format: "123.png" -> "123"
+     * Normalize string: lowercase, remove spaces and special characters
+     * Example: "Wild West Gold!" -> "wildwestgold"
      */
-    const extractGameIDFromFilename = (filename) => {
-      return filename.replace(/\.(jpg|jpeg|png|gif|webp)$/i, "");
+    const normalizeString = (str) => {
+      if (!str) return "";
+      return str
+        .toLowerCase()
+        .replace(/\s+/g, "") // Remove spaces
+        .replace(/[^a-z0-9]/g, ""); // Remove special characters, keep only letters and numbers
+    };
+
+    /**
+     * Extract game name from filename and normalize it
+     * Format: "Wild West Gold.png" -> "wildwestgold"
+     */
+    const extractGameNameFromFilename = (filename) => {
+      // Remove file extension
+      const nameWithoutExt = filename.replace(
+        /\.(jpg|jpeg|png|gif|webp)$/i,
+        ""
+      );
+      return normalizeString(nameWithoutExt);
     };
 
     // Get all objects from S3 - EN
@@ -348,17 +362,8 @@ router.post("/api/importImgUrl/ibex", async (req, res) => {
       })
     );
 
-    // Get all objects from S3 - CN
-    const cnObjectsResult = await s3Client.send(
-      new ListObjectsV2Command({
-        Bucket: bucket,
-        Prefix: basePathCN,
-      })
-    );
-
-    // Create lookup maps based on gameID
+    // Create lookup map based on normalized game name
     const enImageMap = {};
-    const cnImageMap = {};
 
     console.log("\n=== Processing EN Images ===");
     if (enObjectsResult.Contents) {
@@ -370,96 +375,75 @@ router.post("/api/importImgUrl/ibex", async (req, res) => {
           return;
         }
 
-        const gameID = extractGameIDFromFilename(filename);
+        const normalizedName = extractGameNameFromFilename(filename);
 
-        if (gameID) {
+        if (normalizedName) {
           const imageUrl = `https://${bucket}.s3.ap-southeast-1.amazonaws.com/${object.Key}`;
-          enImageMap[gameID] = imageUrl;
+          enImageMap[normalizedName] = {
+            url: imageUrl,
+            originalFilename: filename,
+          };
         }
       });
     }
     console.log(`EN Image Map: ${Object.keys(enImageMap).length} entries`);
 
-    console.log("\n=== Processing CN Images ===");
-    if (cnObjectsResult.Contents) {
-      cnObjectsResult.Contents.forEach((object) => {
-        const filename = object.Key.split("/").pop();
-
-        // Only process image files
-        if (!filename.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-          return;
-        }
-
-        const gameID = extractGameIDFromFilename(filename);
-
-        if (gameID) {
-          const imageUrl = `https://${bucket}.s3.ap-southeast-1.amazonaws.com/${object.Key}`;
-          cnImageMap[gameID] = imageUrl;
-        }
-      });
-    }
-    console.log(`CN Image Map: ${Object.keys(cnImageMap).length} entries`);
-
     // Build bulk operations
     const bulkOps = [];
+    const matchedGames = [];
+    const unmatchedGames = [];
 
     for (const game of allGames) {
-      const gameID = game.gameID;
+      const normalizedGameName = normalizeString(game.gameNameEN);
 
-      // 100% match required
-      const enImage = enImageMap[gameID];
-      const cnImage = cnImageMap[gameID];
+      // Match normalized names
+      const enImage = enImageMap[normalizedGameName];
 
-      if (enImage || cnImage) {
-        const updateFields = {};
-
-        if (enImage) {
-          updateFields.imageUrlEN = enImage;
-        }
-        if (cnImage) {
-          updateFields.imageUrlCN = cnImage;
-        }
-
+      if (enImage) {
         bulkOps.push({
           updateOne: {
             filter: { _id: game._id },
-            update: { $set: updateFields },
+            update: { $set: { imageUrlEN: enImage.url } },
           },
         });
 
+        matchedGames.push({
+          gameID: game.gameID,
+          gameNameEN: game.gameNameEN,
+          normalizedName: normalizedGameName,
+          matchedFilename: enImage.originalFilename,
+          imageUrlEN: enImage.url,
+        });
+
         console.log(
-          `✅ Matched gameID: ${gameID} -> EN: ${!!enImage}, CN: ${!!cnImage}`
+          `✅ Matched: "${game.gameNameEN}" (${normalizedGameName}) -> ${enImage.originalFilename}`
         );
       } else {
-        console.log(`❌ No match for gameID: ${gameID}`);
+        unmatchedGames.push({
+          gameID: game.gameID,
+          gameNameEN: game.gameNameEN,
+          normalizedName: normalizedGameName,
+        });
+
+        console.log(
+          `❌ No match for: "${game.gameNameEN}" (${normalizedGameName})`
+        );
       }
     }
 
     // Execute bulk update
     let updatedCount = 0;
     if (bulkOps.length) {
-      const result = await GameIBexGameModal.bulkWrite(bulkOps);
+      const result = await GameExpansesStudiosGameModal.bulkWrite(bulkOps);
       updatedCount = result.modifiedCount;
     }
 
-    // Get unmatched games (first 10)
-    const unmatchedGames = allGames
-      .filter((game) => !enImageMap[game.gameID] && !cnImageMap[game.gameID])
+    // Log available S3 images for debugging (first 10)
+    const availableS3Images = Object.entries(enImageMap)
       .slice(0, 10)
-      .map((game) => ({
-        gameID: game.gameID,
-        gameNameEN: game.gameNameEN,
-      }));
-
-    // Get matched games (first 5)
-    const matchedGames = allGames
-      .filter((game) => enImageMap[game.gameID] || cnImageMap[game.gameID])
-      .slice(0, 5)
-      .map((game) => ({
-        gameID: game.gameID,
-        gameNameEN: game.gameNameEN,
-        imageUrlEN: enImageMap[game.gameID] || null,
-        imageUrlCN: cnImageMap[game.gameID] || null,
+      .map(([normalized, data]) => ({
+        normalizedName: normalized,
+        originalFilename: data.originalFilename,
       }));
 
     return res.status(200).json({
@@ -467,14 +451,15 @@ router.post("/api/importImgUrl/ibex", async (req, res) => {
       message: `Successfully synced images for ${updatedCount} games`,
       totalGames: allGames.length,
       updatedGames: updatedCount,
-      unmatchedGames: allGames.length - bulkOps.length,
+      matchedCount: bulkOps.length,
+      unmatchedCount: allGames.length - bulkOps.length,
       enImagesAvailable: Object.keys(enImageMap).length,
-      cnImagesAvailable: Object.keys(cnImageMap).length,
-      matchedExamples: matchedGames,
-      unmatchedExamples: unmatchedGames,
+      matchedExamples: matchedGames.slice(0, 10),
+      unmatchedExamples: unmatchedGames.slice(0, 10),
+      availableS3ImagesExamples: availableS3Images,
     });
   } catch (error) {
-    console.error("Error syncing IBEX images:", error);
+    console.error("Error syncing Expanses Studios images:", error);
 
     return res.status(500).json({
       success: false,
@@ -717,7 +702,7 @@ router.post("/api/jili/updateMalayName", async (req, res) => {
 router.post("/api/jili/getgamelistMissing", async (req, res) => {
   try {
     // Fetch all games from the database (or add filters as needed)
-    const missingImageGames = await GameYGGDrasilGameModal.find({
+    const missingImageGames = await GameExpansesStudiosGameModal.find({
       $or: [{ imageUrlEN: { $exists: false } }, { imageUrlEN: "" }],
       maintenance: false,
     });
