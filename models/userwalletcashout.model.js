@@ -58,11 +58,6 @@ const userwalletcashoutschema = new mongoose.Schema(
   }
 );
 
-userwalletcashoutschema.index(
-  { createdAt: -1 },
-  { expireAfterSeconds: 5260000 }
-);
-
 // 创建模型
 const UserWalletCashOut = mongoose.model(
   "UserWalletCashOut",

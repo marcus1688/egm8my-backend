@@ -34,11 +34,6 @@ const paymentGatewayTransactionLogSchema = new mongoose.Schema(
   }
 );
 
-paymentGatewayTransactionLogSchema.index(
-  { createdAt: 1 },
-  { expireAfterSeconds: 5260000 }
-);
-
 const PaymentGatewayTransactionLog = mongoose.model(
   "PaymentGatewayTransactionLog",
   paymentGatewayTransactionLogSchema
