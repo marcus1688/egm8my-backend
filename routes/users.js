@@ -74,6 +74,7 @@ const slot918KissModal = require("../models/slot_918kiss.model");
 const LotteryHuaweiModal = require("../models/other_huaweilottery.model");
 const LiveWMCasinoRebateModal = require("../models/live_wmcasinorebate.model");
 const SlotIBEXModal = require("../models/slot_ibex.model");
+const SlotYellowbatModal = require("../models/slot_yellowbat.model");
 
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
@@ -6346,6 +6347,11 @@ router.get(
           ),
 
           getAllUsersTurnover(SlotIBEXModal, {
+            cancel: { $ne: true },
+            settle: true,
+          }),
+
+          getAllUsersTurnover(SlotYellowbatModal, {
             cancel: { $ne: true },
             settle: true,
           }),

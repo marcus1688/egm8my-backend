@@ -57,6 +57,7 @@ const slot918KissModal = require("../../models/slot_918kiss.model");
 const LotteryHuaweiModal = require("../../models/other_huaweilottery.model");
 const LiveWMCasinoRebateModal = require("../../models/live_wmcasinorebate.model");
 const SlotIBEXModal = require("../../models/slot_ibex.model");
+const SlotYellowbatModal = require("../../models/slot_yellowbat.model");
 
 require("dotenv").config();
 
@@ -308,6 +309,14 @@ router.post("/admin/api/getAllTurnoverForRebate", async (req, res) => {
         url: `${PUBLIC_APIURL}api/ibex/getturnoverforrebate`,
         name: "IBEX",
       },
+      {
+        url: `${PUBLIC_APIURL}api/yellowbatslot/getturnoverforrebate`,
+        name: "YELLOWBAT",
+      },
+      {
+        url: `${PUBLIC_APIURL}api/yellowbatfish/getturnoverforrebate`,
+        name: "YELLOWBAT",
+      },
     ];
 
     const routePromises = routes.map((route) =>
@@ -553,6 +562,12 @@ const GAME_CONFIG = [
     category: CATEGORIES.SLOT,
     match: { cancel: { $ne: true }, settle: true, gameType: "SLOT" },
   },
+  {
+    model: SlotYellowbatModal,
+    name: "yellowbatSlot",
+    category: CATEGORIES.SLOT,
+    match: { cancel: { $ne: true }, settle: true, gameType: "SLOT" },
+  },
 
   // ========== LIVE CASINO ==========
   {
@@ -669,6 +684,12 @@ const GAME_CONFIG = [
   {
     model: SlotRSGModal,
     name: "rsgFish",
+    category: CATEGORIES.FISHING,
+    match: { cancel: { $ne: true }, settle: true, gametype: "FISH" },
+  },
+  {
+    model: SlotYellowbatModal,
+    name: "yellowbatFish",
     category: CATEGORIES.FISHING,
     match: { cancel: { $ne: true }, settle: true, gametype: "FISH" },
   },

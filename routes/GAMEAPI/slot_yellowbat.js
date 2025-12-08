@@ -1054,4 +1054,724 @@ async function handlecancelfreecard(
     status: "0000",
   });
 }
+
+router.post("/api/yellowbatslot/getturnoverforrebate", async (req, res) => {
+  try {
+    const { date } = req.body;
+
+    let startDate, endDate;
+    if (date === "today") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    } else if (date === "yesterday") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    }
+
+    console.log("YELLOWBAT SLOT QUERYING TIME", startDate, endDate);
+
+    const records = await SlotYellowbatModal.find({
+      createdAt: {
+        $gte: startDate,
+        $lt: endDate,
+      },
+      gametype: "SLOT",
+      cancel: { $ne: true },
+      settle: true,
+    });
+
+    const uniqueGameIds = [
+      ...new Set(records.map((record) => record.username)),
+    ];
+
+    const users = await User.find(
+      { gameId: { $in: uniqueGameIds } },
+      { gameId: 1, username: 1 }
+    ).lean();
+
+    const gameIdToUsername = {};
+    users.forEach((user) => {
+      gameIdToUsername[user.gameId] = user.username;
+    });
+
+    // Aggregate turnover and win/loss for each player
+    let playerSummary = {};
+
+    records.forEach((record) => {
+      const gameId = record.username;
+      const actualUsername = gameIdToUsername[gameId];
+
+      if (!actualUsername) {
+        console.warn(`SPADEGAMING User not found for gameId: ${gameId}`);
+        return;
+      }
+
+      if (!playerSummary[actualUsername]) {
+        playerSummary[actualUsername] = { turnover: 0, winloss: 0 };
+      }
+
+      playerSummary[actualUsername].turnover += record.betamount || 0;
+
+      playerSummary[actualUsername].winloss +=
+        (record.settleamount || 0) - (record.betamount || 0);
+    });
+    Object.keys(playerSummary).forEach((playerId) => {
+      playerSummary[playerId].turnover = Number(
+        playerSummary[playerId].turnover.toFixed(2)
+      );
+      playerSummary[playerId].winloss = Number(
+        playerSummary[playerId].winloss.toFixed(2)
+      );
+    });
+    return res.status(200).json({
+      success: true,
+      summary: {
+        gamename: "YELLOWBAT",
+        gamecategory: "Slot Games",
+        users: playerSummary,
+      },
+    });
+  } catch (error) {
+    console.log("YELLOWBAT: Failed to fetch win/loss report:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: {
+        en: "YELLOWBAT: Failed to fetch win/loss report",
+        zh: "YELLOWBAT: 获取盈亏报告失败",
+      },
+    });
+  }
+});
+
+router.get(
+  "/admin/api/yellowbatslot/:userId/dailygamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      const records = await SlotYellowbatModal.find({
+        username: user.gameId,
+        createdAt: {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        },
+        gametype: "SLOT",
+        cancel: { $ne: true },
+        settle: true,
+      });
+
+      // Aggregate turnover and win/loss for each player
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        totalTurnover += record.betamount || 0;
+        totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
+      });
+
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+      // Return the aggregated results
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "YELLOWBAT",
+          gamecategory: "Slot Games",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("YELLOWBAT: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "YELLOWBAT: Failed to fetch win/loss report",
+          zh: "YELLOWBAT: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/yellowbatslot/:userId/gamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      const records = await GameDataLog.find({
+        username: user.username,
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      // Sum up the values for EVOLUTION under Live Casino
+      records.forEach((record) => {
+        // Convert Mongoose Map to Plain Object
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
+
+        if (
+          gameCategories &&
+          gameCategories["Slot Games"] &&
+          gameCategories["Slot Games"] instanceof Map
+        ) {
+          const gameCat = Object.fromEntries(gameCategories["Slot Games"]);
+
+          if (gameCat["YELLOWBAT"]) {
+            totalTurnover += gameCat["YELLOWBAT"].turnover || 0;
+            totalWinLoss += gameCat["YELLOWBAT"].winloss || 0;
+          }
+        }
+      });
+
+      // Format the total values to two decimal places
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "YELLOWBAT",
+          gamecategory: "Slot Games",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("YELLOWBAT: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "YELLOWBAT: Failed to fetch win/loss report",
+          zh: "YELLOWBAT: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/yellowbatslot/dailykioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const records = await SlotYellowbatModal.find({
+        createdAt: {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        },
+        gametype: "SLOT",
+        cancel: { $ne: true },
+        settle: true,
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        totalTurnover += record.betamount || 0;
+
+        totalWinLoss += (record.betamount || 0) - (record.settleamount || 0);
+      });
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "YELLOWBAT",
+          gamecategory: "Slot Games",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("YELLOWBAT: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "YELLOWBAT: Failed to fetch win/loss report",
+          zh: "YELLOWBAT: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/yellowbatslot/kioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const records = await GameDataLog.find({
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
+
+        if (
+          gameCategories &&
+          gameCategories["Slot Games"] &&
+          gameCategories["Slot Games"] instanceof Map
+        ) {
+          const gameCat = Object.fromEntries(gameCategories["Slot Games"]);
+
+          if (gameCat["YELLOWBAT"]) {
+            totalTurnover += Number(gameCat["YELLOWBAT"].turnover || 0);
+            totalWinLoss += Number(gameCat["YELLOWBAT"].winloss || 0) * -1;
+          }
+        }
+      });
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "YELLOWBAT",
+          gamecategory: "Slot Games",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("YELLOWBAT: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "YELLOWBAT: Failed to fetch win/loss report",
+          zh: "YELLOWBAT: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+// ----------------
+router.post("/api/yellowbatfish/getturnoverforrebate", async (req, res) => {
+  try {
+    const { date } = req.body;
+
+    let startDate, endDate;
+    if (date === "today") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    } else if (date === "yesterday") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    }
+
+    console.log("YELLOWBAT FISH QUERYING TIME", startDate, endDate);
+
+    const records = await SlotYellowbatModal.find({
+      createdAt: {
+        $gte: startDate,
+        $lt: endDate,
+      },
+      gametype: "FISH",
+      cancel: { $ne: true },
+      settle: true,
+    });
+
+    const uniqueGameIds = [
+      ...new Set(records.map((record) => record.username)),
+    ];
+
+    const users = await User.find(
+      { gameId: { $in: uniqueGameIds } },
+      { gameId: 1, username: 1 }
+    ).lean();
+
+    const gameIdToUsername = {};
+    users.forEach((user) => {
+      gameIdToUsername[user.gameId] = user.username;
+    });
+    // Aggregate turnover and win/loss for each player
+    let playerSummary = {};
+
+    records.forEach((record) => {
+      const gameId = record.username;
+      const actualUsername = gameIdToUsername[gameId];
+
+      if (!playerSummary[actualUsername]) {
+        playerSummary[actualUsername] = { turnover: 0, winloss: 0 };
+      }
+
+      playerSummary[actualUsername].turnover += record.betamount || 0;
+
+      playerSummary[actualUsername].winloss +=
+        (record.settleamount || 0) - (record.betamount || 0);
+    });
+    // Format the turnover and win/loss for each player to two decimal places
+    Object.keys(playerSummary).forEach((playerId) => {
+      playerSummary[playerId].turnover = Number(
+        playerSummary[playerId].turnover.toFixed(2)
+      );
+      playerSummary[playerId].winloss = Number(
+        playerSummary[playerId].winloss.toFixed(2)
+      );
+    });
+    // Return the aggregated results
+    return res.status(200).json({
+      success: true,
+      summary: {
+        gamename: "YELLOWBAT",
+        gamecategory: "Fishing",
+        users: playerSummary,
+      },
+    });
+  } catch (error) {
+    console.log("YELLOWBAT: Failed to fetch win/loss report:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: {
+        en: "YELLOWBAT: Failed to fetch win/loss report",
+        zh: "YELLOWBAT: 获取盈亏报告失败",
+      },
+    });
+  }
+});
+
+router.get(
+  "/admin/api/yellowbatfish/:userId/dailygamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      const records = await SlotYellowbatModal.find({
+        username: user.gameId,
+        createdAt: {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        },
+        gametype: "FISH",
+        cancel: { $ne: true },
+        settle: true,
+      });
+
+      // Aggregate turnover and win/loss for each player
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        totalTurnover += record.betamount || 0;
+        totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
+      });
+
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+      // Return the aggregated results
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "YELLOWBAT",
+          gamecategory: "Fishing",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("YELLOWBAT: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "YELLOWBAT: Failed to fetch win/loss report",
+          zh: "YELLOWBAT: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/yellowbatfish/:userId/gamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      const records = await GameDataLog.find({
+        username: user.username,
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      // Sum up the values for EVOLUTION under Live Casino
+      records.forEach((record) => {
+        // Convert Mongoose Map to Plain Object
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
+
+        if (
+          gameCategories &&
+          gameCategories["Fishing"] &&
+          gameCategories["Fishing"] instanceof Map
+        ) {
+          const gameCat = Object.fromEntries(gameCategories["Fishing"]);
+
+          if (gameCat["YELLOWBAT"]) {
+            totalTurnover += gameCat["YELLOWBAT"].turnover || 0;
+            totalWinLoss += gameCat["YELLOWBAT"].winloss || 0;
+          }
+        }
+      });
+
+      // Format the total values to two decimal places
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "YELLOWBAT",
+          gamecategory: "Fishing",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("YELLOWBAT: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "YELLOWBAT: Failed to fetch win/loss report",
+          zh: "YELLOWBAT: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/yellowbatfish/dailykioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const records = await SlotYellowbatModal.find({
+        createdAt: {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        },
+        gametype: "FISH",
+        cancel: { $ne: true },
+        settle: true,
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        totalTurnover += record.betamount || 0;
+        totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
+      });
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "YELLOWBAT",
+          gamecategory: "Fishing",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("YELLOWBAT: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "YELLOWBAT: Failed to fetch win/loss report",
+          zh: "YELLOWBAT: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/yellowbatfish/kioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const records = await GameDataLog.find({
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
+
+        if (
+          gameCategories &&
+          gameCategories["Fishing"] &&
+          gameCategories["Fishing"] instanceof Map
+        ) {
+          const gameCat = Object.fromEntries(gameCategories["Fishing"]);
+
+          if (gameCat["YELLOWBAT"]) {
+            totalTurnover += Number(gameCat["YELLOWBAT"].turnover || 0);
+            totalWinLoss += Number(gameCat["YELLOWBAT"].winloss || 0) * -1;
+          }
+        }
+      });
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "YELLOWBAT",
+          gamecategory: "Fishing",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("YELLOWBAT: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "YELLOWBAT: Failed to fetch win/loss report",
+          zh: "YELLOWBAT: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
 module.exports = router;
