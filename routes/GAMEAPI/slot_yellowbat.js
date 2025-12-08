@@ -581,6 +581,7 @@ router.post("/api/yellowbat", async (req, res) => {
     const requestData = JSON.parse(decryptedData);
 
     const { action, uid } = requestData;
+    console.log(requestData, "hihi");
     const actualGameId = uid.toUpperCase();
 
     // Find current user first
