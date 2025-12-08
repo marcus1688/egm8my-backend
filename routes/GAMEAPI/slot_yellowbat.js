@@ -581,7 +581,6 @@ router.post("/api/yellowbat", async (req, res) => {
     const requestData = JSON.parse(decryptedData);
 
     const { action, uid } = requestData;
-    console.log(requestData, "hihi");
     const actualGameId = uid.toUpperCase();
 
     // Find current user first
@@ -746,9 +745,9 @@ async function handleBetPlacement(
   const updatedUserBalance = await User.findOneAndUpdate(
     {
       gameId: actualGameId,
-      wallet: { $gte: roundToTwoDecimals(bet) },
+      wallet: { $gte: roundToTwoDecimals(Math.abs(bet)) },
     },
-    { $inc: { wallet: -roundToTwoDecimals(bet) } },
+    { $inc: { wallet: roundToTwoDecimals(bet) } },
     { new: true, projection: { wallet: 1 } }
   ).lean();
 
@@ -763,7 +762,7 @@ async function handleBetPlacement(
     username: currentUser.gameId,
     betId: transferId,
     bet: true,
-    betamount: roundToTwoDecimals(bet),
+    betamount: roundToTwoDecimals(Math.abs(bet)),
     gametype,
   });
 
