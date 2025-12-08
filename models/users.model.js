@@ -345,6 +345,7 @@ const userSchema = new mongoose.Schema(
       prettygaming: { type: gameLockSchema, default: () => ({}) },
       oncasino: { type: gameLockSchema, default: () => ({}) },
       wmcasino: { type: gameLockSchema, default: () => ({}) },
+      yellowbat: { type: gameLockSchema, default: () => ({}) },
     },
 
     gameStatus: {
