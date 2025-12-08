@@ -695,7 +695,7 @@ async function handleWalletUpdate(
   }
 
   await SlotYellowbatModal.create({
-    username: uid,
+    username: currentUser.gameId,
     betId: transferId,
     bet: true,
     settle: true,
