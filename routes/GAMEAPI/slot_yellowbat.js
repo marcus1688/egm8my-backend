@@ -579,7 +579,6 @@ router.post("/api/yellowbat", async (req, res) => {
 
     const decryptedData = AesDecrypt(x, yellowbatKEY, yellowbatIV);
     const requestData = JSON.parse(decryptedData);
-    console.log(requestData, "hihi");
     const { action, uid } = requestData;
     const actualGameId = uid.toUpperCase();
 
