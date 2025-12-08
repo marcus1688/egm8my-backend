@@ -19,8 +19,6 @@ const UserWalletLogSchema = new mongoose.Schema(
   }
 );
 
-UserWalletLogSchema.index({ createdAt: -1 }, { expireAfterSeconds: 5260000 });
-
 const UserwWalletLog = mongoose.model("Walletlog", UserWalletLogSchema);
 
 module.exports = UserwWalletLog;

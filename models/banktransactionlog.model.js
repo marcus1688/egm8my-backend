@@ -26,11 +26,6 @@ const bankTransactionLogSchema = new mongoose.Schema(
   }
 );
 
-bankTransactionLogSchema.index(
-  { createdAt: -1 },
-  { expireAfterSeconds: 5260000 }
-);
-
 const BankTransactionLog = mongoose.model(
   "BankTransactionLog",
   bankTransactionLogSchema
