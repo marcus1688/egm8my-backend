@@ -420,7 +420,14 @@ router.post(
         });
       }
 
-      if (user.gameLock.yellowbat.lock) {
+      const { gameLang, gameCode, gameType } = req.body;
+
+      const isLocked =
+        gameType === "Fishing"
+          ? user.gameLock?.yellowbatfish?.lock
+          : user.gameLock?.yellowbatslot?.lock;
+
+      if (isLocked) {
         return res.status(200).json({
           success: false,
           message: {
@@ -432,7 +439,6 @@ router.post(
           },
         });
       }
-      const { gameLang, gameCode } = req.body;
 
       let lang = "en";
 
@@ -584,7 +590,8 @@ router.post("/api/yellowbat", async (req, res) => {
         gameId: 1,
         wallet: 1,
         _id: 1,
-        "gameLock.yellowbat.lock": 1,
+        "gameLock.yellowbatslot.lock": 1,
+        "gameLock.yellowbatfish.lock": 1,
       }
     ).lean();
 
@@ -645,7 +652,14 @@ async function handleWalletUpdate(
   res,
   actualGameId
 ) {
-  if (currentUser.gameLock?.yellowbat?.lock) {
+  const gametype = gType === 2 ? "FISH" : "SLOT";
+
+  const isLocked =
+    gametype === "FISH"
+      ? currentUser.gameLock?.yellowbatfish?.lock
+      : currentUser.gameLock?.yellowbatslot?.lock;
+
+  if (isLocked) {
     return res.status(200).json({
       status: "7503",
       err_text: "Player locked",
@@ -680,8 +694,6 @@ async function handleWalletUpdate(
     });
   }
 
-  const gametype = gType === 2 ? "FISH" : "SLOT";
-
   await SlotYellowbatModal.create({
     username: uid,
     betId: transferId,
@@ -704,7 +716,14 @@ async function handleBetPlacement(
   res,
   actualGameId
 ) {
-  if (currentUser.gameLock?.yellowbat?.lock) {
+  const gametype = gType === 2 ? "FISH" : "SLOT";
+
+  const isLocked =
+    gametype === "FISH"
+      ? currentUser.gameLock?.yellowbatfish?.lock
+      : currentUser.gameLock?.yellowbatslot?.lock;
+
+  if (isLocked) {
     return res.status(200).json({
       status: "7503",
       err_text: "Player locked",
@@ -738,8 +757,6 @@ async function handleBetPlacement(
       err_text: "Player balance is insufficient",
     });
   }
-
-  const gametype = gType === 2 ? "FISH" : "SLOT";
 
   await SlotYellowbatModal.create({
     username: currentUser.gameId,
