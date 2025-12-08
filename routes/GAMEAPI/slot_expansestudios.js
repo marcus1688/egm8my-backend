@@ -94,7 +94,7 @@ router.post("/api/expansestudio/getprovideergamelist", async (req, res) => {
     console.log("=== ExpanseStudio GetGameList ===");
     console.log("Request Params:", params);
     console.log("Hash:", hash);
-
+    console.log(`${expansestudioAPIURL}game/list?hash=${hash}`);
     // Make API request
     const response = await axios.post(
       `${expansestudioAPIURL}game/list?hash=${hash}`,

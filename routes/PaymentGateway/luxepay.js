@@ -33,11 +33,11 @@ const LiveTransaction = require("../../models/transaction.model");
 
 require("dotenv").config();
 
-const luxepayMerchantCode = "bm8mytest";
+const luxepayMerchantCode = "bm8my";
 const luxepaySecret = process.env.LUXEPAY_SECRET;
 const webURL = "https://www.bm8my.vip/";
 const luxepayDuitNowAPIURL = "https://qrpayinapi.luxepay.co/DuitNow/Deposit";
-const luxepayINAPIURL = "https://btpayinapi.luxepay.co/payin/DepositV2";
+const luxepayINAPIURL = "https://btpayinapi.luxepay.co/payin/Depositv2";
 const luxepayPAYOUTAPIURL = "https://payoutapi.luxepay.co/Payout/Withdrawal";
 const callbackUrl = "https://api.egm8my.vip/api/luxepay/payin";
 const banklistID = "69247c9f7ef1ac832d86e65f";
