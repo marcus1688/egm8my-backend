@@ -58,6 +58,7 @@ const LotteryHuaweiModal = require("../../models/other_huaweilottery.model");
 const LiveWMCasinoRebateModal = require("../../models/live_wmcasinorebate.model");
 const SlotIBEXModal = require("../../models/slot_ibex.model");
 const SlotYellowbatModal = require("../../models/slot_yellowbat.model");
+const LivePrettyGamingModal = require("../../models/live_prettygaming.model");
 
 require("dotenv").config();
 
@@ -316,6 +317,10 @@ router.post("/admin/api/getAllTurnoverForRebate", async (req, res) => {
       {
         url: `${PUBLIC_APIURL}api/yellowbatfish/getturnoverforrebate`,
         name: "YELLOWBAT",
+      },
+      {
+        url: `${PUBLIC_APIURL}api/prettygaming/getturnoverforrebate`,
+        name: "PRETTY GAMING",
       },
     ];
 
@@ -609,7 +614,12 @@ const GAME_CONFIG = [
     category: CATEGORIES.LIVE_CASINO,
     match: { refunded: false, ended: true, gameType: "Live" },
   },
-
+  {
+    model: LivePrettyGamingModal,
+    name: "prettyGaming",
+    category: CATEGORIES.LIVE_CASINO,
+    match: { settle: true, cancel: { $ne: true } },
+  },
   // ========== SPORTS ==========
   {
     model: SportM9BetModal,
