@@ -120,7 +120,7 @@ router.post(
         agentUsername: prettygamingAgent,
         agentApiKey: prettygamingSecret,
         playerUsername: user.gameId,
-        betLimit: [3001],
+        betLimit: [3014, 3009],
       };
       const response = await axios.post(
         `${prettygamingAPIURL}/member/loginRequest`,
@@ -278,7 +278,7 @@ router.post("/api/prettygaming", async (req, res) => {
         await Promise.all([
           User.updateOne({ gameId }, { $inc: { wallet: refundAmount } }),
           LivePrettyGamingModal.updateOne(
-            { betId: ticketId, cancel: { $ne: true }, settle: { $ne: true } },
+            { betId: ticketId },
             { $set: { cancel: true } }
           ),
         ]);

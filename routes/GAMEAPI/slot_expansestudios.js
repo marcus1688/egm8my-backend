@@ -74,8 +74,19 @@ router.post("/api/expansestudio/getprovideergamelist", async (req, res) => {
 
     // Build request parameters
     const params = {
-      providerCode: "EX",
+      requestId,
+      brandId: expansestudioID,
+      page,
+      size,
     };
+
+    // Add optional parameters if provided
+    if (providerCode) {
+      params.providerCode = providerCode;
+    }
+    if (gameType) {
+      params.gameType = gameType;
+    }
 
     // Generate hash
     const hash = generateExpanseStudioHash(params, expansestudioSecret);
