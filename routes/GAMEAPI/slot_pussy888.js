@@ -558,6 +558,7 @@ router.post(
       const balanceResponse = await pussy888CheckBalance(user);
 
       if (!balanceResponse.success) {
+        console.log("failed to retriefve balance", balanceResponse);
         return res.status(200).json({
           success: false,
           message: {
