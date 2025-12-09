@@ -14,6 +14,7 @@ const { checkSportPendingMatch } = require("../helpers/turnoverHelper");
 const { mega888CheckBalance } = require("./GAMEAPI/slot_mega888");
 const { kiss918CheckBalance } = require("./GAMEAPI/slot_918kiss");
 const { huaweiCheckBalance } = require("./GAMEAPI/other_huaweilottery");
+const { pussy888CheckBalance } = require("./GAMEAPI/slot_pussy888");
 //this need change useing createdAt time
 const calculateCountdown = (createdAt) => {
   // //   const now = moment.utc().add(8, "hours"); // GMT+8 timezone
@@ -44,6 +45,7 @@ const calculateWeeklyCountdown = (createdAt) => {
 async function getTotalGameBalance(user) {
   const GAME_CHECKERS = [
     { name: "MEGA888", checker: mega888CheckBalance },
+    { name: "PUSSY888", checker: pussy888CheckBalance },
     { name: "918KISS", checker: kiss918CheckBalance },
     { name: "GRANDDRAGON", checker: huaweiCheckBalance },
   ];

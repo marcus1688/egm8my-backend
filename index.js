@@ -102,6 +102,7 @@ const slotYellowBatRouter = require("./routes/GAMEAPI/slot_yellowbat");
 const slotExpanseStudioRouter = require("./routes/GAMEAPI/slot_expansestudios");
 const slotIBEXRouter = require("./routes/GAMEAPI/slot_ibex");
 const slotJDBRouter = require("./routes/GAMEAPI/slot_jdb");
+const slotPussy888Router = require("./routes/GAMEAPI/slot_pussy888");
 
 const sportSBOBETRouter = require("./routes/GAMEAPI/sport_sbobet");
 const sportM9BetRouter = require("./routes/GAMEAPI/sports_m9bet");
@@ -915,6 +916,7 @@ app.use(slotYellowBatRouter);
 app.use(slotExpanseStudioRouter);
 app.use(slotIBEXRouter);
 app.use(slotJDBRouter);
+app.use(slotPussy888Router);
 
 app.use(sportSBOBETRouter);
 app.use(sportM9BetRouter);

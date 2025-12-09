@@ -355,7 +355,7 @@ const userSchema = new mongoose.Schema(
       mega888: { type: gameStatusSchema, default: () => ({}) },
       kiss918: { type: gameStatusSchema, default: () => ({}) },
       granddragon: { type: gameStatusSchema, default: () => ({}) },
-      // kiss918: { type: gameStatusSchema, default: () => ({}) },
+      pussy888: { type: gameStatusSchema, default: () => ({}) },
     },
     lastForcedLogout: { type: Date, default: null },
     luckySpinPoints: {
@@ -537,6 +537,22 @@ const userSchema = new mongoose.Schema(
     },
     wmCasinoGamePW: {
       type: String,
+    },
+    pussy888GameID: {
+      type: String,
+      default: null,
+    },
+    pussy888GamePW: {
+      type: String,
+      default: null,
+    },
+    pastPussy888GameID: {
+      type: [String],
+      default: [],
+    },
+    pastPussy888GamePW: {
+      type: [String],
+      default: [],
     },
   },
   {

@@ -16,6 +16,7 @@ const { mega888CheckBalance, mega888Withdraw } = require("./slot_mega888");
 const GameWalletLog = require("../../models/gamewalletlog.model");
 const { kiss918CheckBalance, kiss918Withdraw } = require("./slot_918kiss");
 const { huaweiCheckBalance, huaweiWithdraw } = require("./other_huaweilottery");
+const { pussy888CheckBalance, pussy888Withdraw } = require("./slot_pussy888");
 
 require("dotenv").config();
 
@@ -29,17 +30,28 @@ const GAME_CONFIG = [
     key: "mega888",
     balanceKey: "mega888Balance",
     checker: (user) => mega888CheckBalance(user),
-    withdraw: (user, amount) => mega888Withdraw(user, amount),
+    withdraw: (user, amount, ip) => mega888Withdraw(user, amount),
     extractBalance: (result) => Number(result.balance),
     isSuccess: (result) => result.success,
     condition: (user) => !!user.mega888GameID,
+  },
+  {
+    name: "Pussy888",
+    key: "pussy888",
+    balanceKey: "pussy888Balance",
+    checker: (user) => pussy888CheckBalance(user),
+    withdraw: (user, amount, ip, adminName) =>
+      pussy888Withdraw(user, amount, ip, adminName),
+    extractBalance: (result) => Number(result.balance),
+    isSuccess: (result) => result.success,
+    condition: (user) => !!user.pussy888GameID,
   },
   {
     name: "918Kiss",
     key: "kiss918",
     balanceKey: "kiss918Balance",
     checker: (user) => kiss918CheckBalance(user),
-    withdraw: (user, amount) => kiss918Withdraw(user, amount),
+    withdraw: (user, amount, ip) => kiss918Withdraw(user, amount),
     extractBalance: (result) => Number(result.balance),
     isSuccess: (result) => result.success,
     condition: (user) => !!user.kiss918GameID,
@@ -49,7 +61,7 @@ const GAME_CONFIG = [
     key: "granddragon",
     balanceKey: "granddragonBalance",
     checker: (user) => huaweiCheckBalance(user),
-    withdraw: (user, amount) => huaweiWithdraw(user, amount),
+    withdraw: (user, amount, ip) => huaweiWithdraw(user, amount),
     extractBalance: (result) => Number(result.balance),
     isSuccess: (result) => result.success,
     condition: (user) => !!user.huaweiGameID,
@@ -89,9 +101,15 @@ const checkAllGameBalances = async (user) => {
   return Promise.all(balancePromises);
 };
 
-const transferOutFromGame = async (user, gameConfig, balance) => {
+const transferOutFromGame = async (
+  user,
+  gameConfig,
+  balance,
+  ip,
+  adminName = "player"
+) => {
   try {
-    const result = await gameConfig.withdraw(user, balance);
+    const result = await gameConfig.withdraw(user, balance, ip, adminName);
     if (gameConfig.isSuccess(result)) {
       return { success: true, amount: balance };
     }
@@ -283,6 +301,9 @@ router.post(
         });
       }
 
+      let clientIp = req.headers["x-forwarded-for"] || req.ip;
+      clientIp = clientIp.split(",")[0].trim();
+
       const balanceResults = await checkAllGameBalances(user);
 
       const hasBalance = balanceResults.some((r) => r.success && r.balance > 0);
@@ -302,7 +323,13 @@ router.post(
       const transferPromises = balanceResults
         .filter((r) => r.success && r.balance > 0)
         .map(async (r) => {
-          const result = await transferOutFromGame(user, r.game, r.balance);
+          const result = await transferOutFromGame(
+            user,
+            r.game,
+            r.balance,
+            clientIp,
+            "player"
+          );
           return { ...result, key: r.key, name: r.name };
         });
 
@@ -416,6 +443,9 @@ router.post(
         });
       }
 
+      let clientIp = req.headers["x-forwarded-for"] || req.ip;
+      clientIp = clientIp.split(",")[0].trim();
+
       const balanceResults = await checkAllGameBalances(user);
 
       const hasBalance = balanceResults.some((r) => r.success && r.balance > 0);
@@ -435,7 +465,13 @@ router.post(
       const transferPromises = balanceResults
         .filter((r) => r.success && r.balance > 0)
         .map(async (r) => {
-          const result = await transferOutFromGame(user, r.game, r.balance);
+          const result = await transferOutFromGame(
+            user,
+            r.game,
+            r.balance,
+            clientIp,
+            "admin"
+          );
           return { ...result, key: r.key, name: r.name };
         });
 
