@@ -672,7 +672,7 @@ router.post("/api/expansestudios/balance", async (req, res) => {
   }
 });
 
-router.post("/api/expansestudio/transaction", async (req, res) => {
+router.post("/api/expansestudios/transaction", async (req, res) => {
   const {
     requestId,
     brandId,
