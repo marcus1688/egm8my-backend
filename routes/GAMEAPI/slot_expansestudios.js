@@ -26,6 +26,7 @@ const expansestudioSecret = process.env.EXPANSESTUDIO_SECRET;
 const webURL = "https://www.bm8my.vip/";
 const expansestudioAPIURL = "https://api.vsr888.com/";
 const expansestudioGeneralAPIURL = "https://data.vsr888.com/";
+const expansestudioLaunchAPIURL = "https://game.gmhugegold.com/launcher";
 const cashierUrl = "https://www.bm8my.vip/myaccount/deposit";
 
 function roundToTwoDecimals(num) {
@@ -386,7 +387,7 @@ router.post(
 
       const queryString = new URLSearchParams(payload).toString();
 
-      const launchUrl = `${expansestudioAPIURL}launcher?${queryString}`;
+      const launchUrl = `${expansestudioLaunchAPIURL}?${queryString}`;
 
       // const updatedUser = await User.findOneAndUpdate(
       //   { _id: user._id },

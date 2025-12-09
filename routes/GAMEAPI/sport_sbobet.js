@@ -1312,10 +1312,10 @@ router.post("/api/sbobet/getturnoverforrebate", async (req, res) => {
         .toDate();
     }
 
-    console.log("VPOWER QUERYING TIME", startDate, endDate);
+    console.log("SBOBET QUERYING TIME", startDate, endDate);
 
     const records = await SportSBOBETModal.find({
-      createdAt: {
+      updatedAt: {
         $gte: startDate,
         $lt: endDate,
       },
@@ -1388,251 +1388,251 @@ router.post("/api/sbobet/getturnoverforrebate", async (req, res) => {
   }
 });
 
-// router.get(
-//   "/admin/api/vpower/:userId/dailygamedata",
-//   authenticateAdminToken,
-//   async (req, res) => {
-//     try {
-//       const { startDate, endDate } = req.query;
+router.get(
+  "/admin/api/sbobet/:userId/dailygamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
 
-//       const userId = req.params.userId;
+      const userId = req.params.userId;
 
-//       const user = await User.findById(userId);
+      const user = await User.findById(userId);
 
-//       const records = await SportSBOBETModal.find({
-//         username: user.gameId,
-//         createdAt: {
-//           $gte: moment(new Date(startDate)).utc().toDate(),
-//           $lte: moment(new Date(endDate)).utc().toDate(),
-//         },
-//         settle: true,
-//       });
+      const records = await SportSBOBETModal.find({
+        username: user.gameId,
+        updatedAt: {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        },
+        settle: true,
+      });
 
-//       // Aggregate turnover and win/loss for each player
-//       let totalTurnover = 0;
-//       let totalWinLoss = 0;
+      // Aggregate turnover and win/loss for each player
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
 
-//       records.forEach((record) => {
-//         totalTurnover += record.betamount || 0;
-//         totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
-//       });
+      records.forEach((record) => {
+        totalTurnover += record.betamount || 0;
+        totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
+      });
 
-//       totalTurnover = Number(totalTurnover.toFixed(2));
-//       totalWinLoss = Number(totalWinLoss.toFixed(2));
-//       // Return the aggregated results
-//       return res.status(200).json({
-//         success: true,
-//         summary: {
-//           gamename: "VPOWER",
-//           gamecategory: "Slot Games",
-//           user: {
-//             username: user.username,
-//             turnover: totalTurnover,
-//             winloss: totalWinLoss,
-//           },
-//         },
-//       });
-//     } catch (error) {
-//       console.log("VPOWER: Failed to fetch win/loss report:", error.message);
-//       return res.status(500).json({
-//         success: false,
-//         message: {
-//           en: "VPOWER: Failed to fetch win/loss report",
-//           zh: "VPOWER: 获取盈亏报告失败",
-//         },
-//       });
-//     }
-//   }
-// );
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+      // Return the aggregated results
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "SBOBET",
+          gamecategory: "Slot Games",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("SBOBET: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "SBOBET: Failed to fetch win/loss report",
+          zh: "SBOBET: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
 
-// router.get(
-//   "/admin/api/vpower/:userId/gamedata",
-//   authenticateAdminToken,
-//   async (req, res) => {
-//     try {
-//       const { startDate, endDate } = req.query;
+router.get(
+  "/admin/api/sbobet/:userId/gamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
 
-//       const userId = req.params.userId;
+      const userId = req.params.userId;
 
-//       const user = await User.findById(userId);
+      const user = await User.findById(userId);
 
-//       const records = await GameDataLog.find({
-//         username: user.username,
-//         date: {
-//           $gte: moment(new Date(startDate))
-//             .utc()
-//             .add(8, "hours")
-//             .format("YYYY-MM-DD"),
-//           $lte: moment(new Date(endDate))
-//             .utc()
-//             .add(8, "hours")
-//             .format("YYYY-MM-DD"),
-//         },
-//       });
+      const records = await GameDataLog.find({
+        username: user.username,
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
 
-//       let totalTurnover = 0;
-//       let totalWinLoss = 0;
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
 
-//       // Sum up the values for EVOLUTION under Live Casino
-//       records.forEach((record) => {
-//         // Convert Mongoose Map to Plain Object
-//         const gameCategories =
-//           record.gameCategories instanceof Map
-//             ? Object.fromEntries(record.gameCategories)
-//             : record.gameCategories;
+      // Sum up the values for EVOLUTION under Live Casino
+      records.forEach((record) => {
+        // Convert Mongoose Map to Plain Object
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
 
-//         if (
-//           gameCategories &&
-//           gameCategories["Slot Games"] &&
-//           gameCategories["Slot Games"] instanceof Map
-//         ) {
-//           const slotGames = Object.fromEntries(gameCategories["Slot Games"]);
+        if (
+          gameCategories &&
+          gameCategories["Slot Games"] &&
+          gameCategories["Slot Games"] instanceof Map
+        ) {
+          const slotGames = Object.fromEntries(gameCategories["Slot Games"]);
 
-//           if (slotGames["VPOWER"]) {
-//             totalTurnover += slotGames["VPOWER"].turnover || 0;
-//             totalWinLoss += slotGames["VPOWER"].winloss || 0;
-//           }
-//         }
-//       });
+          if (slotGames["SBOBET"]) {
+            totalTurnover += slotGames["SBOBET"].turnover || 0;
+            totalWinLoss += slotGames["SBOBET"].winloss || 0;
+          }
+        }
+      });
 
-//       // Format the total values to two decimal places
-//       totalTurnover = Number(totalTurnover.toFixed(2));
-//       totalWinLoss = Number(totalWinLoss.toFixed(2));
+      // Format the total values to two decimal places
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
 
-//       return res.status(200).json({
-//         success: true,
-//         summary: {
-//           gamename: "VPOWER",
-//           gamecategory: "Slot Games",
-//           user: {
-//             username: user.username,
-//             turnover: totalTurnover,
-//             winloss: totalWinLoss,
-//           },
-//         },
-//       });
-//     } catch (error) {
-//       console.log("VPOWER: Failed to fetch win/loss report:", error.message);
-//       return res.status(500).json({
-//         success: false,
-//         message: {
-//           en: "VPOWER: Failed to fetch win/loss report",
-//           zh: "VPOWER: 获取盈亏报告失败",
-//         },
-//       });
-//     }
-//   }
-// );
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "SBOBET",
+          gamecategory: "Slot Games",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("SBOBET: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "SBOBET: Failed to fetch win/loss report",
+          zh: "SBOBET: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
 
-// router.get(
-//   "/admin/api/vpower/dailykioskreport",
-//   authenticateAdminToken,
-//   async (req, res) => {
-//     try {
-//       const { startDate, endDate } = req.query;
+router.get(
+  "/admin/api/sbobet/dailykioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
 
-//       const records = await SportSBOBETModal.find({
-//         createdAt: {
-//           $gte: moment(new Date(startDate)).utc().toDate(),
-//           $lte: moment(new Date(endDate)).utc().toDate(),
-//         },
-//         settle: true,
-//       });
+      const records = await SportSBOBETModal.find({
+        updatedAt: {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        },
+        settle: true,
+      });
 
-//       let totalTurnover = 0;
-//       let totalWinLoss = 0;
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
 
-//       records.forEach((record) => {
-//         totalTurnover += record.betamount || 0;
+      records.forEach((record) => {
+        totalTurnover += record.betamount || 0;
 
-//         totalWinLoss += (record.betamount || 0) - (record.settleamount || 0);
-//       });
+        totalWinLoss += (record.betamount || 0) - (record.settleamount || 0);
+      });
 
-//       return res.status(200).json({
-//         success: true,
-//         summary: {
-//           gamename: "VPOWER",
-//           gamecategory: "Slot Games",
-//           totalturnover: Number(totalTurnover.toFixed(2)),
-//           totalwinloss: Number(totalWinLoss.toFixed(2)),
-//         },
-//       });
-//     } catch (error) {
-//       console.error("VPOWER: Failed to fetch win/loss report:", error);
-//       return res.status(500).json({
-//         success: false,
-//         message: {
-//           en: "VPOWER: Failed to fetch win/loss report",
-//           zh: "VPOWER: 获取盈亏报告失败",
-//         },
-//       });
-//     }
-//   }
-// );
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "SBOBET",
+          gamecategory: "Slot Games",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("SBOBET: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "SBOBET: Failed to fetch win/loss report",
+          zh: "SBOBET: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
 
-// router.get(
-//   "/admin/api/vpower/kioskreport",
-//   authenticateAdminToken,
-//   async (req, res) => {
-//     try {
-//       const { startDate, endDate } = req.query;
+router.get(
+  "/admin/api/sbobet/kioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
 
-//       const records = await GameDataLog.find({
-//         date: {
-//           $gte: moment(new Date(startDate))
-//             .utc()
-//             .add(8, "hours")
-//             .format("YYYY-MM-DD"),
-//           $lte: moment(new Date(endDate))
-//             .utc()
-//             .add(8, "hours")
-//             .format("YYYY-MM-DD"),
-//         },
-//       });
+      const records = await GameDataLog.find({
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
 
-//       let totalTurnover = 0;
-//       let totalWinLoss = 0;
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
 
-//       records.forEach((record) => {
-//         const gameCategories =
-//           record.gameCategories instanceof Map
-//             ? Object.fromEntries(record.gameCategories)
-//             : record.gameCategories;
+      records.forEach((record) => {
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
 
-//         if (
-//           gameCategories &&
-//           gameCategories["Slot Games"] &&
-//           gameCategories["Slot Games"] instanceof Map
-//         ) {
-//           const liveCasino = Object.fromEntries(gameCategories["Slot Games"]);
+        if (
+          gameCategories &&
+          gameCategories["Slot Games"] &&
+          gameCategories["Slot Games"] instanceof Map
+        ) {
+          const liveCasino = Object.fromEntries(gameCategories["Slot Games"]);
 
-//           if (liveCasino["VPOWER"]) {
-//             totalTurnover += Number(liveCasino["VPOWER"].turnover || 0);
-//             totalWinLoss += Number(liveCasino["VPOWER"].winloss || 0) * -1;
-//           }
-//         }
-//       });
+          if (liveCasino["SBOBET"]) {
+            totalTurnover += Number(liveCasino["SBOBET"].turnover || 0);
+            totalWinLoss += Number(liveCasino["SBOBET"].winloss || 0) * -1;
+          }
+        }
+      });
 
-//       return res.status(200).json({
-//         success: true,
-//         summary: {
-//           gamename: "VPOWER",
-//           gamecategory: "Slot Games",
-//           totalturnover: Number(totalTurnover.toFixed(2)),
-//           totalwinloss: Number(totalWinLoss.toFixed(2)),
-//         },
-//       });
-//     } catch (error) {
-//       console.error("VPOWER: Failed to fetch win/loss report:", error);
-//       return res.status(500).json({
-//         success: false,
-//         message: {
-//           en: "VPOWER: Failed to fetch win/loss report",
-//           zh: "VPOWER: 获取盈亏报告失败",
-//         },
-//       });
-//     }
-//   }
-// );
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "SBOBET",
+          gamecategory: "Slot Games",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("SBOBET: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        message: {
+          en: "SBOBET: Failed to fetch win/loss report",
+          zh: "SBOBET: 获取盈亏报告失败",
+        },
+      });
+    }
+  }
+);
 
 module.exports = router;
