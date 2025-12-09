@@ -303,6 +303,65 @@ router.post("/api/expansestudio/getprovideergamelist", async (req, res) => {
   }
 });
 
+router.post("/api/expansestudio/getgamelist", async (req, res) => {
+  try {
+    const games = await GameExpansesStudiosGameModal.find({
+      $and: [
+        {
+          $or: [{ maintenance: false }, { maintenance: { $exists: false } }],
+        },
+        {
+          imageUrlEN: { $exists: true, $ne: null, $ne: "" },
+        },
+      ],
+    }).sort({
+      hot: -1,
+      createdAt: -1,
+    });
+
+    if (!games || games.length === 0) {
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "No games found. Please try again later.",
+          zh: "未找到游戏。请稍后再试。",
+          ms: "Tiada permainan ditemui. Sila cuba lagi kemudian.",
+          zh_hk: "未找到遊戲。請稍後再試。",
+          id: "Tidak ada permainan ditemukan. Silakan coba lagi nanti.",
+        },
+      });
+    }
+
+    const reformattedGamelist = games.map((game) => ({
+      GameCode: game.gameID,
+      GameNameEN: game.gameNameEN,
+      GameNameZH: game.gameNameCN,
+      GameNameHK: game.gameNameHK,
+      GameType: game.gameType,
+      GameImage: game.imageUrlEN || "",
+      Hot: game.hot,
+      RTP: game.rtpRate,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      gamelist: reformattedGamelist,
+    });
+  } catch (error) {
+    console.error("EXPANSES STUDIO Error fetching game list:", error.message);
+    return res.status(200).json({
+      success: false,
+      message: {
+        en: "EXPANSES STUDIO: Unable to retrieve game lists. Please contact customer service for assistance.",
+        zh: "EXPANSES STUDIO: 无法获取游戏列表，请联系客服以获取帮助。",
+        ms: "EXPANSES STUDIO: Tidak dapat mendapatkan senarai permainan. Sila hubungi khidmat pelanggan untuk bantuan.",
+        zh_hk: "EXPANSES STUDIO: 無法獲取遊戲列表，請聯絡客服以獲取幫助。",
+        id: "EXPANSES STUDIO: Tidak dapat mengambil daftar permainan. Silakan hubungi layanan pelanggan untuk bantuan.",
+      },
+    });
+  }
+});
+
 router.post(
   "/api/expansestudio/launchGame",
   authenticateToken,
@@ -389,13 +448,13 @@ router.post(
 
       const launchUrl = `${expansestudioLaunchAPIURL}?${queryString}`;
 
-      // const updatedUser = await User.findOneAndUpdate(
-      //   { _id: user._id },
-      //   {
-      //     epicwinGameToken: token,
-      //   },
-      //   { new: true }
-      // );
+      const updatedUser = await User.findOneAndUpdate(
+        { _id: user._id },
+        {
+          expansesStudioGameToken: token,
+        },
+        { new: true }
+      );
 
       await GameWalletLogAttempt(
         user.username,
@@ -417,18 +476,123 @@ router.post(
         },
       });
     } catch (error) {
-      console.log("EPICWIN error in launching game", error.message);
+      console.log("EXPANSES STUDIO error in launching game", error.message);
       return res.status(200).json({
         success: false,
         message: {
-          en: "EPICWIN: Game launch failed. Please try again or customer service for assistance.",
-          zh: "EPICWIN: 游戏启动失败，请重试或联系客服以获得帮助。",
-          ms: "EPICWIN: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
-          zh_hk: "EPICWIN: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
-          id: "EPICWIN: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+          en: "EXPANSES STUDIO: Game launch failed. Please try again or customer service for assistance.",
+          zh: "EXPANSES STUDIO: 游戏启动失败，请重试或联系客服以获得帮助。",
+          ms: "EXPANSES STUDIO: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          zh_hk: "EXPANSES STUDIO: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+          id: "EXPANSES STUDIO: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
         },
       });
     }
   }
 );
+
+router.post("/api/expansestudio/auth", async (req, res) => {
+  try {
+    console.log(req.body, "reqbody");
+    console.log(req.params, "reqparams");
+    console.log(req.query, "requery");
+    return;
+    const { OperatorId, Signature, PlayerId, AuthToken, RequestDateTime } =
+      req.body;
+
+    if (
+      !OperatorId ||
+      !Signature ||
+      !PlayerId ||
+      !AuthToken ||
+      !RequestDateTime
+    ) {
+      return res.status(200).json({
+        Status: 900406,
+        Description: "Incoming Request Info Incomplete",
+        ResponseDateTime: RequestDateTime,
+        Balance: 0,
+      });
+    }
+
+    if (OperatorId !== epicWinOperatorID) {
+      return res.status(200).json({
+        Status: 900405,
+        Description: "Operator ID Error",
+        ResponseDateTime: RequestDateTime,
+        Balance: 0,
+      });
+    }
+
+    const functionName = "GetBalance";
+
+    const signature = generateSignature(
+      functionName,
+      RequestDateTime,
+      epicWinOperatorID,
+      epicWinSecret,
+      PlayerId
+    );
+    if (signature !== Signature) {
+      return res.status(200).json({
+        Status: 900407,
+        Description: "Invalid Signature",
+        ResponseDateTime: RequestDateTime,
+        Balance: 0,
+      });
+    }
+
+    const tokenParts = AuthToken.split(":");
+
+    const username = tokenParts[0];
+
+    const currentUser = await User.findOne(
+      { gameId: username },
+      { wallet: 1, epicwinGameToken: 1 }
+    ).lean();
+    if (!currentUser || currentUser.epicwinGameToken !== AuthToken) {
+      return res.status(200).json({
+        Status: 900500,
+        Description: "Internal Server Error",
+        ResponseDateTime: RequestDateTime,
+        Balance: 0,
+      });
+    }
+
+    const walletValue = Number(currentUser.wallet);
+
+    const finalBalance = new Decimal(walletValue).toDecimalPlaces(4);
+
+    return res.status(200).json({
+      Status: 200,
+      Description: "OK",
+      ResponseDateTime: RequestDateTime,
+      Balance: finalBalance.toNumber(),
+    });
+  } catch (error) {
+    console.error(
+      "EPICWIN: Error in game provider calling ae96 get balance api:",
+      error.message
+    );
+    if (
+      error.message === "jwt expired" ||
+      error.message === "invalid token" ||
+      error.message === "jwt malformed"
+    ) {
+      return res.status(200).json({
+        Status: 900500,
+        Description: "Internal Server Error",
+        ResponseDateTime: getCurrentFormattedDate(),
+        Balance: 0,
+      });
+    } else {
+      return res.status(200).json({
+        Status: 900500,
+        Description: "Internal Server Error",
+        ResponseDateTime: getCurrentFormattedDate(),
+        Balance: 0,
+      });
+    }
+  }
+});
 module.exports = router;
