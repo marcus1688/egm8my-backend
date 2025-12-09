@@ -226,7 +226,7 @@ const pussy888CheckBalance = async (user) => {
       }
     );
 
-    if (!response.data.success) {
+    if (response.data.success !== true) {
       console.log("failed to retrieve pussy888 balance", response.data);
     }
 
