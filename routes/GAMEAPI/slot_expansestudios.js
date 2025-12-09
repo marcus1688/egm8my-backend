@@ -16,7 +16,7 @@ const jwt = require("jsonwebtoken");
 const moment = require("moment");
 const qs = require("querystring");
 const GameWalletLog = require("../../models/gamewalletlog.model");
-const GameRich88GameModal = require("../../models/slot_rich88Database.model");
+const SlotExpanseStudioModal = require("../../models/slot_expansestudio.model");
 const GameExpansesStudiosGameModal = require("../../models/slot_expansestudioDatabase.model");
 const Decimal = require("decimal.js");
 require("dotenv").config();
@@ -671,4 +671,320 @@ router.post("/api/expansestudios/balance", async (req, res) => {
     });
   }
 });
+
+router.post("/api/expansestudio/transaction", async (req, res) => {
+  const {
+    requestId,
+    brandId,
+    playerId,
+    playerSessionId,
+    gameCode,
+    trans,
+    endSession,
+    providerCode,
+    gameType,
+  } = req.body;
+  const hashFromUrl = req.query.hash;
+  console.log(trans, "hihi");
+  if (
+    !requestId ||
+    !brandId ||
+    !playerId ||
+    !trans ||
+    !Array.isArray(trans) ||
+    trans.length === 0
+  ) {
+    return res.status(200).json({
+      requestId: requestId || "",
+      error: "P_01",
+      message: "Invalid request.",
+    });
+  }
+
+  if (String(brandId) !== expansestudioID) {
+    return res.status(200).json({
+      requestId,
+      error: "P_03",
+      message: "Invalid brandId.",
+    });
+  }
+
+  if (!verifyExpanseStudioHash(req.body, hashFromUrl, expansestudioSecret)) {
+    return res.status(200).json({
+      requestId,
+      error: "P_02",
+      message: "Invalid hash",
+    });
+  }
+
+  try {
+    const currentUser = await User.findOne(
+      { gameId: playerId },
+      { _id: 1, username: 1, wallet: 1, "gameLock.expansesstudio.lock": 1 }
+    ).lean();
+
+    if (!currentUser) {
+      return res.status(200).json({
+        requestId,
+        error: "P_04",
+        message: "Player not found",
+      });
+    }
+
+    if (currentUser.gameLock?.expansesstudio?.lock) {
+      return res.status(200).json({
+        requestId,
+        error: "P_07",
+        message: "Player is inactive",
+      });
+    }
+
+    const sortedTrans = [...trans].sort((a, b) => a.seq - b.seq);
+
+    const transIds = sortedTrans.map((t) => t.transId);
+    const existingTrans = await SlotExpanseStudioModal.find(
+      { betId: { $in: transIds } },
+      { betId: 1, settle: 1, cancel: 1 }
+    ).lean();
+
+    const existingTransMap = new Map(existingTrans.map((t) => [t.betId, t]));
+
+    let walletChange = 0;
+    const newRecords = [];
+    const updateOperations = [];
+
+    for (const tran of sortedTrans) {
+      const {
+        seq,
+        transId,
+        amount,
+        transType,
+        roundId,
+        roundType,
+        referenceId,
+        endRound,
+        validBet,
+        validWin,
+      } = tran;
+      const existingRecord = existingTransMap.get(transId);
+
+      switch (transType) {
+        case "bet": {
+          if (existingRecord) continue;
+
+          walletChange -= roundToTwoDecimals(amount);
+          newRecords.push({
+            betId: transId,
+            username: playerId,
+            betamount: roundToTwoDecimals(amount),
+            bet: true,
+            roundId: roundId,
+          });
+          break;
+        }
+        case "transIn": {
+          if (existingRecord) continue;
+
+          walletChange -= roundToTwoDecimals(amount);
+          newRecords.push({
+            betId: transId,
+            username: playerId,
+            depositamount: roundToTwoDecimals(amount),
+            bet: true,
+            roundId: roundId,
+          });
+          break;
+        }
+
+        case "win": {
+          if (existingRecord?.settle) continue;
+
+          walletChange += roundToTwoDecimals(amount);
+
+          const betTransId = sortedTrans.find(
+            (t) => t.roundId === roundId && t.transType === "bet"
+          )?.transId;
+
+          if (betTransId) {
+            updateOperations.push({
+              updateOne: {
+                filter: { betId: betTransId },
+                update: {
+                  $set: {
+                    settle: true,
+                    settleamount: roundToTwoDecimals(amount),
+                  },
+                },
+              },
+            });
+          } else {
+            newRecords.push({
+              betId: transId,
+              username: playerId,
+              betamount: 0,
+              settleamount: roundToTwoDecimals(amount),
+              bet: true,
+              settle: true,
+              gametype: gameType?.toUpperCase() || "SLOT",
+              roundId: roundId,
+            });
+          }
+          break;
+        }
+
+        case "transOut": {
+          if (existingRecord?.settle) continue;
+
+          walletChange += roundToTwoDecimals(amount);
+
+          const betTransId = sortedTrans.find(
+            (t) => t.roundId === roundId && t.transType === "transIn"
+          )?.transId;
+
+          if (betTransId) {
+            updateOperations.push({
+              updateOne: {
+                filter: { betId: betTransId },
+                update: {
+                  $set: {
+                    settle: true,
+                    withdrawamount: roundToTwoDecimals(amount),
+                    ...(validBet !== undefined && {
+                      transferbetamount: roundToTwoDecimals(validBet),
+                    }),
+                    ...(validWin !== undefined && {
+                      transfersettleamount: roundToTwoDecimals(validWin),
+                    }),
+                  },
+                },
+              },
+            });
+          } else {
+            newRecords.push({
+              betId: transId,
+              username: playerId,
+              transferbetamount: validBet ? roundToTwoDecimals(validBet) : 0,
+              transfersettleamount: validWin ? roundToTwoDecimals(validWin) : 0,
+              settleamount: roundToTwoDecimals(amount),
+              bet: true,
+              settle: true,
+              gametype: gameType?.toUpperCase() || "SLOT",
+              roundId: roundId,
+            });
+          }
+          break;
+        }
+
+        case "cancel": {
+          if (existingRecord?.cancel) continue;
+
+          walletChange += roundToTwoDecimals(amount);
+
+          const targetTransId = referenceId || transId;
+          updateOperations.push({
+            updateOne: {
+              filter: { betId: targetTransId },
+              update: { $set: { cancel: true } },
+            },
+          });
+          break;
+        }
+
+        case "amend": {
+          if (existingRecord) continue;
+
+          walletChange += roundToTwoDecimals(amount);
+
+          newRecords.push({
+            betId: transId,
+            username: playerId,
+            betamount: amount < 0 ? roundToTwoDecimals(Math.abs(amount)) : 0,
+            settleamount: amount > 0 ? roundToTwoDecimals(amount) : 0,
+            bet: amount < 0,
+            settle: true,
+            resettle: true,
+            gametype: gameType?.toUpperCase() || "SLOT",
+          });
+          break;
+        }
+
+        default:
+          console.warn(`Unknown transType: ${transType}`);
+      }
+    }
+
+    const operations = [];
+
+    if (walletChange !== 0) {
+      operations.push(
+        User.findOneAndUpdate(
+          {
+            gameId: playerId,
+            ...(walletChange < 0 && {
+              wallet: { $gte: Math.abs(walletChange) },
+            }),
+          },
+          { $inc: { wallet: roundToTwoDecimals(walletChange) } },
+          { new: true, projection: { wallet: 1 } }
+        ).lean()
+      );
+    } else {
+      operations.push(Promise.resolve({ wallet: currentUser.wallet }));
+    }
+
+    if (newRecords.length > 0) {
+      operations.push(
+        SlotExpanseStudioModal.insertMany(newRecords, { ordered: false }).catch(
+          (err) => {
+            if (err.code !== 11000) console.error("Insert error:", err.message);
+            return [];
+          }
+        )
+      );
+    }
+
+    if (updateOperations.length > 0) {
+      operations.push(
+        SlotExpanseStudioModal.bulkWrite(updateOperations, {
+          ordered: false,
+        }).catch((err) => {
+          console.error("BulkWrite error:", err.message);
+          return {};
+        })
+      );
+    }
+
+    const [updatedUser] = await Promise.all(operations);
+
+    if (!updatedUser || updatedUser.wallet === undefined) {
+      const latestUser = await User.findOne(
+        { gameId: playerId },
+        { wallet: 1 }
+      ).lean();
+      return res.status(200).json({
+        requestId,
+        error: "T_01",
+        message: "Player Insufficient Funds",
+        balance: roundToTwoDecimals(latestUser?.wallet || 0),
+      });
+    }
+
+    // 12. Return success
+    return res.status(200).json({
+      requestId,
+      error: "0",
+      message: "success",
+      currency: "MYR",
+      balance: roundToTwoDecimals(updatedUser.wallet),
+    });
+  } catch (error) {
+    console.error("ExpanseStudio Transaction Error:", error.message);
+    return res.status(200).json({
+      requestId,
+      error: "P_00",
+      message: "Server Error, internal server error.",
+    });
+  }
+});
+
 module.exports = router;
