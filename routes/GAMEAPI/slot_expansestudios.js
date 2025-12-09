@@ -491,7 +491,7 @@ router.post(
   }
 );
 
-router.post("/api/expansestudio/auth", async (req, res) => {
+router.post("/api/expansestudios/auth", async (req, res) => {
   try {
     console.log(req.body, "reqbody");
     console.log(req.params, "reqparams");
