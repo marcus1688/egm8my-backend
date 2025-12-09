@@ -563,7 +563,6 @@ const GAME_CONFIG = [
     name: "kiss918",
     category: CATEGORIES.SLOT,
     match: {},
-    useUsername: true,
   },
   {
     model: SlotIBEXModal,
@@ -622,7 +621,6 @@ const GAME_CONFIG = [
     name: "wmcasino",
     category: CATEGORIES.LIVE_CASINO,
     match: {},
-    useUsername: true,
   },
   {
     model: SlotLivePPModal,
@@ -732,7 +730,6 @@ const GAME_CONFIG = [
     name: "granddragon",
     category: CATEGORIES.LOTTERY,
     match: { cancel: { $ne: true } },
-    useUsername: true,
   },
 ];
 

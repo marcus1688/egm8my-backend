@@ -6068,7 +6068,7 @@ router.get(
         try {
           const fullMatchConditions = {
             ...matchConditions,
-            createdAt: dateFilter.createdAt,
+            [timeFieldName]: dateFilter.createdAt,
           };
 
           const results = await model.aggregate([
@@ -6364,10 +6364,17 @@ router.get(
             settle: true,
           }),
 
-          getAllUsersTurnover(SportSBOBETModal, {
-            cancel: { $ne: true },
-            settle: true,
-          }),
+          getAllUsersTurnover(
+            SportSBOBETModal,
+            {
+              cancel: { $ne: true },
+              settle: true,
+            },
+            {
+              $ifNull: [{ $ifNull: ["$validbetamount", "$betamount"] }, 0],
+            },
+            "betTime"
+          ),
 
           getAllUsersTurnover(
             slotPussy888Modal,

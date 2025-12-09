@@ -61,10 +61,15 @@ const getGameDataSummary = async (
   start,
   end,
   aggregationPipeline,
-  useBetTime = false
+  timeFieldOption = "createdAt"
 ) => {
   try {
-    const timeField = useBetTime ? "betTime" : "createdAt";
+    let timeField;
+    if (typeof timeFieldOption === "boolean") {
+      timeField = timeFieldOption ? "betTime" : "createdAt";
+    } else {
+      timeField = timeFieldOption;
+    }
 
     const results = await model.aggregate([
       {
@@ -1057,7 +1062,8 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
         user.gameId,
         start,
         end,
-        aggregations.sbobet
+        aggregations.sbobet,
+        "updatedAt"
       ),
       getGameDataSummary(
         slotPussy888Modal,
