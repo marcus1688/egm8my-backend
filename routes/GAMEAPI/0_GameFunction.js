@@ -60,6 +60,7 @@ const SlotIBEXModal = require("../../models/slot_ibex.model");
 const SlotYellowbatModal = require("../../models/slot_yellowbat.model");
 const LivePrettyGamingModal = require("../../models/live_prettygaming.model");
 const SportSBOBETModal = require("../../models/sport_sbobet.model");
+const slotPussy888Modal = require("../../models/slot_pussy888.model");
 
 require("dotenv").config();
 
@@ -327,6 +328,10 @@ router.post("/admin/api/getAllTurnoverForRebate", async (req, res) => {
         url: `${PUBLIC_APIURL}api/sbobet/getturnoverforrebate`,
         name: "SBOBET",
       },
+      {
+        url: `${PUBLIC_APIURL}api/pussy888/getturnoverforrebate`,
+        name: "PUSSY888",
+      },
     ];
 
     const routePromises = routes.map((route) =>
@@ -577,6 +582,13 @@ const GAME_CONFIG = [
     name: "yellowbatSlot",
     category: CATEGORIES.SLOT,
     match: { cancel: { $ne: true }, settle: true, gameType: "SLOT" },
+  },
+  {
+    model: slotPussy888Modal,
+    name: "pussy888",
+    category: CATEGORIES.SLOT,
+    match: {},
+    useUsername: true,
   },
 
   // ========== LIVE CASINO ==========

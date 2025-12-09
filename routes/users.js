@@ -77,6 +77,7 @@ const SlotIBEXModal = require("../models/slot_ibex.model");
 const SlotYellowbatModal = require("../models/slot_yellowbat.model");
 const LivePrettyGamingModal = require("../models/live_prettygaming.model");
 const SportSBOBETModal = require("../models/sport_sbobet.model");
+const slotPussy888Modal = require("../models/slot_pussy888.model");
 
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
@@ -6367,6 +6368,15 @@ router.get(
             cancel: { $ne: true },
             settle: true,
           }),
+
+          getAllUsersTurnover(
+            slotPussy888Modal,
+            {},
+            {
+              $ifNull: [{ $ifNull: ["$validbetamount", "$betamount"] }, 0],
+            },
+            "betTime"
+          ),
         ];
 
         const todayGameResults = await Promise.allSettled(todayGamePromises);
