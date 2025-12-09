@@ -21,6 +21,7 @@ const GameSyncLog = require("../../models/game_syncdata.model");
 const cron = require("node-cron");
 const { sync918KissGameRecords } = require("./slot_918kiss");
 const { fetchtodaysbet, fetchtodayswinning } = require("./other_huaweilottery");
+const { syncPussy888GameHistory } = require("./slot_pussy888");
 require("dotenv").config();
 
 //Staging
@@ -2342,6 +2343,14 @@ if (process.env.NODE_ENV !== "development") {
       console.log("[Cron] Mega888 sync completed successfully");
     } catch (error) {
       console.error("[Cron] Mega888 sync failed:", error.message);
+    }
+
+    console.log("[Cron] Starting Pussy888 sync job");
+    try {
+      await syncPussy888GameHistory();
+      console.log("[Cron] Pussy888 sync completed successfully");
+    } catch (error) {
+      console.error("[Cron] Pussy888 sync failed:", error.message);
     }
 
     // 918Kiss sync

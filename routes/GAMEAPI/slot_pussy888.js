@@ -17,6 +17,7 @@ const moment = require("moment");
 const qs = require("querystring");
 const GameWalletLog = require("../../models/gamewalletlog.model");
 const GameSyncLog = require("../../models/game_syncdata.model");
+const slotPussy888Modal = require("../../models/slot_pussy888.model");
 const cron = require("node-cron");
 const https = require("https");
 
@@ -29,6 +30,9 @@ const pusy888Auth = process.env.PUSSY888_AUTH;
 const pussy888AgentId = "BM8MYR_MY";
 const webURL = "https://www.bm8my.vip/";
 const pussy888APIURL = "https://api.pussy888.com/ashx";
+const pussy888DataAPIURL = "https://api2.pussy888.com/ashx";
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function roundToTwoDecimals(num) {
   return Math.round(num * 100) / 100;
@@ -1297,267 +1301,186 @@ router.post(
   }
 );
 
-// router.post("/api/pussy888/getturnoverforrebate", async (req, res) => {
-//   const today = moment.utc().add(8, "hours").format("YYYY-MM-DD");
-//   const yesterday = moment
-//     .utc()
-//     .add(8, "hours")
-//     .subtract(1, "days")
-//     .format("YYYY-MM-DD");
+// router.post(
+//   "/api/pussy888/playertotalreport",
 
-//   const { date } = req.body;
-//   let start, end;
+//   async (req, res) => {
+//     try {
+//       const start = moment()
+//         .utc()
+//         .add(8, "hours")
+//         .startOf("day")
+//         .format("YYYY-MM-DD HH:mm:ss");
+//       const end = moment()
+//         .utc()
+//         .add(8, "hours")
+//         .endOf("day")
+//         .format("YYYY-MM-DD HH:mm:ss");
 
-//   if (date === "today") {
-//     start = moment(today)
-//       .utc()
-//       .add(8, "hours")
-//       .startOf("day")
-//       .format("YYYY-MM-DD HH:mm:ss");
-//     end = moment(today)
-//       .utc()
-//       .add(8, "hours")
-//       .endOf("day")
-//       .format("YYYY-MM-DD HH:mm:ss");
-//   } else if (date === "yesterday") {
-//     start = moment(yesterday)
-//       .utc()
-//       .add(8, "hours")
-//       .startOf("day")
-//       .format("YYYY-MM-DD HH:mm:ss");
-//     end = moment(yesterday)
-//       .utc()
-//       .add(8, "hours")
-//       .endOf("day")
-//       .format("YYYY-MM-DD HH:mm:ss");
-//   }
+//       const startDate = moment()
+//         .utc()
+//         .add(8, "hours")
+//         .startOf("day")
+//         .format("YYYY-MM-DD");
+//       const endDate = moment()
+//         .utc()
+//         .add(8, "hours")
+//         .endOf("day")
+//         .format("YYYY-MM-DD");
 
-//   const random = String(Date.now());
-//   const digest = generateMD5Hash(
-//     random + mega888SN + mega888AgentId + mega888Secret
-//   );
+//       const time = moment().valueOf(); // This generates a 13-digit timestamp
 
-//   const payload = buildParams(
-//     {
-//       sn: mega888SN,
-//       random: random,
-//       agentLoginId: mega888AgentId,
-//       digest: digest,
-//       type: 1,
-//       startTime: start,
-//       endTime: end,
-//     },
-//     "open.mega.player.total.report"
-//   );
-
-//   try {
-//     const response = await axios.post(mega888APIURL, payload);
-//     if (response.data.error) {
-//       return res.status(500).json({
-//         success: false,
-//         error: response.data.error.message,
-//       });
-//     }
-//     console.log(response.data);
-//     const results = response.data.result;
-
-//     const playerSummaries = {};
-
-//     for (const entry of results) {
-//       const { loginId, bet, win } = entry;
-
-//       const user = await User.findOne({ mega888GameID: loginId });
-
-//       if (user) {
-//         const username = user.username;
-
-//         if (!playerSummaries[username]) {
-//           playerSummaries[username] = {
-//             turnover: 0,
-//             winloss: 0,
-//           };
-//         }
-
-//         playerSummaries[username].turnover += parseFloat(bet || 0);
-//         playerSummaries[username].winloss -= parseFloat(win || 0);
-//       }
-//     }
-
-//     Object.keys(playerSummaries).forEach((username) => {
-//       playerSummaries[username].turnover = Number(
-//         playerSummaries[username].turnover.toFixed(2)
-//       );
-//       playerSummaries[username].winloss = Number(
-//         playerSummaries[username].winloss.toFixed(2)
-//       );
-//     });
-
-//     return res.status(200).json({
-//       success: true,
-//       summary: {
-//         gamename: "MEGA888",
-//         gamecategory: "Slot Games",
-//         users: playerSummaries,
-//       },
-//     });
-//   } catch (error) {
-//     console.log("MEGA888: Failed to fetch win/loss report:", error.message);
-//     return res.status(500).json({
-//       success: false,
-//       message: {
-//         en: "MEGA888: Failed to fetch win/loss report",
-//         zh: "MEGA888: 获取盈亏报告失败",
-//       },
-//     });
-//   }
-// });
-
-// router.get("/admin/api/pussy888/:userId/dailygamedata", async (req, res) => {
-//   try {
-//     const { startDate, endDate } = req.query;
-//     const userId = req.params.userId;
-
-//     // Validate inputs
-//     if (!startDate || !endDate) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Start date and end date are required",
-//       });
-//     }
-
-//     const user = await User.findById(userId, {
-//       username: 1,
-//       mega888GameID: 1,
-//     }).lean();
-
-//     if (!user || !user.mega888GameID) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "User not found or no Mega888 account",
-//       });
-//     }
-
-//     const loginId = user.mega888GameID;
-
-//     // Format dates
-//     const start = moment
-//       .utc(new Date(startDate))
-//       .add(8, "hours")
-//       .format("YYYY-MM-DD HH:mm:ss");
-//     const end = moment
-//       .utc(new Date(endDate))
-//       .add(8, "hours")
-//       .format("YYYY-MM-DD HH:mm:ss");
-
-//     console.log(
-//       `[Mega888 Daily Data] Fetching for ${user.username} from ${start} to ${end}`
-//     );
-
-//     // Function to fetch a single page
-//     const fetchPage = async (pageIndex) => {
-//       const random = String(Date.now() + pageIndex);
-//       const digest = generateMD5Hash(
-//         random + mega888SN + loginId + mega888Secret
+//       const sign = generateSimpleSignature(
+//         pusy888Auth,
+//         pussy888AgentId,
+//         time,
+//         pussy888Secret
 //       );
 
-//       const payload = buildParams(
+//       // const selectedDate = "2024-09-23 21:43:00";
+
+//       const gameLogResponse = await axios.get(
+//         `https://api2.pussy888.com/ashx/AgentTotalReport.ashx?sDate=${startDate}&eDate=${endDate}&userName=${pussy888AgentId}&Type=ServerTotalReport`,
 //         {
-//           sn: mega888SN,
-//           random: random,
-//           loginId: loginId,
-//           digest: digest,
-//           startTime: start,
-//           endTime: end,
-//           pageIndex: pageIndex,
-//           pageSize: 100,
-//         },
-//         "open.mega.game.order.page"
-//       );
-//       console.log(payload);
-//       const response = await axios.post(mega888APIURL, payload);
-//       if (response.data.error) {
-//         throw new Error(response.data.error.message);
-//       }
-
-//       return response.data.result;
-//     };
-
-//     // Fetch first page
-//     const firstPage = await fetchPage(1);
-
-//     if (!firstPage?.items?.length) {
-//       return res.status(200).json({
-//         success: true,
-//         summary: {
-//           gamename: "MEGA888",
-//           gamecategory: "Slot Games",
-//           user: {
-//             username: user.username,
-//             turnover: 0,
-//             winloss: 0,
+//           params: {
+//             userName: pussy888AgentId,
+//             sDate: start,
+//             eDate: end,
+//             Type: "ServerTotalReport",
+//             time: time,
+//             authcode: pusy888Auth,
+//             sign: sign,
 //           },
-//         },
+//           httpsAgent,
+//         }
+//       );
+//       console.log(gameLogResponse.data);
+//       return;
+//       if (gameLogResponse.data.success) {
+//         const results = gameLogResponse.data.results;
+
+//         // Sum up all the win values
+//         const totalWinLoss = results.reduce((sum, entry) => {
+//           return sum + parseFloat(entry.win); // Convert win to float and sum it up
+//         }, 0);
+
+//         return res.status(200).json({
+//           authorized: true,
+//           summary: {
+//             gamename: "PUSSY888",
+//             gamecategory: "SLOT",
+//             turnover: "0.00", // As requested, turnover is set to 0
+//             winloss: totalWinLoss.toFixed(2), // Winloss as the sum of all win values
+//           },
+//         });
+//       } else {
+//         // Return the raw game log response data if not successful
+//         return res.status(200).json(gameLogResponse.data);
+//       }
+//     } catch (error) {
+//       console.log("Error occurred while fetching game logs:", error);
+//       return res.status(500).json({
+//         authorized: false,
+//         error: `Internal server error ${error.message}`,
 //       });
 //     }
+//   }
+// );
 
-//     let allItems = [...firstPage.items];
+// router.post("/api/pussy888/getturnoverforrebatetest", async (req, res) => {
+//   try {
+//     const time = moment().valueOf();
 
-//     // Fetch remaining pages in parallel if multiple pages exist
-//     if (firstPage.hasNextPage && firstPage.totalPage > 1) {
-//       const totalPages = Math.min(firstPage.totalPage, 100); // Safety limit
-//       const pagePromises = [];
+//     const sign = generateSimpleSignature(
+//       pusy888Auth,
+//       "my045515112",
+//       time,
+//       pussy888Secret
+//     );
 
-//       for (let page = 2; page <= totalPages; page++) {
-//         pagePromises.push(fetchPage(page));
+//     const today = moment.utc().add(8, "hours").format("YYYY-MM-DD");
+//     const yesterday = moment
+//       .utc()
+//       .add(8, "hours")
+//       .subtract(1, "days")
+//       .format("YYYY-MM-DD");
+
+//     const { date } = req.body;
+//     let start, end;
+
+//     if (date === "today") {
+//       startDate = moment(today)
+//         .utc()
+//         .add(8, "hours")
+//         .startOf("day")
+//         .format("YYYY-MM-DD HH:mm:ss");
+//       endDate = moment(today)
+//         .utc()
+//         .add(8, "hours")
+//         .endOf("day")
+//         .format("YYYY-MM-DD HH:mm:ss");
+//     } else if (date === "yesterday") {
+//       startDate = moment(yesterday)
+//         .utc()
+//         .add(8, "hours")
+//         .startOf("day")
+//         .format("YYYY-MM-DD HH:mm:ss");
+//       endDate = moment(yesterday)
+//         .utc()
+//         .add(8, "hours")
+//         .endOf("day")
+//         .format("YYYY-MM-DD HH:mm:ss");
+//     }
+//     let allResults = [];
+//     let pageIndex = 1;
+//     let totalPages = 1;
+
+//     do {
+//       // Introduce a delay before each request
+//       await delay(1000); // Delay for 1 second (1000 milliseconds) between each request
+
+//       const gameLogResponse = await axios.get(
+//         `https://api2.pussy888.com/ashx/GameLog.ashx?sDate=${startDate}&eDate=${endDate}&userName=my045515112&pageIndex=${pageIndex}`,
+//         {
+//           params: {
+//             userName: "my045515112",
+//             pageIndex: pageIndex,
+//             sDate: startDate,
+//             eDate: endDate,
+//             time: time,
+//             authcode: pusy888Auth,
+//             sign: sign,
+//           },
+//           httpsAgent,
+//         }
+//       );
+
+//       const responseData = gameLogResponse.data;
+
+//       if (responseData.success !== true) {
+//         return res.status(400).json({ error: "Failed to retrieve game logs" });
 //       }
 
-//       const results = await Promise.allSettled(pagePromises);
+//       // Add the current page of results to allResults
+//       allResults = [...allResults, ...responseData.results];
 
-//       results.forEach((result, index) => {
-//         if (result.status === "fulfilled" && result.value?.items?.length) {
-//           allItems = allItems.concat(result.value.items);
-//           console.log(
-//             `[Mega888 Daily Data] Page ${index + 2}/${totalPages} - ${
-//               result.value.items.length
-//             } items`
-//           );
-//         }
-//       });
-//     }
-
-//     // Calculate totals
-//     const { totalTurnover, totalWinLoss } = allItems.reduce(
-//       (acc, item) => ({
-//         totalTurnover: acc.totalTurnover + parseFloat(item.bet || 0),
-//         totalWinLoss:
-//           acc.totalWinLoss +
-//           parseFloat(item.win || 0) -
-//           parseFloat(item.bet || 0),
-//       }),
-//       { totalTurnover: 0, totalWinLoss: 0 }
-//     );
+//       // Update pagination data
+//       pageIndex = responseData.pageindex + 1; // Increment to the next page
+//       totalPages = Math.ceil(responseData.total / responseData.pagesize); // Calculate total pages based on total and pagesize
+//     } while (pageIndex <= totalPages);
 
 //     return res.status(200).json({
 //       success: true,
-//       summary: {
-//         gamename: "MEGA888",
-//         gamecategory: "Slot Games",
-//         user: {
-//           username: user.username,
-//           turnover: Number(totalTurnover.toFixed(2)),
-//           winloss: Number(totalWinLoss.toFixed(2)),
-//         },
-//       },
+//       data: allResults,
 //     });
 //   } catch (error) {
-//     console.error("MEGA888: Failed to fetch daily game data:", error.message);
+//     console.log("PUSSY888: Failed to fetch win/loss report:", error.message);
 //     return res.status(500).json({
 //       success: false,
 //       message: {
-//         en: "MEGA888: Failed to fetch daily game data",
-//         zh: "MEGA888: 获取每日游戏数据失败",
+//         en: "PUSSY888: Failed to fetch win/loss report",
+//         zh: "PUSSY888: 获取盈亏报告失败",
 //       },
-//       error: error.message,
 //     });
 //   }
 // });
@@ -1598,9 +1521,9 @@ router.post("/api/pussy888/getturnoverforrebate", async (req, res) => {
         .toDate();
     }
 
-    console.log("MEGA888 QUERYING TIME", startDate, endDate);
+    console.log("PUSSY888 QUERYING TIME", startDate, endDate);
 
-    const records = await slotMega888Modal.find({
+    const records = await slotPussy888Modal.find({
       betTime: {
         $gte: startDate,
         $lt: endDate,
@@ -1633,18 +1556,18 @@ router.post("/api/pussy888/getturnoverforrebate", async (req, res) => {
     return res.status(200).json({
       success: true,
       summary: {
-        gamename: "MEGA888",
+        gamename: "PUSSY888",
         gamecategory: "Slot Games",
         users: playerSummary,
       },
     });
   } catch (error) {
-    console.log("MEGA888: Failed to fetch win/loss report:", error.message);
+    console.log("PUSSY888: Failed to fetch win/loss report:", error.message);
     return res.status(500).json({
       success: false,
       message: {
-        en: "MEGA888: Failed to fetch win/loss report",
-        zh: "MEGA888: 获取盈亏报告失败",
+        en: "PUSSY888: Failed to fetch win/loss report",
+        zh: "PUSSY888: 获取盈亏报告失败",
       },
     });
   }
@@ -1661,7 +1584,7 @@ router.get(
 
       const user = await User.findById(userId);
 
-      const records = await slotMega888Modal.find({
+      const records = await slotPussy888Modal.find({
         username: user.username,
         betTime: {
           $gte: startDate,
@@ -1685,7 +1608,7 @@ router.get(
       return res.status(200).json({
         success: true,
         summary: {
-          gamename: "MEGA888",
+          gamename: "PUSSY888",
           gamecategory: "Slot Games",
           user: {
             username: user.username,
@@ -1695,12 +1618,12 @@ router.get(
         },
       });
     } catch (error) {
-      console.log("MEGA888: Failed to fetch win/loss report:", error.message);
+      console.log("PUSSY888: Failed to fetch win/loss report:", error.message);
       return res.status(500).json({
         success: false,
         message: {
-          en: "MEGA888: Failed to fetch win/loss report",
-          zh: "MEGA888: 获取盈亏报告失败",
+          en: "PUSSY888: Failed to fetch win/loss report",
+          zh: "PUSSY888: 获取盈亏报告失败",
         },
       });
     }
@@ -1750,9 +1673,9 @@ router.get(
         ) {
           const slotGames = Object.fromEntries(gameCategories["Slot Games"]);
 
-          if (slotGames["MEGA888"]) {
-            totalTurnover += slotGames["MEGA888"].turnover || 0;
-            totalWinLoss += slotGames["MEGA888"].winloss || 0;
+          if (slotGames["PUSSY888"]) {
+            totalTurnover += slotGames["PUSSY888"].turnover || 0;
+            totalWinLoss += slotGames["PUSSY888"].winloss || 0;
           }
         }
       });
@@ -1764,7 +1687,7 @@ router.get(
       return res.status(200).json({
         success: true,
         summary: {
-          gamename: "MEGA888",
+          gamename: "PUSSY888",
           gamecategory: "Slot Games",
           user: {
             username: user.username,
@@ -1774,90 +1697,17 @@ router.get(
         },
       });
     } catch (error) {
-      console.log("MEGA888: Failed to fetch win/loss report:", error.message);
+      console.log("PUSSY888: Failed to fetch win/loss report:", error.message);
       return res.status(500).json({
         success: false,
         message: {
-          en: "MEGA888: Failed to fetch win/loss report",
-          zh: "MEGA888: 获取盈亏报告失败",
+          en: "PUSSY888: Failed to fetch win/loss report",
+          zh: "PUSSY888: 获取盈亏报告失败",
         },
       });
     }
   }
 );
-
-// router.get(
-//   "/admin/api/pussy888/dailykioskreport",
-//   authenticateAdminToken,
-//   async (req, res) => {
-//     try {
-//       const { startDate, endDate } = req.query;
-
-//       let startD = moment.utc(new Date(startDate).toISOString());
-//       let endD = moment.utc(new Date(endDate).toISOString());
-
-//       const start = startD.format("YYYY-MM-DD HH:mm:ss");
-//       const end = endD.format("YYYY-MM-DD HH:mm:ss");
-
-//       const random = String(Date.now());
-
-//       // Generate digest using MD5 hash
-//       const digest = generateMD5Hash(
-//         random + mega888SN + mega888AgentId + mega888Secret
-//       );
-
-//       const payload = buildParams(
-//         {
-//           sn: mega888SN,
-//           random: random,
-//           agentLoginId: mega888AgentId,
-//           digest: digest,
-//           type: 1,
-//           startTime: start,
-//           endTime: end,
-//         },
-//         "open.mega.player.total.report"
-//       );
-//       const response = await axios.post(mega888APIURL, payload);
-
-//       if (response.data.error) {
-//         return res.status(500).json({
-//           success: false,
-//           error: response.data.error.message,
-//         });
-//       }
-
-//       // Calculate totals for all records
-//       const totals = response.data.result.reduce(
-//         (acc, entry) => {
-//           acc.turnover += parseFloat(entry.bet || 0);
-//           acc.winloss -= parseFloat(entry.win || 0); // Negative of win
-//           return acc;
-//         },
-//         { turnover: 0, winloss: 0 }
-//       );
-
-//       return res.status(200).json({
-//         success: true,
-//         summary: {
-//           gamename: "MEGA888",
-//           gamecategory: "Slot Games",
-//           totalturnover: Number(totals.turnover.toFixed(2)),
-//           totalwinloss: Number(totals.winloss.toFixed(2)),
-//         },
-//       });
-//     } catch (error) {
-//       console.error("MEGA888: Failed to fetch win/loss report:", error);
-//       return res.status(500).json({
-//         success: false,
-//         message: {
-//           en: "MEGA888: Failed to fetch win/loss report",
-//           zh: "MEGA888: 获取盈亏报告失败",
-//         },
-//       });
-//     }
-//   }
-// );
 
 router.get(
   "/admin/api/pussy888/dailykioskreport",
@@ -1866,7 +1716,7 @@ router.get(
     try {
       const { startDate, endDate } = req.query;
 
-      const records = await slotMega888Modal.find({
+      const records = await slotPussy888Modal.find({
         betTime: {
           $gte: moment(new Date(startDate)).utc().toDate(),
           $lte: moment(new Date(endDate)).utc().toDate(),
@@ -1885,19 +1735,19 @@ router.get(
       return res.status(200).json({
         success: true,
         summary: {
-          gamename: "MEGA888",
+          gamename: "PUSSY888",
           gamecategory: "Slot Games",
           totalturnover: Number(totalTurnover.toFixed(2)),
           totalwinloss: Number(totalWinLoss.toFixed(2)),
         },
       });
     } catch (error) {
-      console.error("MEGA888: Failed to fetch win/loss report:", error);
+      console.error("PUSSY888: Failed to fetch win/loss report:", error);
       return res.status(500).json({
         success: false,
         message: {
-          en: "MEGA888: Failed to fetch win/loss report",
-          zh: "MEGA888: 获取盈亏报告失败",
+          en: "PUSSY888: Failed to fetch win/loss report",
+          zh: "PUSSY888: 获取盈亏报告失败",
         },
       });
     }
@@ -1940,9 +1790,9 @@ router.get(
         ) {
           const liveCasino = Object.fromEntries(gameCategories["Slot Games"]);
 
-          if (liveCasino["MEGA888"]) {
-            totalTurnover += Number(liveCasino["MEGA888"].turnover || 0);
-            totalWinLoss += Number(liveCasino["MEGA888"].winloss || 0);
+          if (liveCasino["PUSSY888"]) {
+            totalTurnover += Number(liveCasino["PUSSY888"].turnover || 0);
+            totalWinLoss += Number(liveCasino["PUSSY888"].winloss || 0);
           }
         }
       });
@@ -1950,109 +1800,435 @@ router.get(
       return res.status(200).json({
         success: true,
         summary: {
-          gamename: "MEGA888",
+          gamename: "PUSSY888",
           gamecategory: "Slot Games",
           totalturnover: Number(totalTurnover.toFixed(2)),
           totalwinloss: Number(totalWinLoss.toFixed(2)),
         },
       });
     } catch (error) {
-      console.error("MEGA888: Failed to fetch win/loss report:", error);
+      console.error("PUSSY888: Failed to fetch win/loss report:", error);
       return res.status(500).json({
         success: false,
         message: {
-          en: "MEGA888: Failed to fetch win/loss report",
-          zh: "MEGA888: 获取盈亏报告失败",
+          en: "PUSSY888: Failed to fetch win/loss report",
+          zh: "PUSSY888: 获取盈亏报告失败",
         },
       });
     }
   }
 );
 
-const getLastSyncTime = async () => {
-  const syncLog = await GameSyncLog.findOne({ provider: "mega888" })
-    .sort({ syncTime: -1 })
-    .lean();
+const getPussy888LastSyncTime = async () => {
+  const syncLog = await GameSyncLog.findOne({ provider: "pussy888" }).lean();
   return syncLog?.syncTime || null;
 };
 
-const updateLastSyncTime = async (time) => {
-  await GameSyncLog.create({
-    provider: "mega888",
-    syncTime: time.toDate(),
-  });
+const updatePussy888LastSyncTime = async (time) => {
+  await GameSyncLog.findOneAndUpdate(
+    { provider: "pussy888" },
+    { $set: { syncTime: time.toDate() } },
+    { upsert: true }
+  );
 };
 
-// Fetch total report from Mega888 API
-const fetchMega888TotalReport = async (start, end) => {
-  const random = String(Date.now());
-  const digest = generateMD5Hash(
-    random + mega888SN + mega888AgentId + mega888Secret
+const fetchPussy888TotalReport = async (startDate, endDate) => {
+  const time = moment().valueOf();
+
+  const sign = generateSimpleSignature(
+    pusy888Auth,
+    pussy888AgentId,
+    time,
+    pussy888Secret
   );
 
-  const payload = buildParams(
+  console.log(
+    `[Pussy888 API] Fetching total report: ${startDate} to ${endDate}`
+  );
+
+  const response = await axios.get(
+    `${pussy888DataAPIURL}/AgentTotalReport.ashx`,
     {
-      sn: mega888SN,
-      random: random,
-      agentLoginId: mega888AgentId,
-      digest: digest,
-      type: 1,
-      startTime: start,
-      endTime: end,
-    },
-    "open.mega.player.total.report"
+      params: {
+        userName: pussy888AgentId,
+        sDate: startDate,
+        eDate: endDate,
+        Type: "ServerTotalReport",
+        time: time,
+        authcode: pusy888Auth,
+        sign: sign,
+      },
+      httpsAgent,
+    }
   );
 
-  console.log(`[Mega888 API] Fetching total report: ${start} to ${end}`);
-
-  const response = await axios.post(mega888APIURL, payload);
-
-  if (response.data.error) {
-    throw new Error(response.data.error.message);
+  if (response.data.success !== true) {
+    throw new Error(response.data.msg || "Failed to get total report");
   }
 
-  const results = response.data.result || [];
-  console.log(`[Mega888 API] Total report returned ${results.length} entries`);
+  const results = response.data.results || [];
+  console.log(`[Pussy888 API] Total report returned ${results.length} players`);
 
-  const playerTotals = {};
+  return results;
+};
 
-  // Convert loginId to username and aggregate
-  for (const entry of results) {
-    const { loginId, bet, win } = entry;
+const getUsernameFromPussy888GameID = async (gameId) => {
+  const user = await User.findOne(
+    {
+      $or: [{ pussy888GameID: gameId }, { pastPussy888GameID: gameId }],
+    },
+    { gameId: 1 }
+  ).lean();
 
-    const user = await User.findOne(
-      { mega888GameID: loginId },
-      { username: 1 }
-    ).lean();
+  return user?.gameId || null;
+};
 
-    if (user) {
-      const username = user.username;
+const fetchPussy888DetailedGameHistory = async (gameId, startDate, endDate) => {
+  const time = moment().valueOf();
 
-      if (!playerTotals[username]) {
-        playerTotals[username] = {
-          turnover: 0,
-          winloss: 0,
-        };
-      }
+  const sign = generateSimpleSignature(
+    pusy888Auth,
+    gameId,
+    time,
+    pussy888Secret
+  );
 
-      playerTotals[username].turnover += parseFloat(bet || 0);
-      playerTotals[username].winloss += parseFloat(win || 0);
+  let allResults = [];
+  let pageIndex = 1;
+  let totalPages = 1;
+
+  do {
+    // Delay between pages (except first page)
+    if (pageIndex > 1) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
     }
+
+    const response = await axios.get(`${pussy888DataAPIURL}/GameLog.ashx`, {
+      params: {
+        userName: gameId,
+        pageIndex: pageIndex,
+        sDate: startDate,
+        eDate: endDate,
+        time: time,
+        authcode: pusy888Auth,
+        sign: sign,
+      },
+      httpsAgent,
+    });
+
+    if (response.data.success !== true) {
+      throw new Error(response.data.msg || "Failed to get game logs");
+    }
+
+    allResults = [...allResults, ...response.data.results];
+
+    pageIndex = response.data.pageindex + 1;
+    totalPages = Math.ceil(response.data.total / response.data.pagesize);
+
+    console.log(
+      `[Pussy888 Detail] ${gameId}: Page ${pageIndex - 1}/${totalPages} - ${
+        response.data.results.length
+      } items`
+    );
+  } while (pageIndex <= totalPages);
+
+  return allResults;
+};
+
+const parseBetAmountFromLogDataStr = (logDataStr) => {
+  if (!logDataStr) return 0;
+  const parts = logDataStr.split(",");
+  return parseFloat(parts[0]) || 0;
+};
+
+const fetchAndStorePussy888GameHistory = async (
+  gameId,
+  username,
+  startDate,
+  endDate
+) => {
+  try {
+    console.log(
+      `[Pussy888 Detail] Fetching ${gameId} (${username}): ${startDate} to ${endDate}`
+    );
+
+    const allItems = await fetchPussy888DetailedGameHistory(
+      gameId,
+      startDate,
+      endDate
+    );
+
+    if (!allItems.length) {
+      console.log(`[Pussy888 Detail] No records for ${username}`);
+      return { totalRecords: 0, newRecords: 0, skipped: 0 };
+    }
+
+    console.log(
+      `[Pussy888 Detail] ${username}: Fetched ${allItems.length} total items`
+    );
+
+    const betIds = allItems.map((item) => String(item.uuid));
+    const existingBetIds = new Set(
+      (
+        await slotPussy888Modal
+          .find({ betId: { $in: betIds } })
+          .select("betId")
+          .lean()
+      ).map((r) => r.betId)
+    );
+
+    const startDateObj = moment(startDate, "YYYY-MM-DD HH:mm:ss").toDate();
+    const endDateObj = moment(endDate, "YYYY-MM-DD HH:mm:ss").toDate();
+
+    const newRecords = allItems
+      .filter((item) => !existingBetIds.has(String(item.uuid)))
+      .map((item) => ({
+        betId: String(item.uuid),
+        username: username,
+        betamount: parseBetAmountFromLogDataStr(item.LogDataStr),
+        settleamount: parseFloat(item.Win || 0),
+        bet: true,
+        settle: true,
+        startDate: startDateObj,
+        endDate: endDateObj,
+        claimed: false,
+        betTime: item.CreateTime
+          ? moment
+              .tz(item.CreateTime, "YYYY-MM-DD HH:mm:ss", "Asia/Kuala_Lumpur")
+              .utc()
+              .toDate()
+          : moment.utc().toDate(),
+      }));
+
+    console.log(
+      `[Pussy888 Detail] ${username}: New=${newRecords.length}, Skipped=${
+        allItems.length - newRecords.length
+      }`
+    );
+
+    // Batch insert new records
+    if (newRecords.length > 0) {
+      await slotPussy888Modal.insertMany(newRecords, { ordered: false });
+      console.log(
+        `[Pussy888 Detail] ${username}: Inserted ${newRecords.length} records`
+      );
+    }
+
+    return {
+      totalRecords: allItems.length,
+      newRecords: newRecords.length,
+      skipped: allItems.length - newRecords.length,
+    };
+  } catch (error) {
+    console.error(`[Pussy888 Detail] Error for ${username}:`, error.message);
+    throw error;
   }
+};
 
-  // Round to 2 decimal places
-  Object.keys(playerTotals).forEach((username) => {
-    playerTotals[username].turnover = Number(
-      playerTotals[username].turnover.toFixed(2)
-    );
-    playerTotals[username].winloss = Number(
-      playerTotals[username].winloss.toFixed(2)
-    );
-  });
+// Sync Pussy888 for a single day
+const syncPussy888ForSingleDay = async (date) => {
+  try {
+    const startDate = moment(date).format("YYYY-MM-DD");
+    const endDate = moment(date).format("YYYY-MM-DD");
 
-  return playerTotals;
+    const start = moment(date).startOf("day").format("YYYY-MM-DD HH:mm:ss");
+    const end = moment(date).endOf("day").format("YYYY-MM-DD HH:mm:ss");
+
+    console.log(`[Pussy888 Sync Day] Syncing ${date}: ${start} to ${end}`);
+
+    const activePlayers = await fetchPussy888TotalReport(startDate, endDate);
+
+    if (!activePlayers || activePlayers.length === 0) {
+      console.log(`[Pussy888 Sync Day] No active players for ${date}`);
+      return {
+        date: date,
+        totalPlayers: 0,
+        successful: 0,
+        failed: 0,
+        skipped: 0,
+        playerDetails: [],
+      };
+    }
+
+    console.log(
+      `[Pussy888 Sync Day] Found ${activePlayers.length} active players for ${date}`
+    );
+
+    let syncResults = {
+      date: date,
+      totalPlayers: activePlayers.length,
+      successful: 0,
+      failed: 0,
+      skipped: 0,
+      playerDetails: [],
+    };
+
+    // Step 2: For each active player, get detailed game history
+    for (const player of activePlayers) {
+      const gameId = player.Account;
+
+      try {
+        // Get username from database
+        const username = await getUsernameFromPussy888GameID(gameId);
+
+        if (!username) {
+          console.log(
+            `[Pussy888 Sync Day] ${date} - No user found for gameId: ${gameId}`
+          );
+          syncResults.skipped++;
+          syncResults.playerDetails.push({
+            gameId: gameId,
+            status: "skipped",
+            reason: "User not found in database",
+          });
+          continue;
+        }
+
+        console.log(
+          `[Pussy888 Sync Day] ${date} - Syncing ${username} (${gameId})`
+        );
+
+        const result = await fetchAndStorePussy888GameHistory(
+          gameId,
+          username,
+          start,
+          end
+        );
+
+        syncResults.successful++;
+        syncResults.playerDetails.push({
+          gameId: gameId,
+          username: username,
+          status: "success",
+          ...result,
+        });
+
+        // Rate limiting: 300ms delay between players
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      } catch (error) {
+        console.error(
+          `[Pussy888 Sync Day] ${date} - Failed ${gameId}:`,
+          error.message
+        );
+        syncResults.failed++;
+        syncResults.playerDetails.push({
+          gameId: gameId,
+          status: "failed",
+          error: error.message,
+        });
+      }
+    }
+
+    console.log(
+      `[Pussy888 Sync Day] ${date} - Completed: ${syncResults.successful} successful, ${syncResults.failed} failed, ${syncResults.skipped} skipped`
+    );
+
+    return syncResults;
+  } catch (error) {
+    console.error(`[Pussy888 Sync Day] Error for ${date}:`, error.message);
+    throw error;
+  }
+};
+
+// Main sync function
+const syncPussy888GameHistory = async () => {
+  try {
+    console.log(
+      `[Pussy888 Sync] Starting sync at ${moment().format(
+        "YYYY-MM-DD HH:mm:ss"
+      )}`
+    );
+
+    const now = moment().utc().add(8, "hours");
+
+    // Get last sync time
+    const lastSyncTime = await getPussy888LastSyncTime();
+
+    const daysToSync = [];
+
+    if (!lastSyncTime) {
+      // First run: sync last 7 days
+      for (let i = 0; i < 7; i++) {
+        const date = now.clone().subtract(i, "days").format("YYYY-MM-DD");
+        daysToSync.push(date);
+      }
+    } else {
+      const lastSyncMoment = moment(lastSyncTime).utc().add(8, "hours");
+      const daysSinceLastSync = now.diff(lastSyncMoment, "days");
+
+      // Sync today + any missed days (max 7 days back)
+      const daysBack = Math.min(daysSinceLastSync + 1, 7);
+      for (let i = 0; i < daysBack; i++) {
+        const date = now.clone().subtract(i, "days").format("YYYY-MM-DD");
+        daysToSync.push(date);
+      }
+    }
+
+    console.log(`[Pussy888 Sync] Days to sync: ${daysToSync.join(", ")}`);
+
+    let totalSyncResults = {
+      totalDays: daysToSync.length,
+      daysProcessed: 0,
+      totalPlayers: 0,
+      successful: 0,
+      failed: 0,
+      skipped: 0,
+      details: [],
+    };
+
+    for (const date of daysToSync) {
+      try {
+        console.log(`\n[Pussy888 Sync] ======== Processing ${date} ========`);
+
+        const dayResult = await syncPussy888ForSingleDay(date);
+
+        totalSyncResults.daysProcessed++;
+        totalSyncResults.totalPlayers += dayResult.totalPlayers;
+        totalSyncResults.successful += dayResult.successful;
+        totalSyncResults.failed += dayResult.failed;
+        totalSyncResults.skipped += dayResult.skipped || 0;
+        totalSyncResults.details.push({
+          date: date,
+          ...dayResult,
+        });
+
+        // Delay between days
+        if (daysToSync.indexOf(date) < daysToSync.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      } catch (error) {
+        console.error(`[Pussy888 Sync] Failed to sync ${date}:`, error.message);
+        totalSyncResults.details.push({
+          date: date,
+          status: "failed",
+          error: error.message,
+        });
+      }
+    }
+
+    // Update last sync time
+    await updatePussy888LastSyncTime(now);
+
+    console.log(`\n[Pussy888 Sync] ======== SUMMARY ========`);
+    console.log(
+      `Days processed: ${totalSyncResults.daysProcessed}/${totalSyncResults.totalDays}`
+    );
+    console.log(
+      `Players synced: ${totalSyncResults.successful} successful, ${totalSyncResults.failed} failed, ${totalSyncResults.skipped} skipped`
+    );
+
+    return {
+      success: true,
+      syncTime: now.format("YYYY-MM-DD HH:mm:ss"),
+      ...totalSyncResults,
+    };
+  } catch (error) {
+    console.error("[Pussy888 Sync] Fatal error:", error.message);
+    throw error;
+  }
 };
 
 module.exports = router;
 module.exports.pussy888CheckBalance = pussy888CheckBalance;
 module.exports.pussy888Withdraw = pussy888Withdraw;
+module.exports.syncPussy888GameHistory = syncPussy888GameHistory;
