@@ -517,9 +517,12 @@ router.post(
 router.post("/api/expansestudios/auth", async (req, res) => {
   try {
     const { requestId, brandId, token } = req.body;
+    console.log(req.body);
+    console.log(req.query);
     const hashFromUrl = req.query.hash;
 
     if (!requestId || !brandId || !token) {
+      console.log("failed 1");
       return res.status(200).json({
         requestId: requestId || "",
         error: "P_01",
