@@ -53,6 +53,29 @@ const generateExpanseStudioHash = (params, secretKey) => {
   return crypto.createHash("md5").update(stringToHash).digest("hex");
 };
 
+const verifyExpanseStudioHash = (bodyParams, hashFromUrl, secretKey) => {
+  const sortedKeys = Object.keys(bodyParams).sort();
+
+  const paramString = sortedKeys
+    .map((key) => {
+      let value = bodyParams[key];
+      if (typeof value === "object" && value !== null) {
+        value = JSON.stringify(value);
+      }
+      return `${key}=${value}`;
+    })
+    .join("&");
+
+  const stringToHash = paramString + secretKey;
+
+  const generatedHash = crypto
+    .createHash("md5")
+    .update(stringToHash)
+    .digest("hex");
+
+  return generatedHash === hashFromUrl;
+};
+
 const generateLaunchHash = (brandId, playerId, gameCode, secretKey) => {
   const hashString = `${brandId}${playerId}${gameCode}${secretKey}`;
   return crypto.createHash("md5").update(hashString).digest("hex");
@@ -493,106 +516,159 @@ router.post(
 
 router.post("/api/expansestudios/auth", async (req, res) => {
   try {
-    console.log(req.body, "reqbody");
-    console.log(req.params, "reqparams");
-    console.log(req.query, "requery");
-    return;
-    const { OperatorId, Signature, PlayerId, AuthToken, RequestDateTime } =
-      req.body;
+    const { requestId, brandId, token } = req.body;
+    const hashFromUrl = req.query.hash;
 
-    if (
-      !OperatorId ||
-      !Signature ||
-      !PlayerId ||
-      !AuthToken ||
-      !RequestDateTime
-    ) {
+    if (!requestId || !brandId || !token) {
       return res.status(200).json({
-        Status: 900406,
-        Description: "Incoming Request Info Incomplete",
-        ResponseDateTime: RequestDateTime,
-        Balance: 0,
+        requestId: requestId || "",
+        error: "P_01",
+        message: "Invalid request.",
       });
     }
 
-    if (OperatorId !== epicWinOperatorID) {
+    if (String(brandId) !== expansestudioID) {
       return res.status(200).json({
-        Status: 900405,
-        Description: "Operator ID Error",
-        ResponseDateTime: RequestDateTime,
-        Balance: 0,
+        requestId,
+        error: "P_03",
+        message: "Invalid brandId.",
       });
     }
 
-    const functionName = "GetBalance";
-
-    const signature = generateSignature(
-      functionName,
-      RequestDateTime,
-      epicWinOperatorID,
-      epicWinSecret,
-      PlayerId
-    );
-    if (signature !== Signature) {
+    if (!verifyExpanseStudioHash(req.body, hashFromUrl, expansestudioSecret)) {
       return res.status(200).json({
-        Status: 900407,
-        Description: "Invalid Signature",
-        ResponseDateTime: RequestDateTime,
-        Balance: 0,
+        requestId,
+        error: "P_02",
+        message: "Invalid hash",
       });
     }
 
-    const tokenParts = AuthToken.split(":");
+    const tokenParts = token.split(":");
 
     const username = tokenParts[0];
 
     const currentUser = await User.findOne(
       { gameId: username },
-      { wallet: 1, epicwinGameToken: 1 }
+      { wallet: 1, expansesStudioGameToken: 1, username: 1 }
     ).lean();
-    if (!currentUser || currentUser.epicwinGameToken !== AuthToken) {
+    if (!currentUser) {
       return res.status(200).json({
-        Status: 900500,
-        Description: "Internal Server Error",
-        ResponseDateTime: RequestDateTime,
-        Balance: 0,
+        requestId,
+        error: "P_04",
+        message: "Player not found",
       });
     }
 
-    const walletValue = Number(currentUser.wallet);
+    if (currentUser.expansesStudioGameToken !== token) {
+      return res.status(200).json({
+        requestId,
+        error: "P_06",
+        message: "Invalid token or token expired",
+      });
+    }
 
-    const finalBalance = new Decimal(walletValue).toDecimalPlaces(4);
+    const balance = new Decimal(Number(currentUser.wallet))
+      .toDecimalPlaces(4)
+      .toNumber();
 
     return res.status(200).json({
-      Status: 200,
-      Description: "OK",
-      ResponseDateTime: RequestDateTime,
-      Balance: finalBalance.toNumber(),
+      requestId,
+      playerId: username,
+      playerName: currentUser.username,
+      playerSessionId: token,
+      currency: "MYR",
+      country: "MY",
+      balance,
+      error: "0",
+      message: "success",
     });
   } catch (error) {
     console.error(
-      "EPICWIN: Error in game provider calling ae96 get balance api:",
+      "EXPANSE STUDIO: Error in game provider calling get balance api:",
       error.message
     );
-    if (
-      error.message === "jwt expired" ||
-      error.message === "invalid token" ||
-      error.message === "jwt malformed"
-    ) {
+    return res.status(200).json({
+      requestId,
+      error: "P_00",
+      message: "Server Error, internal server error.",
+    });
+  }
+});
+
+router.post("/api/expansestudios/balance", async (req, res) => {
+  try {
+    const { playerId, playerSessionId, brandId, requestId } = req.body;
+    const hashFromUrl = req.query.hash;
+
+    if (!requestId || !brandId || !playerSessionId) {
       return res.status(200).json({
-        Status: 900500,
-        Description: "Internal Server Error",
-        ResponseDateTime: getCurrentFormattedDate(),
-        Balance: 0,
-      });
-    } else {
-      return res.status(200).json({
-        Status: 900500,
-        Description: "Internal Server Error",
-        ResponseDateTime: getCurrentFormattedDate(),
-        Balance: 0,
+        requestId: requestId || "",
+        error: "P_01",
+        message: "Invalid request.",
       });
     }
+
+    if (String(brandId) !== expansestudioID) {
+      return res.status(200).json({
+        requestId,
+        error: "P_03",
+        message: "Invalid brandId.",
+      });
+    }
+
+    if (!verifyExpanseStudioHash(req.body, hashFromUrl, expansestudioSecret)) {
+      return res.status(200).json({
+        requestId,
+        error: "P_02",
+        message: "Invalid hash",
+      });
+    }
+
+    const tokenParts = playerSessionId.split(":");
+
+    const username = tokenParts[0];
+
+    const currentUser = await User.findOne(
+      { gameId: username },
+      { wallet: 1, expansesStudioGameToken: 1, username: 1 }
+    ).lean();
+    if (!currentUser) {
+      return res.status(200).json({
+        requestId,
+        error: "P_04",
+        message: "Player not found",
+      });
+    }
+
+    if (currentUser.expansesStudioGameToken !== playerSessionId) {
+      return res.status(200).json({
+        requestId,
+        error: "P_06",
+        message: "Invalid token or token expired",
+      });
+    }
+
+    const balance = new Decimal(Number(currentUser.wallet))
+      .toDecimalPlaces(4)
+      .toNumber();
+
+    return res.status(200).json({
+      requestId,
+      currency: "MYR",
+      balance,
+      error: "0",
+      message: "success",
+    });
+  } catch (error) {
+    console.error(
+      "EXPANSE STUDIO: Error in game provider calling get balance api:",
+      error.message
+    );
+    return res.status(200).json({
+      requestId,
+      error: "P_00",
+      message: "Server Error, internal server error.",
+    });
   }
 });
 module.exports = router;
