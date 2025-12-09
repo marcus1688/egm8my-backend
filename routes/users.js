@@ -6373,7 +6373,7 @@ router.get(
             {
               $ifNull: [{ $ifNull: ["$validbetamount", "$betamount"] }, 0],
             },
-            "betTime"
+            "updatedAt"
           ),
 
           getAllUsersTurnover(
