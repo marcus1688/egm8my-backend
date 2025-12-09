@@ -67,13 +67,11 @@ const verifyExpanseStudioHash = (bodyParams, hashFromUrl, secretKey) => {
     .join("&");
 
   const stringToHash = paramString + secretKey;
-  console.log(stringToHash, "string");
   const generatedHash = crypto
     .createHash("md5")
     .update(stringToHash)
     .digest("hex");
-  console.log(generatedHash, "mine");
-  console.log(hashFromUrl, "nott");
+
   return generatedHash === hashFromUrl;
 };
 
@@ -518,8 +516,7 @@ router.post(
 router.post("/api/expansestudios/auth", async (req, res) => {
   try {
     const { requestId, brandId, token } = req.body;
-    console.log(req.body);
-    console.log(req.query);
+
     const hashFromUrl = req.query.hash;
 
     if (!requestId || !brandId || !token) {
@@ -570,7 +567,6 @@ router.post("/api/expansestudios/auth", async (req, res) => {
         message: "Invalid token or token expired",
       });
     }
-    console.log("success");
     const balance = new Decimal(Number(currentUser.wallet))
       .toDecimalPlaces(4)
       .toNumber();
