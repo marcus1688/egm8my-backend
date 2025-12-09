@@ -1061,7 +1061,7 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
       ),
       getGameDataSummary(
         slotPussy888Modal,
-        user.username,
+        user.gameId,
         start,
         end,
         aggregations.pussy888,
