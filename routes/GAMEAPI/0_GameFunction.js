@@ -588,7 +588,6 @@ const GAME_CONFIG = [
     name: "pussy888",
     category: CATEGORIES.SLOT,
     match: {},
-    useUsername: true,
   },
 
   // ========== LIVE CASINO ==========

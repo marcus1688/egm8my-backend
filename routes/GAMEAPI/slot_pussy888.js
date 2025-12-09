@@ -1530,18 +1530,33 @@ router.post("/api/pussy888/getturnoverforrebate", async (req, res) => {
       },
     });
 
+    const uniqueGameIds = [
+      ...new Set(records.map((record) => record.username)),
+    ];
+
+    const users = await User.find(
+      { gameId: { $in: uniqueGameIds } },
+      { gameId: 1, username: 1 }
+    ).lean();
+
+    const gameIdToUsername = {};
+    users.forEach((user) => {
+      gameIdToUsername[user.gameId] = user.username;
+    });
+
     let playerSummary = {};
 
     records.forEach((record) => {
-      const username = record.username;
+      const gameId = record.username;
+      const actualUsername = gameIdToUsername[gameId];
 
-      if (!playerSummary[username]) {
-        playerSummary[username] = { turnover: 0, winloss: 0 };
+      if (!playerSummary[actualUsername]) {
+        playerSummary[actualUsername] = { turnover: 0, winloss: 0 };
       }
 
-      playerSummary[username].turnover += record.betamount || 0;
+      playerSummary[actualUsername].turnover += record.betamount || 0;
 
-      playerSummary[username].winloss +=
+      playerSummary[actualUsername].winloss +=
         (record.settleamount || 0) - (record.betamount || 0);
     });
 
@@ -1585,7 +1600,7 @@ router.get(
       const user = await User.findById(userId);
 
       const records = await slotPussy888Modal.find({
-        username: user.username,
+        username: user.gameId,
         betTime: {
           $gte: startDate,
           $lt: endDate,
@@ -1985,7 +2000,7 @@ const fetchAndStorePussy888GameHistory = async (
       .map((item) => ({
         betId: String(item.uuid),
         username: username,
-        betamount: parseBetAmountFromLogDataStr(item.LogDataStr),
+        betamount: parseFloat(item.bet || 0),
         settleamount: parseFloat(item.Win || 0),
         bet: true,
         settle: true,
@@ -2227,7 +2242,6 @@ const syncPussy888GameHistory = async () => {
     throw error;
   }
 };
-
 module.exports = router;
 module.exports.pussy888CheckBalance = pussy888CheckBalance;
 module.exports.pussy888Withdraw = pussy888Withdraw;
