@@ -67,7 +67,7 @@ const verifyExpanseStudioHash = (bodyParams, hashFromUrl, secretKey) => {
     .join("&");
 
   const stringToHash = paramString + secretKey;
-
+  console.log(stringToHash, "string");
   const generatedHash = crypto
     .createHash("md5")
     .update(stringToHash)
