@@ -59,6 +59,7 @@ const LiveWMCasinoRebateModal = require("../../models/live_wmcasinorebate.model"
 const SlotIBEXModal = require("../../models/slot_ibex.model");
 const SlotYellowbatModal = require("../../models/slot_yellowbat.model");
 const LivePrettyGamingModal = require("../../models/live_prettygaming.model");
+const SportSBOBETModal = require("../../models/sport_sbobet.model");
 
 require("dotenv").config();
 
@@ -321,6 +322,10 @@ router.post("/admin/api/getAllTurnoverForRebate", async (req, res) => {
       {
         url: `${PUBLIC_APIURL}api/prettygaming/getturnoverforrebate`,
         name: "PRETTY GAMING",
+      },
+      {
+        url: `${PUBLIC_APIURL}api/sbobet/getturnoverforrebate`,
+        name: "SBOBET",
       },
     ];
 
@@ -624,6 +629,12 @@ const GAME_CONFIG = [
   {
     model: SportM9BetModal,
     name: "m9bet",
+    category: CATEGORIES.SPORTS,
+    match: { cancel: { $ne: true }, settle: true },
+  },
+  {
+    model: SportSBOBETModal,
+    name: "sbobet",
     category: CATEGORIES.SPORTS,
     match: { cancel: { $ne: true }, settle: true },
   },

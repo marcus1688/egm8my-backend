@@ -1424,7 +1424,7 @@ router.get(
         success: true,
         summary: {
           gamename: "SBOBET",
-          gamecategory: "Slot Games",
+          gamecategory: "Sports",
           user: {
             username: user.username,
             turnover: totalTurnover,
@@ -1483,10 +1483,10 @@ router.get(
 
         if (
           gameCategories &&
-          gameCategories["Slot Games"] &&
-          gameCategories["Slot Games"] instanceof Map
+          gameCategories["Sports"] &&
+          gameCategories["Sports"] instanceof Map
         ) {
-          const slotGames = Object.fromEntries(gameCategories["Slot Games"]);
+          const slotGames = Object.fromEntries(gameCategories["Sports"]);
 
           if (slotGames["SBOBET"]) {
             totalTurnover += slotGames["SBOBET"].turnover || 0;
@@ -1503,7 +1503,7 @@ router.get(
         success: true,
         summary: {
           gamename: "SBOBET",
-          gamecategory: "Slot Games",
+          gamecategory: "Sports",
           user: {
             username: user.username,
             turnover: totalTurnover,
@@ -1552,7 +1552,7 @@ router.get(
         success: true,
         summary: {
           gamename: "SBOBET",
-          gamecategory: "Slot Games",
+          gamecategory: "Sports",
           totalturnover: Number(totalTurnover.toFixed(2)),
           totalwinloss: Number(totalWinLoss.toFixed(2)),
         },
@@ -1601,10 +1601,10 @@ router.get(
 
         if (
           gameCategories &&
-          gameCategories["Slot Games"] &&
-          gameCategories["Slot Games"] instanceof Map
+          gameCategories["Sports"] &&
+          gameCategories["Sports"] instanceof Map
         ) {
-          const liveCasino = Object.fromEntries(gameCategories["Slot Games"]);
+          const liveCasino = Object.fromEntries(gameCategories["Sports"]);
 
           if (liveCasino["SBOBET"]) {
             totalTurnover += Number(liveCasino["SBOBET"].turnover || 0);
@@ -1617,7 +1617,7 @@ router.get(
         success: true,
         summary: {
           gamename: "SBOBET",
-          gamecategory: "Slot Games",
+          gamecategory: "Sports",
           totalturnover: Number(totalTurnover.toFixed(2)),
           totalwinloss: Number(totalWinLoss.toFixed(2)),
         },

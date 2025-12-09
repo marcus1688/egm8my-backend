@@ -76,6 +76,7 @@ const LiveWMCasinoRebateModal = require("../models/live_wmcasinorebate.model");
 const SlotIBEXModal = require("../models/slot_ibex.model");
 const SlotYellowbatModal = require("../models/slot_yellowbat.model");
 const LivePrettyGamingModal = require("../models/live_prettygaming.model");
+const SportSBOBETModal = require("../models/sport_sbobet.model");
 
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
@@ -6358,6 +6359,11 @@ router.get(
           }),
 
           getAllUsersTurnover(LivePrettyGamingModal, {
+            cancel: { $ne: true },
+            settle: true,
+          }),
+
+          getAllUsersTurnover(SportSBOBETModal, {
             cancel: { $ne: true },
             settle: true,
           }),

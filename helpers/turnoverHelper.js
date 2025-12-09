@@ -1,5 +1,6 @@
 const EsportTfGamingModal = require("../models/esport_tfgaming.model");
 const SportM9BetModal = require("../models/sport_m9bet.model");
+const SportSBOBETModal = require("../models/sport_sbobet.model");
 
 const GAME_MODELS_CONFIG = [
   {
@@ -12,6 +13,14 @@ const GAME_MODELS_CONFIG = [
   },
   {
     model: SportM9BetModal,
+    getQuery: (userId) => ({
+      username: userId,
+      $or: [{ settle: false }, { settle: { $exists: false } }],
+      cancel: { $ne: true },
+    }),
+  },
+  {
+    model: SportSBOBETModal,
     getQuery: (userId) => ({
       username: userId,
       $or: [{ settle: false }, { settle: { $exists: false } }],
@@ -43,7 +52,6 @@ const checkSportPendingMatch = async (userId) => {
     return false;
   }
 };
-
 module.exports = {
   checkSportPendingMatch,
 };
