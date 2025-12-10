@@ -7,7 +7,9 @@ const slotexpansestudioSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
-
+    bonusId: {
+      type: String,
+    },
     betId: {
       type: String,
     },
