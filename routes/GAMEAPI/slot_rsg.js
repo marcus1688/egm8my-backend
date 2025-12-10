@@ -604,7 +604,7 @@ router.post("/api/rsg/launchGame", authenticateToken, async (req, res) => {
       );
     }
 
-    lang = "en-US";
+    let lang = "en-US";
 
     if (gameLang === "en") {
       lang = "en-US";
