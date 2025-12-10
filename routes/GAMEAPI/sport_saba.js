@@ -1709,23 +1709,41 @@ router.post("/api/sabasport/adjustbalance", async (req, res) => {
 
     const { creditAmount, debitAmount } = balanceInfo;
     const totalChange = (creditAmount || 0) - (debitAmount || 0);
+    const roundedChange = roundToTwoDecimals(totalChange);
 
-    await Promise.all([
-      SportSabaSportModal.create({
-        username: gameId,
-        operationId,
-        tranId: refId,
-        betamount: roundToTwoDecimals(totalChange),
-        settle: true,
-        bet: true,
-      }),
-      totalChange !== 0
-        ? User.updateOne(
-            { gameId },
-            { $inc: { wallet: roundToTwoDecimals(totalChange) } }
-          )
-        : Promise.resolve(),
-    ]);
+    const record = {
+      username: gameId,
+      operationId,
+      tranId: refId,
+      settle: true,
+      bet: true,
+    };
+
+    if (totalChange < 0) {
+      record.betamount = roundToTwoDecimals(Math.abs(totalChange));
+    } else if (totalChange > 0) {
+      record.settleamount = roundedChange;
+    }
+
+    if (totalChange !== 0) {
+      if (totalChange < 0) {
+        const walletUpdate = await User.findOneAndUpdate(
+          { gameId, wallet: { $gte: Math.abs(roundedChange) } },
+          { $inc: { wallet: roundedChange } },
+          { new: true, projection: { wallet: 1 } }
+        ).lean();
+
+        if (!walletUpdate) {
+          return res
+            .status(200)
+            .json({ status: "502", msg: "Insufficient Balance" });
+        }
+      } else {
+        await User.updateOne({ gameId }, { $inc: { wallet: roundedChange } });
+      }
+    }
+
+    await SportSabaSportModal.create(record);
 
     return res.status(200).json({ status: "0" });
   } catch (error) {

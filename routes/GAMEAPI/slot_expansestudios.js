@@ -686,7 +686,6 @@ const toDecimal = (value) => new Decimal(Number(value) || 0).toDecimalPlaces(4);
 router.post("/api/expansestudios/transaction", async (req, res) => {
   const { requestId, brandId, playerId, trans, gameType } = req.body;
   console.log(req.body, "reqbody");
-  console.log(trans, "hi");
   if (!requestId || !brandId || !playerId || !trans?.length) {
     return res.status(200).json({
       requestId: requestId || "",
@@ -1170,7 +1169,6 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
       }
     }
 
-    const ops = [];
     const currentWallet = toDecimal(currentUser.wallet);
     const walletChangeNum = walletChange.toNumber();
 
@@ -1218,7 +1216,7 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
         console.error("BulkWrite:", e.message);
       });
     }
-
+    console.log("success");
     return res.status(200).json({
       requestId,
       error: "0",
