@@ -1203,27 +1203,19 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
     }
 
     if (newRecords.length) {
-      ops.push(
-        SlotExpanseStudioModal.insertMany(newRecords, { ordered: false }).catch(
-          (e) => {
-            if (e.code !== 11000) console.error("Insert:", e.message);
-          }
-        )
-      );
+      await SlotExpanseStudioModal.insertMany(newRecords, {
+        ordered: false,
+      }).catch((e) => {
+        if (e.code !== 11000) console.error("Insert:", e.message);
+      });
     }
 
     if (updateOps.length) {
-      ops.push(
-        SlotExpanseStudioModal.bulkWrite(updateOps, { ordered: false }).catch(
-          (e) => {
-            console.error("BulkWrite:", e.message);
-          }
-        )
-      );
-    }
-
-    if (ops.length) {
-      await Promise.all(ops);
+      await SlotExpanseStudioModal.bulkWrite(updateOps, {
+        ordered: false,
+      }).catch((e) => {
+        console.error("BulkWrite:", e.message);
+      });
     }
 
     return res.status(200).json({
