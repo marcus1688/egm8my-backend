@@ -727,7 +727,7 @@ router.post("/api/jili/getgamelistMissing", async (req, res) => {
 
 router.post("/api/playtech/export-games", async (req, res) => {
   try {
-    const allGames = await GameIBexGameModal.find().lean(); // lean() for plain JS objects
+    const allGames = await GameRelaxGamingGameModal.find().lean(); // lean() for plain JS objects
 
     if (!allGames || allGames.length === 0) {
       return res.status(404).json({
@@ -737,7 +737,10 @@ router.post("/api/playtech/export-games", async (req, res) => {
     }
 
     // Create a temporary file
-    const exportFilePath = path.join(__dirname, "../../exports/ibex.json");
+    const exportFilePath = path.join(
+      __dirname,
+      "../../exports/relaxgaming.json"
+    );
 
     // Ensure export directory exists
     const exportDir = path.dirname(exportFilePath);
@@ -799,7 +802,7 @@ router.post("/admin/api/replace-s3-with-cloudfront", async (req, res) => {
       // GameYGRGameModal,
       // GameHacksawGameModal,
       // GameRelaxGamingGameModal,
-      GameIBexGameModal,
+      GameExpansesStudiosGameModal,
       // GameYellowBatGameModal,
       // GamePlaytechGameModal,
       // GamePegasusGameModal,

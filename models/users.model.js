@@ -554,6 +554,9 @@ const userSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    expansesStudioGameToken: {
+      type: String,
+    },
   },
   {
     toJSON: { getters: true },

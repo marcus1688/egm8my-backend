@@ -22,6 +22,7 @@ const Withdraw = require("../models/withdraw.model");
 const { RebateLog } = require("../models/rebate.model");
 const LiveTransaction = require("../models/transaction.model");
 const UserWalletCashOut = require("../models/userwalletcashout.model");
+const UserWalletCashIn = require("../models/userwalletcashin.model");
 const jwt = require("jsonwebtoken");
 const { OAuth2Client } = require("google-auth-library");
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -5281,6 +5282,122 @@ router.patch(
   }
 );
 
+// Admin CashIn User Wallet
+router.patch(
+  "/admin/api/user/cashin/:userId",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const userId = req.params.userId;
+      const adminId = req.user.userId;
+      const adminuser = await adminUser.findById(adminId);
+
+      if (!adminuser) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Admin User not found, please contact customer service",
+            zh: "找不到管理员用户，请联系客服",
+          },
+        });
+      }
+
+      const { amount, remark } = req.body;
+      const user = await User.findById(userId);
+
+      if (!user) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "User not found",
+            zh: "找不到用户",
+          },
+        });
+      }
+
+      if (amount !== undefined) {
+        if (amount <= 0) {
+          return res.status(200).json({
+            success: false,
+            message: {
+              en: "Amount must be greater than 0",
+              zh: "金额必须大于0",
+            },
+          });
+        }
+
+        const kioskSettings = await kioskbalance.findOne({});
+        if (kioskSettings && kioskSettings.status) {
+          const kioskResult = await updateKioskBalance("subtract", amount, {
+            username: user.username,
+            transactionType: "user cashin",
+            remark: `Manual cashin`,
+            processBy: adminuser.username,
+          });
+
+          if (!kioskResult.success) {
+            return res.status(200).json({
+              success: false,
+              message: {
+                en: "Failed to update kiosk balance",
+                zh: "更新Kiosk余额失败",
+              },
+            });
+          }
+        }
+
+        const updatedUser = await User.findByIdAndUpdate(
+          userId,
+          { $inc: { wallet: amount } },
+          { new: true }
+        );
+
+        if (!updatedUser) {
+          return res.status(200).json({
+            success: false,
+            message: {
+              en: "Failed to update user balance",
+              zh: "更新用户余额失败",
+            },
+          });
+        }
+      }
+
+      const newCashIn = new UserWalletCashIn({
+        transactionId: uuidv4(),
+        userId: user._id,
+        username: user.username,
+        fullname: user.fullname,
+        method: "manual",
+        transactionType: "user cashin",
+        processBy: adminuser.username,
+        amount: amount,
+        status: "approved",
+        remark: remark,
+      });
+
+      await newCashIn.save();
+
+      res.status(200).json({
+        success: true,
+        message: {
+          en: "Wallet has been updated successfully",
+          zh: "钱包已成功更新",
+        },
+      });
+    } catch (error) {
+      console.error("Error occurred while updating wallet:", error);
+      res.status(500).json({
+        success: false,
+        message: {
+          en: "Error processing cashin",
+          zh: "处理充值时出错",
+        },
+      });
+    }
+  }
+);
+
 // Admin Update User Rebate
 router.patch(
   "/admin/api/user/:userId/updateRebate",
@@ -6027,6 +6144,21 @@ router.get(
             },
           },
         ]),
+
+        UserWalletCashIn.aggregate([
+          {
+            $match: {
+              reverted: false,
+              ...dateFilter,
+            },
+          },
+          {
+            $group: {
+              _id: "$username",
+              totalCashin: { $sum: "$amount" },
+            },
+          },
+        ]),
       ]);
 
       // Extract financial data
@@ -6037,6 +6169,7 @@ router.get(
         bonusStats,
         rebateStats,
         cashoutStats,
+        cashinStats,
       ] = financialResults;
 
       const getUsernameMap = async (gameIds) => {
@@ -6414,6 +6547,7 @@ router.get(
         ...bonusStats.map((stat) => stat._id),
         ...rebateStats.map((stat) => stat._id),
         ...cashoutStats.map((stat) => stat._id),
+        ...cashinStats.map((stat) => stat._id),
         ...Object.keys(userTurnoverMap),
       ]);
 
@@ -6429,6 +6563,7 @@ router.get(
         const rebate = rebateStats.find((stat) => stat._id === username) || {};
         const cashout =
           cashoutStats.find((stat) => stat._id === username) || {};
+        const cashin = cashinStats.find((stat) => stat._id === username) || {};
         const totalTurnover = userTurnoverMap[username] || 0;
 
         return {
@@ -6441,6 +6576,7 @@ router.get(
           totalBonus: bonus.totalBonus || 0,
           totalRebate: rebate.totalRebate || 0,
           totalCashout: cashout.totalCashout || 0,
+          totalCashin: cashin.totalCashin || 0,
           totalTurnover: Number(totalTurnover.toFixed(2)),
           winLose: (deposit.totalDeposit || 0) - (withdraw.totalWithdraw || 0),
         };
