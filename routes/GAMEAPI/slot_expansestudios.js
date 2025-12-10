@@ -936,7 +936,8 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
 
           for (let j = 0, rl = recs.length; j < rl; j++) {
             const r = recs[j];
-            if (r.bet && r.betUniqueID && !r.depositamount) {
+            // ✅ FIXED - just check bet record (not transIn)
+            if (r.bet && !r.depositamount) {
               if (!target && r.settleamount == null) target = r;
               else if (!r.winUniqueID) otherIds.push(r._id);
             }
@@ -1049,7 +1050,8 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
 
           for (let j = 0, rl = recs.length; j < rl; j++) {
             const r = recs[j];
-            if (r.bet && r.transInUniqueID && r.depositamount) {
+            // ✅ FIXED - just check transIn record (has depositamount)
+            if (r.bet && r.depositamount) {
               if (!target && r.withdrawamount == null) target = r;
               else if (!r.transOutUniqueID) otherIds.push(r._id);
             }
