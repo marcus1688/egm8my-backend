@@ -860,8 +860,6 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
         case "win": {
           if (existingWinMap.has(transId)) continue;
 
-          walletChange += roundToTwoDecimals(amount);
-
           // Get all records for this roundId (bet records)
           const roundRecords = recordsByRoundId.get(roundId) || [];
           const betRecords = roundRecords.filter(
@@ -873,6 +871,17 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
             (t) => t.roundId === roundId && t.transType === "bet"
           );
 
+          // ✅ No matching bet record found - return error
+          if (betRecords.length === 0 && !betInRequest) {
+            return res.status(200).json({
+              requestId,
+              error: "R_02",
+              message: "Invalid round",
+            });
+          }
+
+          walletChange += roundToTwoDecimals(amount);
+
           if (betRecords.length > 0) {
             // Find the oldest record without settleamount
             const recordToSettle = betRecords.find(
@@ -880,7 +889,6 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
             );
 
             if (recordToSettle) {
-              // Update oldest unsettled with settleamount
               updateOperations.push({
                 updateOne: {
                   filter: { _id: recordToSettle._id },
@@ -894,7 +902,6 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
                 },
               });
 
-              // Update other records without winUniqueID (just mark as settled)
               const otherRecords = betRecords.filter(
                 (r) =>
                   r._id.toString() !== recordToSettle._id.toString() &&
@@ -914,7 +921,6 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
                 });
               });
             } else {
-              // All records already have settleamount, just update winUniqueID for those without it
               const recordsWithoutWinId = betRecords.filter(
                 (r) => !r.winUniqueID
               );
@@ -932,7 +938,7 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
                 });
               });
             }
-          } else if (betInRequest) {
+          } else {
             // Bet is in current request, update by betUniqueID
             updateOperations.push({
               updateOne: {
@@ -946,27 +952,12 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
                 },
               },
             });
-          } else {
-            // No bet record found, create new settled record
-            newRecords.push({
-              betId: roundId,
-              winUniqueID: transId,
-              username: playerId,
-              betamount: 0,
-              settleamount: roundToTwoDecimals(amount),
-              bet: true,
-              settle: true,
-              gametype: gameType?.toUpperCase() || "SLOT",
-              roundId: roundId,
-            });
           }
           break;
         }
 
         case "transOut": {
           if (existingTransOutMap.has(transId)) continue;
-
-          walletChange += roundToTwoDecimals(amount);
 
           // Get all records for this roundId (transIn records)
           const roundRecords = recordsByRoundId.get(roundId) || [];
@@ -979,14 +970,23 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
             (t) => t.roundId === roundId && t.transType === "transIn"
           );
 
+          // ✅ No matching transIn record found - return error
+          if (transInRecords.length === 0 && !transInRequest) {
+            return res.status(200).json({
+              requestId,
+              error: "R_02",
+              message: "Invalid round",
+            });
+          }
+
+          walletChange += roundToTwoDecimals(amount);
+
           if (transInRecords.length > 0) {
-            // Find the oldest record without withdrawamount
             const recordToSettle = transInRecords.find(
               (r) => r.withdrawamount === undefined || r.withdrawamount === null
             );
 
             if (recordToSettle) {
-              // Update oldest unsettled with withdrawamount
               updateOperations.push({
                 updateOne: {
                   filter: { _id: recordToSettle._id },
@@ -1006,7 +1006,6 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
                 },
               });
 
-              // Update other records without transOutUniqueID (just mark as settled)
               const otherRecords = transInRecords.filter(
                 (r) =>
                   r._id.toString() !== recordToSettle._id.toString() &&
@@ -1026,7 +1025,6 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
                 });
               });
             } else {
-              // All records already have withdrawamount, just update transOutUniqueID for those without it
               const recordsWithoutTransOutId = transInRecords.filter(
                 (r) => !r.transOutUniqueID
               );
@@ -1044,7 +1042,7 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
                 });
               });
             }
-          } else if (transInRequest) {
+          } else {
             // TransIn is in current request, update by transInUniqueID
             updateOperations.push({
               updateOne: {
@@ -1064,20 +1062,6 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
                 },
               },
             });
-          } else {
-            // No transIn record found, create new settled record
-            newRecords.push({
-              betId: roundId,
-              transOutUniqueID: transId,
-              username: playerId,
-              transferbetamount: validBet ? roundToTwoDecimals(validBet) : 0,
-              transfersettleamount: validWin ? roundToTwoDecimals(validWin) : 0,
-              withdrawamount: roundToTwoDecimals(amount),
-              bet: true,
-              settle: true,
-              gametype: gameType?.toUpperCase() || "SLOT",
-              roundId: roundId,
-            });
           }
           break;
         }
@@ -1085,46 +1069,82 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
         case "cancel": {
           if (existingCancelMap.has(transId)) continue;
 
+          const roundRecords = recordsByRoundId.get(roundId) || [];
+
+          if (roundRecords.length === 0) {
+            return res.status(200).json({
+              requestId,
+              error: "T_03",
+              message: "Transaction does not exist",
+            });
+          }
+
           walletChange += roundToTwoDecimals(amount);
 
-          const targetTransId = referenceId || transId;
-          updateOperations.push({
-            updateOne: {
-              filter: {
-                $or: [
-                  { betUniqueID: targetTransId },
-                  { transInUniqueID: targetTransId },
-                  { roundId: targetTransId },
-                ],
-              },
-              update: {
-                $set: {
-                  cancel: true,
-                  cancelUniqueID: transId,
+          const recordsToCancel = roundRecords.filter((r) => !r.cancel);
+
+          if (recordsToCancel.length > 0) {
+            const recordIds = recordsToCancel.map((r) => r._id);
+            updateOperations.push({
+              updateMany: {
+                filter: { _id: { $in: recordIds } },
+                update: {
+                  $set: {
+                    cancel: true,
+                    cancelUniqueID: transId,
+                  },
                 },
               },
-            },
-          });
+            });
+          }
           break;
         }
 
         case "amend": {
           if (existingAmendMap.has(transId)) continue;
 
+          const roundRecords = recordsByRoundId.get(roundId) || [];
+
+          if (roundRecords.length === 0) {
+            return res.status(200).json({
+              requestId,
+              error: "R_02",
+              message: "Invalid round",
+            });
+          }
+
           walletChange += roundToTwoDecimals(amount);
 
-          newRecords.push({
-            betId: roundId,
-            amendUniqueID: transId,
-            username: playerId,
-            betamount: amount < 0 ? roundToTwoDecimals(Math.abs(amount)) : 0,
-            settleamount: amount > 0 ? roundToTwoDecimals(amount) : 0,
-            bet: amount < 0,
-            settle: true,
-            resettle: true,
-            gametype: gameType?.toUpperCase() || "SLOT",
-            roundId: roundId,
-          });
+          const recordToAmend =
+            roundRecords.find((r) => !r.amendUniqueID) || roundRecords[0];
+
+          if (amount < 0) {
+            updateOperations.push({
+              updateOne: {
+                filter: { _id: recordToAmend._id },
+                update: {
+                  $inc: { betamount: roundToTwoDecimals(Math.abs(amount)) },
+                  $set: {
+                    resettle: true,
+                    amendUniqueID: transId,
+                  },
+                },
+              },
+            });
+          } else {
+            updateOperations.push({
+              updateOne: {
+                filter: { _id: recordToAmend._id },
+                update: {
+                  $inc: { settleamount: roundToTwoDecimals(amount) },
+                  $set: {
+                    resettle: true,
+                    amendUniqueID: transId,
+                  },
+                },
+              },
+            });
+          }
           break;
         }
 
@@ -1199,6 +1219,564 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
     });
   } catch (error) {
     console.error("ExpanseStudio Transaction Error:", error.message);
+    return res.status(200).json({
+      requestId,
+      error: "P_00",
+      message: "Server Error, internal server error.",
+    });
+  }
+});
+
+const TRANS_CONFIG = {
+  bet: { field: "betUniqueID" },
+  transIn: { field: "transInUniqueID" },
+  win: { field: "winUniqueID" },
+  transOut: { field: "transOutUniqueID" },
+  cancel: { field: "cancelUniqueID" },
+  amend: { field: "amendUniqueID" },
+};
+
+const toDecimal = (value) => new Decimal(Number(value) || 0).toDecimalPlaces(4);
+
+router.post("/api/expansestudios/transaction", async (req, res) => {
+  const { requestId, brandId, playerId, trans, gameType } = req.body;
+
+  if (!requestId || !brandId || !playerId || !trans?.length) {
+    return res.status(200).json({
+      requestId: requestId || "",
+      error: "P_01",
+      message: "Invalid request.",
+    });
+  }
+
+  if (String(brandId) !== expansestudioID) {
+    return res
+      .status(200)
+      .json({ requestId, error: "P_03", message: "Invalid brandId." });
+  }
+
+  if (!verifyExpanseStudioHash(req.body, req.query.hash, expansestudioSecret)) {
+    return res
+      .status(200)
+      .json({ requestId, error: "P_02", message: "Invalid hash" });
+  }
+
+  try {
+    const len = trans.length;
+    const sortedTrans =
+      len > 1 ? trans.slice().sort((a, b) => a.seq - b.seq) : trans;
+
+    const transIds = {};
+    const roundIds = new Set();
+    const hasType = {};
+
+    for (let i = 0; i < len; i++) {
+      const t = sortedTrans[i];
+      const type = t.transType;
+
+      if (TRANS_CONFIG[type]) {
+        if (!transIds[type]) {
+          transIds[type] = [];
+          hasType[type] = true;
+        }
+        transIds[type].push(t.transId);
+      }
+
+      if (t.roundId) roundIds.add(t.roundId);
+    }
+
+    const needsRoundLookup =
+      hasType.win || hasType.transOut || hasType.cancel || hasType.amend;
+
+    const queryConditions = [];
+    const projection = { _id: 1 };
+
+    for (const type in hasType) {
+      const field = TRANS_CONFIG[type].field;
+      queryConditions.push({ [field]: { $in: transIds[type] } });
+      projection[field] = 1;
+    }
+
+    if (needsRoundLookup && roundIds.size) {
+      queryConditions.push({ roundId: { $in: [...roundIds] } });
+      projection.roundId = 1;
+      projection.createdAt = 1;
+      projection.bet = 1;
+
+      if (hasType.win) {
+        projection.settleamount = 1;
+        projection.depositamount = 1;
+      }
+      if (hasType.transOut) {
+        projection.depositamount = 1;
+        projection.withdrawamount = 1;
+      }
+      if (hasType.cancel) {
+        projection.cancel = 1;
+      }
+    }
+
+    // ✅ Parallel queries
+    const [currentUser, existingTrans = []] = await Promise.all([
+      User.findOne(
+        { gameId: playerId },
+        { _id: 1, wallet: 1, "gameLock.expansestudio.lock": 1 }
+      ).lean(),
+      queryConditions.length
+        ? SlotExpanseStudioModal.find(
+            { $or: queryConditions },
+            projection
+          ).lean()
+        : Promise.resolve([]),
+    ]);
+
+    if (!currentUser) {
+      return res
+        .status(200)
+        .json({ requestId, error: "P_04", message: "Player not found" });
+    }
+
+    if (currentUser.gameLock?.expansestudio?.lock) {
+      return res
+        .status(200)
+        .json({ requestId, error: "P_07", message: "Player is inactive" });
+    }
+
+    // ✅ Build existence maps
+    const existingMaps = {};
+    for (const type in hasType) {
+      existingMaps[type] = new Set();
+    }
+
+    const recordsByRoundId = needsRoundLookup ? new Map() : null;
+
+    for (let i = 0, el = existingTrans.length; i < el; i++) {
+      const t = existingTrans[i];
+
+      for (const type in existingMaps) {
+        const val = t[TRANS_CONFIG[type].field];
+        if (val) existingMaps[type].add(val);
+      }
+
+      if (recordsByRoundId && t.roundId) {
+        const arr = recordsByRoundId.get(t.roundId);
+        if (arr) arr.push(t);
+        else recordsByRoundId.set(t.roundId, [t]);
+      }
+    }
+
+    if (recordsByRoundId) {
+      for (const [, recs] of recordsByRoundId) {
+        if (recs.length > 1) recs.sort((a, b) => a.createdAt - b.createdAt);
+      }
+    }
+
+    // ✅ Build request maps - store ALL bets/transIns per roundId as ARRAY
+    let betReqMap = null;
+    let transInReqMap = null;
+
+    if (hasType.win && hasType.bet) betReqMap = new Map();
+    if (hasType.transOut && hasType.transIn) transInReqMap = new Map();
+
+    if (betReqMap || transInReqMap) {
+      for (let i = 0; i < len; i++) {
+        const t = sortedTrans[i];
+        const rid = t.roundId;
+        if (!rid) continue;
+
+        if (betReqMap && t.transType === "bet") {
+          if (!betReqMap.has(rid)) betReqMap.set(rid, []);
+          betReqMap.get(rid).push(t);
+        } else if (transInReqMap && t.transType === "transIn") {
+          if (!transInReqMap.has(rid)) transInReqMap.set(rid, []);
+          transInReqMap.get(rid).push(t);
+        }
+      }
+    }
+
+    let walletChange = new Decimal(0);
+    const newRecords = [];
+    const updateOps = [];
+
+    for (let i = 0; i < len; i++) {
+      const tr = sortedTrans[i];
+      const { transId, amount, transType, roundId, validBet, validWin } = tr;
+      const amt = toDecimal(amount);
+
+      switch (transType) {
+        case "bet": {
+          if (existingMaps.bet.has(transId)) continue;
+          walletChange = walletChange.minus(amt);
+          newRecords.push({
+            betId: roundId,
+            betUniqueID: transId,
+            username: playerId,
+            betamount: amt.toNumber(),
+            bet: true,
+            roundId,
+          });
+          break;
+        }
+
+        case "transIn": {
+          if (existingMaps.transIn.has(transId)) continue;
+          walletChange = walletChange.minus(amt);
+          newRecords.push({
+            betId: roundId,
+            transInUniqueID: transId,
+            username: playerId,
+            depositamount: amt.toNumber(),
+            bet: true,
+            roundId,
+          });
+          break;
+        }
+
+        case "win": {
+          if (existingMaps.win.has(transId)) continue;
+
+          const recs = recordsByRoundId?.get(roundId);
+          const betReqs = betReqMap?.get(roundId);
+
+          if (!recs?.length && !betReqs?.length) {
+            return res
+              .status(200)
+              .json({ requestId, error: "R_02", message: "Invalid round" });
+          }
+
+          walletChange = walletChange.plus(amt);
+
+          if (!recs?.length) {
+            updateOps.push({
+              updateOne: {
+                filter: { betUniqueID: betReqs[0].transId },
+                update: {
+                  $set: {
+                    settle: true,
+                    settleamount: amt.toNumber(),
+                    winUniqueID: transId,
+                  },
+                },
+              },
+            });
+
+            if (betReqs.length > 1) {
+              const otherBetIds = [];
+              for (let j = 1; j < betReqs.length; j++) {
+                otherBetIds.push(betReqs[j].transId);
+              }
+              updateOps.push({
+                updateMany: {
+                  filter: { betUniqueID: { $in: otherBetIds } },
+                  update: { $set: { settle: true, winUniqueID: transId } },
+                },
+              });
+            }
+            break;
+          }
+
+          let target = null;
+          const otherIds = [];
+
+          for (let j = 0, rl = recs.length; j < rl; j++) {
+            const r = recs[j];
+            if (r.bet && r.betUniqueID && !r.depositamount) {
+              if (!target && r.settleamount == null) target = r;
+              else if (!r.winUniqueID) otherIds.push(r._id);
+            }
+          }
+
+          if (target) {
+            updateOps.push({
+              updateOne: {
+                filter: { _id: target._id },
+                update: {
+                  $set: {
+                    settle: true,
+                    settleamount: amt.toNumber(),
+                    winUniqueID: transId,
+                  },
+                },
+              },
+            });
+          } else if (betReqs?.length) {
+            updateOps.push({
+              updateOne: {
+                filter: { betUniqueID: betReqs[0].transId },
+                update: {
+                  $set: {
+                    settle: true,
+                    settleamount: amt.toNumber(),
+                    winUniqueID: transId,
+                  },
+                },
+              },
+            });
+          }
+
+          if (otherIds.length) {
+            updateOps.push({
+              updateMany: {
+                filter: { _id: { $in: otherIds } },
+                update: { $set: { settle: true, winUniqueID: transId } },
+              },
+            });
+          }
+
+          if (betReqs?.length) {
+            const startIdx = target ? 0 : 1;
+            if (betReqs.length > startIdx) {
+              const reqBetIds = [];
+              for (let j = startIdx; j < betReqs.length; j++) {
+                reqBetIds.push(betReqs[j].transId);
+              }
+              updateOps.push({
+                updateMany: {
+                  filter: { betUniqueID: { $in: reqBetIds } },
+                  update: { $set: { settle: true, winUniqueID: transId } },
+                },
+              });
+            }
+          }
+          break;
+        }
+
+        case "transOut": {
+          if (existingMaps.transOut.has(transId)) continue;
+
+          const recs = recordsByRoundId?.get(roundId);
+          const tiReqs = transInReqMap?.get(roundId);
+
+          if (!recs?.length && !tiReqs?.length) {
+            return res
+              .status(200)
+              .json({ requestId, error: "R_02", message: "Invalid round" });
+          }
+
+          walletChange = walletChange.plus(amt);
+
+          const setObj = {
+            settle: true,
+            withdrawamount: amt.toNumber(),
+            transOutUniqueID: transId,
+          };
+          if (validBet != null)
+            setObj.transferbetamount = toDecimal(validBet).toNumber();
+          if (validWin != null)
+            setObj.transfersettleamount = toDecimal(validWin).toNumber();
+
+          if (!recs?.length) {
+            updateOps.push({
+              updateOne: {
+                filter: { transInUniqueID: tiReqs[0].transId },
+                update: { $set: setObj },
+              },
+            });
+
+            if (tiReqs.length > 1) {
+              const otherTiIds = [];
+              for (let j = 1; j < tiReqs.length; j++) {
+                otherTiIds.push(tiReqs[j].transId);
+              }
+              updateOps.push({
+                updateMany: {
+                  filter: { transInUniqueID: { $in: otherTiIds } },
+                  update: { $set: { settle: true, transOutUniqueID: transId } },
+                },
+              });
+            }
+            break;
+          }
+
+          let target = null;
+          const otherIds = [];
+
+          for (let j = 0, rl = recs.length; j < rl; j++) {
+            const r = recs[j];
+            if (r.bet && r.transInUniqueID && r.depositamount) {
+              if (!target && r.withdrawamount == null) target = r;
+              else if (!r.transOutUniqueID) otherIds.push(r._id);
+            }
+          }
+
+          if (target) {
+            updateOps.push({
+              updateOne: {
+                filter: { _id: target._id },
+                update: { $set: setObj },
+              },
+            });
+          } else if (tiReqs?.length) {
+            updateOps.push({
+              updateOne: {
+                filter: { transInUniqueID: tiReqs[0].transId },
+                update: { $set: setObj },
+              },
+            });
+          }
+
+          if (otherIds.length) {
+            updateOps.push({
+              updateMany: {
+                filter: { _id: { $in: otherIds } },
+                update: { $set: { settle: true, transOutUniqueID: transId } },
+              },
+            });
+          }
+
+          if (tiReqs?.length) {
+            const startIdx = target ? 0 : 1;
+            if (tiReqs.length > startIdx) {
+              const reqTiIds = [];
+              for (let j = startIdx; j < tiReqs.length; j++) {
+                reqTiIds.push(tiReqs[j].transId);
+              }
+              updateOps.push({
+                updateMany: {
+                  filter: { transInUniqueID: { $in: reqTiIds } },
+                  update: { $set: { settle: true, transOutUniqueID: transId } },
+                },
+              });
+            }
+          }
+          break;
+        }
+
+        case "cancel": {
+          if (existingMaps.cancel.has(transId)) continue;
+
+          const recs = recordsByRoundId?.get(roundId);
+          if (!recs?.length) {
+            return res.status(200).json({
+              requestId,
+              error: "T_03",
+              message: "Transaction does not exist",
+            });
+          }
+
+          walletChange = walletChange.plus(amt);
+
+          const ids = [];
+          for (let j = 0, rl = recs.length; j < rl; j++) {
+            if (!recs[j].cancel) ids.push(recs[j]._id);
+          }
+
+          if (ids.length) {
+            updateOps.push({
+              updateMany: {
+                filter: { _id: { $in: ids } },
+                update: { $set: { cancel: true, cancelUniqueID: transId } },
+              },
+            });
+          }
+          break;
+        }
+
+        case "amend": {
+          if (existingMaps.amend.has(transId)) continue;
+
+          const recs = recordsByRoundId?.get(roundId);
+          if (!recs?.length) {
+            return res
+              .status(200)
+              .json({ requestId, error: "R_02", message: "Invalid round" });
+          }
+
+          walletChange = walletChange.plus(amt);
+
+          let target = recs[0];
+          for (let j = 0, rl = recs.length; j < rl; j++) {
+            if (!recs[j].amendUniqueID) {
+              target = recs[j];
+              break;
+            }
+          }
+
+          const incField =
+            amount < 0
+              ? { betamount: toDecimal(Math.abs(amount)).toNumber() }
+              : { settleamount: amt.toNumber() };
+
+          updateOps.push({
+            updateOne: {
+              filter: { _id: target._id },
+              update: {
+                $inc: incField,
+                $set: { resettle: true, amendUniqueID: transId },
+              },
+            },
+          });
+          break;
+        }
+      }
+    }
+
+    const ops = [];
+    const currentWallet = toDecimal(currentUser.wallet);
+    const walletChangeNum = walletChange.toNumber();
+
+    let updatedWallet = currentWallet;
+
+    if (walletChangeNum !== 0) {
+      const walletFilter = { gameId: playerId };
+
+      if (walletChangeNum < 0) {
+        walletFilter.wallet = { $gte: Math.abs(walletChangeNum) };
+      }
+
+      const walletUpdate = await User.findOneAndUpdate(
+        walletFilter,
+        { $inc: { wallet: walletChangeNum } },
+        { new: true, projection: { wallet: 1 } }
+      ).lean();
+
+      if (!walletUpdate && walletChangeNum < 0) {
+        return res.status(200).json({
+          requestId,
+          error: "T_01",
+          message: "Player Insufficient Funds",
+          balance: currentWallet.toNumber(),
+        });
+      }
+
+      if (walletUpdate) {
+        updatedWallet = toDecimal(walletUpdate.wallet);
+      }
+    }
+
+    if (newRecords.length) {
+      ops.push(
+        SlotExpanseStudioModal.insertMany(newRecords, { ordered: false }).catch(
+          (e) => {
+            if (e.code !== 11000) console.error("Insert:", e.message);
+          }
+        )
+      );
+    }
+
+    if (updateOps.length) {
+      ops.push(
+        SlotExpanseStudioModal.bulkWrite(updateOps, { ordered: false }).catch(
+          (e) => {
+            console.error("BulkWrite:", e.message);
+          }
+        )
+      );
+    }
+
+    if (ops.length) {
+      await Promise.all(ops);
+    }
+
+    return res.status(200).json({
+      requestId,
+      error: "0",
+      message: "success",
+      currency: "MYR",
+      balance: updatedWallet.toNumber(),
+    });
+  } catch (e) {
+    console.error("ExpanseStudio Error:", e.message);
     return res.status(200).json({
       requestId,
       error: "P_00",
