@@ -149,7 +149,7 @@ async function registerRSGUser(user) {
     console.log(error, "error registering rsg");
     return {
       success: false,
-      error: error.responseData,
+      error: error.response?.data || error.message,
       maintenance: false,
     };
   }
