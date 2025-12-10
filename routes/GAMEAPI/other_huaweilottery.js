@@ -1068,6 +1068,180 @@ router.post(
 );
 
 router.post(
+  "/admin/api/huawei/deposit/:userId",
+  authenticateAdminToken,
+  async (req, res) => {
+    let formattedDepositAmount = 0;
+    let user = null;
+    let walletDeducted = false;
+    try {
+      user = await User.findById(req.params.userId);
+
+      if (!user) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "User not found. Please try again or contact customer service for assistance.",
+            zh: "用户未找到，请重试或联系客服以获取帮助。",
+            ms: "Pengguna tidak ditemui, sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+            zh_hk: "搵唔到用戶，麻煩再試多次或者聯絡客服幫手。",
+            id: "Pengguna tidak ditemukan. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+          },
+        });
+      }
+
+      if (!user.huaweiGameID) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "GRAND DRAGON: Game account not registered. Please register an account first to proceed.",
+            zh: "GRAND DRAGON: 游戏账户未注册。请先注册账户以继续。",
+            ms: "GRAND DRAGON: Akaun permainan tidak berdaftar. Sila daftar akaun terlebih dahulu untuk meneruskan.",
+            zh_hk: "GRAND DRAGON: 遊戲帳戶未註冊。請先註冊帳戶以繼續。",
+            id: "GRAND DRAGON: Akun permainan belum terdaftar. Silakan daftar akun terlebih dahulu untuk melanjutkan.",
+          },
+        });
+      }
+
+      const { transferAmount } = req.body;
+      formattedDepositAmount = roundToTwoDecimals(transferAmount);
+
+      if (isNaN(formattedDepositAmount) || formattedDepositAmount <= 0) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Deposit amount must be a positive number greater than 0.",
+            zh: "存款金额必须为正数且大于0。",
+            ms: "Jumlah deposit mestilah nombor positif dan lebih besar daripada 0.",
+            zh_hk: "存款金額必須為正數且大於0。",
+            id: "Jumlah deposit harus berupa angka positif dan lebih besar dari 0.",
+          },
+        });
+      }
+
+      if (user.gameStatus.granddragon.transferInStatus) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Transfer is temporarily locked. Please contact customer support for assistance.",
+            zh: "转账暂时锁定。请联系客服寻求帮助。",
+            ms: "Pemindahan dikunci buat sementara. Sila hubungi sokongan pelanggan untuk bantuan.",
+            zh_hk: "轉帳暫時鎖定。請聯絡客服尋求協助。",
+            id: "Transfer terkunci sementara. Silakan hubungi dukungan pelanggan untuk bantuan.",
+          },
+        });
+      }
+
+      const updatedUser = await User.findOneAndUpdate(
+        {
+          _id: user._id,
+          wallet: { $gte: formattedDepositAmount },
+        },
+        {
+          $inc: { wallet: -formattedDepositAmount },
+        },
+        { new: true, projection: { wallet: 1, _id: 1 } }
+      ).lean();
+
+      if (!updatedUser) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Insufficient balance to complete the transaction.",
+            zh: "余额不足，无法完成交易。",
+            ms: "Baki tidak mencukupi untuk melengkapkan transaksi.",
+            zh_hk: "餘額不足，無法完成交易。",
+            id: "Saldo tidak mencukupi untuk menyelesaikan transaksi.",
+          },
+        });
+      }
+
+      walletDeducted = true;
+
+      const depositResponse = await huaweiDeposit(user, formattedDepositAmount);
+
+      if (!depositResponse.success) {
+        await User.findByIdAndUpdate(user._id, {
+          $inc: { wallet: formattedDepositAmount },
+        });
+        walletDeducted = false;
+
+        console.error("GRAND DRAGON: Deposit failed -", depositResponse.error);
+
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "GRAND DRAGON: Deposit failed. Please try again or contact customer support for further assistance.",
+            zh: "GRAND DRAGON: 存款失败。请重试或联系客服寻求进一步帮助。",
+            ms: "GRAND DRAGON: Deposit gagal. Sila cuba lagi atau hubungi sokongan pelanggan untuk bantuan lanjut.",
+            zh_hk: "GRAND DRAGON: 存款失敗。請重試或聯絡客服尋求進一步協助。",
+            id: "GRAND DRAGON: Deposit gagal. Silakan coba lagi atau hubungi dukungan pelanggan untuk bantuan lebih lanjut.",
+          },
+        });
+      }
+
+      try {
+        const gameBalance = await huaweiCheckBalance(user);
+
+        await GameWalletLogAttempt(
+          user.username,
+          "Transfer In",
+          "Transfer",
+          roundToTwoDecimals(formattedDepositAmount),
+          "GRAND DRAGON",
+          roundToTwoDecimals(gameBalance?.balance ?? 0),
+          roundToTwoDecimals(user.wallet),
+          roundToTwoDecimals(updatedUser.wallet)
+        );
+      } catch (logError) {
+        console.error(
+          "GRAND DRAGON: Failed to log transaction:",
+          logError.message
+        );
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: {
+          en: "Deposit completed successfully.",
+          zh: "存款成功完成。",
+          ms: "Deposit berjaya diselesaikan.",
+          zh_hk: "存款成功完成。",
+          id: "Deposit berhasil diselesaikan.",
+        },
+      });
+    } catch (error) {
+      console.log("GRAND DRAGON error in deposit", error.message);
+
+      if (walletDeducted && user) {
+        try {
+          await User.findByIdAndUpdate(user._id, {
+            $inc: { wallet: formattedDepositAmount },
+          });
+          console.log("GRAND DRAGON: Wallet rollback successful");
+        } catch (rollbackError) {
+          console.error(
+            "GRAND DRAGON: CRITICAL - Rollback failed:",
+            rollbackError.message
+          );
+        }
+      }
+
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "GRAND DRAGON: Deposit failed. Please try again or contact customer support for further assistance.",
+          zh: "GRAND DRAGON: 存款失败。请重试或联系客服寻求进一步帮助。",
+          ms: "GRAND DRAGON: Deposit gagal. Sila cuba lagi atau hubungi sokongan pelanggan untuk bantuan lanjut.",
+          zh_hk: "GRAND DRAGON: 存款失敗。請重試或聯絡客服尋求進一步協助。",
+          id: "GRAND DRAGON: Deposit gagal. Silakan coba lagi atau hubungi dukungan pelanggan untuk bantuan lebih lanjut.",
+        },
+      });
+    }
+  }
+);
+
+router.post(
   "/admin/api/huawei/:userId/checkbalance",
   authenticateAdminToken,
   async (req, res) => {

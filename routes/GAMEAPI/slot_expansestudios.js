@@ -742,12 +742,71 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
     const sortedTrans = [...trans].sort((a, b) => a.seq - b.seq);
 
     const transIds = sortedTrans.map((t) => t.transId);
+    const roundIds = sortedTrans.map((t) => t.roundId).filter(Boolean);
+
     const existingTrans = await SlotExpanseStudioModal.find(
-      { betId: { $in: transIds } },
-      { betId: 1, settle: 1, cancel: 1 }
+      {
+        $or: [
+          { betUniqueID: { $in: transIds } },
+          { transInUniqueID: { $in: transIds } },
+          { winUniqueID: { $in: transIds } },
+          { transOutUniqueID: { $in: transIds } },
+          { cancelUniqueID: { $in: transIds } },
+          { amendUniqueID: { $in: transIds } },
+          { roundId: { $in: roundIds } },
+        ],
+      },
+      {
+        _id: 1,
+        betUniqueID: 1,
+        transInUniqueID: 1,
+        winUniqueID: 1,
+        transOutUniqueID: 1,
+        cancelUniqueID: 1,
+        amendUniqueID: 1,
+        settle: 1,
+        cancel: 1,
+        roundId: 1,
+        settleamount: 1,
+        withdrawamount: 1,
+        createdAt: 1,
+        bet: 1,
+        depositamount: 1,
+      }
     ).lean();
 
-    const existingTransMap = new Map(existingTrans.map((t) => [t.betId, t]));
+    // Build maps for each transaction type
+    const existingBetMap = new Map();
+    const existingTransInMap = new Map();
+    const existingWinMap = new Map();
+    const existingTransOutMap = new Map();
+    const existingCancelMap = new Map();
+    const existingAmendMap = new Map();
+
+    // Group records by roundId for win/transOut handling
+    const recordsByRoundId = new Map();
+
+    existingTrans.forEach((t) => {
+      if (t.betUniqueID) existingBetMap.set(t.betUniqueID, t);
+      if (t.transInUniqueID) existingTransInMap.set(t.transInUniqueID, t);
+      if (t.winUniqueID) existingWinMap.set(t.winUniqueID, t);
+      if (t.transOutUniqueID) existingTransOutMap.set(t.transOutUniqueID, t);
+      if (t.cancelUniqueID) existingCancelMap.set(t.cancelUniqueID, t);
+      if (t.amendUniqueID) existingAmendMap.set(t.amendUniqueID, t);
+
+      // Group by roundId
+      if (t.roundId) {
+        if (!recordsByRoundId.has(t.roundId)) {
+          recordsByRoundId.set(t.roundId, []);
+        }
+        recordsByRoundId.get(t.roundId).push(t);
+      }
+    });
+
+    // Sort each roundId group by createdAt (oldest first)
+    recordsByRoundId.forEach((records, roundId) => {
+      records.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    });
 
     let walletChange = 0;
     const newRecords = [];
@@ -766,15 +825,15 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
         validBet,
         validWin,
       } = tran;
-      const existingRecord = existingTransMap.get(transId);
 
       switch (transType) {
         case "bet": {
-          if (existingRecord) continue;
+          if (existingBetMap.has(transId)) continue;
 
           walletChange -= roundToTwoDecimals(amount);
           newRecords.push({
-            betId: transId,
+            betId: roundId,
+            betUniqueID: transId,
             username: playerId,
             betamount: roundToTwoDecimals(amount),
             bet: true,
@@ -782,12 +841,14 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
           });
           break;
         }
+
         case "transIn": {
-          if (existingRecord) continue;
+          if (existingTransInMap.has(transId)) continue;
 
           walletChange -= roundToTwoDecimals(amount);
           newRecords.push({
-            betId: transId,
+            betId: roundId,
+            transInUniqueID: transId,
             username: playerId,
             depositamount: roundToTwoDecimals(amount),
             bet: true,
@@ -797,29 +858,99 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
         }
 
         case "win": {
-          if (existingRecord?.settle) continue;
+          if (existingWinMap.has(transId)) continue;
 
           walletChange += roundToTwoDecimals(amount);
 
-          const betTransId = sortedTrans.find(
-            (t) => t.roundId === roundId && t.transType === "bet"
-          )?.transId;
+          // Get all records for this roundId (bet records)
+          const roundRecords = recordsByRoundId.get(roundId) || [];
+          const betRecords = roundRecords.filter(
+            (r) => r.bet && r.betUniqueID && !r.depositamount
+          );
 
-          if (betTransId) {
+          // Also check if bet is in current request
+          const betInRequest = sortedTrans.find(
+            (t) => t.roundId === roundId && t.transType === "bet"
+          );
+
+          if (betRecords.length > 0) {
+            // Find the oldest record without settleamount
+            const recordToSettle = betRecords.find(
+              (r) => r.settleamount === undefined || r.settleamount === null
+            );
+
+            if (recordToSettle) {
+              // Update oldest unsettled with settleamount
+              updateOperations.push({
+                updateOne: {
+                  filter: { _id: recordToSettle._id },
+                  update: {
+                    $set: {
+                      settle: true,
+                      settleamount: roundToTwoDecimals(amount),
+                      winUniqueID: transId,
+                    },
+                  },
+                },
+              });
+
+              // Update other records without winUniqueID (just mark as settled)
+              const otherRecords = betRecords.filter(
+                (r) =>
+                  r._id.toString() !== recordToSettle._id.toString() &&
+                  !r.winUniqueID
+              );
+              otherRecords.forEach((r) => {
+                updateOperations.push({
+                  updateOne: {
+                    filter: { _id: r._id },
+                    update: {
+                      $set: {
+                        settle: true,
+                        winUniqueID: transId,
+                      },
+                    },
+                  },
+                });
+              });
+            } else {
+              // All records already have settleamount, just update winUniqueID for those without it
+              const recordsWithoutWinId = betRecords.filter(
+                (r) => !r.winUniqueID
+              );
+              recordsWithoutWinId.forEach((r) => {
+                updateOperations.push({
+                  updateOne: {
+                    filter: { _id: r._id },
+                    update: {
+                      $set: {
+                        settle: true,
+                        winUniqueID: transId,
+                      },
+                    },
+                  },
+                });
+              });
+            }
+          } else if (betInRequest) {
+            // Bet is in current request, update by betUniqueID
             updateOperations.push({
               updateOne: {
-                filter: { betId: betTransId },
+                filter: { betUniqueID: betInRequest.transId },
                 update: {
                   $set: {
                     settle: true,
                     settleamount: roundToTwoDecimals(amount),
+                    winUniqueID: transId,
                   },
                 },
               },
             });
           } else {
+            // No bet record found, create new settled record
             newRecords.push({
-              betId: transId,
+              betId: roundId,
+              winUniqueID: transId,
               username: playerId,
               betamount: 0,
               settleamount: roundToTwoDecimals(amount),
@@ -833,22 +964,96 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
         }
 
         case "transOut": {
-          if (existingRecord?.settle) continue;
+          if (existingTransOutMap.has(transId)) continue;
 
           walletChange += roundToTwoDecimals(amount);
 
-          const betTransId = sortedTrans.find(
-            (t) => t.roundId === roundId && t.transType === "transIn"
-          )?.transId;
+          // Get all records for this roundId (transIn records)
+          const roundRecords = recordsByRoundId.get(roundId) || [];
+          const transInRecords = roundRecords.filter(
+            (r) => r.bet && r.transInUniqueID && r.depositamount
+          );
 
-          if (betTransId) {
+          // Also check if transIn is in current request
+          const transInRequest = sortedTrans.find(
+            (t) => t.roundId === roundId && t.transType === "transIn"
+          );
+
+          if (transInRecords.length > 0) {
+            // Find the oldest record without withdrawamount
+            const recordToSettle = transInRecords.find(
+              (r) => r.withdrawamount === undefined || r.withdrawamount === null
+            );
+
+            if (recordToSettle) {
+              // Update oldest unsettled with withdrawamount
+              updateOperations.push({
+                updateOne: {
+                  filter: { _id: recordToSettle._id },
+                  update: {
+                    $set: {
+                      settle: true,
+                      withdrawamount: roundToTwoDecimals(amount),
+                      transOutUniqueID: transId,
+                      ...(validBet !== undefined && {
+                        transferbetamount: roundToTwoDecimals(validBet),
+                      }),
+                      ...(validWin !== undefined && {
+                        transfersettleamount: roundToTwoDecimals(validWin),
+                      }),
+                    },
+                  },
+                },
+              });
+
+              // Update other records without transOutUniqueID (just mark as settled)
+              const otherRecords = transInRecords.filter(
+                (r) =>
+                  r._id.toString() !== recordToSettle._id.toString() &&
+                  !r.transOutUniqueID
+              );
+              otherRecords.forEach((r) => {
+                updateOperations.push({
+                  updateOne: {
+                    filter: { _id: r._id },
+                    update: {
+                      $set: {
+                        settle: true,
+                        transOutUniqueID: transId,
+                      },
+                    },
+                  },
+                });
+              });
+            } else {
+              // All records already have withdrawamount, just update transOutUniqueID for those without it
+              const recordsWithoutTransOutId = transInRecords.filter(
+                (r) => !r.transOutUniqueID
+              );
+              recordsWithoutTransOutId.forEach((r) => {
+                updateOperations.push({
+                  updateOne: {
+                    filter: { _id: r._id },
+                    update: {
+                      $set: {
+                        settle: true,
+                        transOutUniqueID: transId,
+                      },
+                    },
+                  },
+                });
+              });
+            }
+          } else if (transInRequest) {
+            // TransIn is in current request, update by transInUniqueID
             updateOperations.push({
               updateOne: {
-                filter: { betId: betTransId },
+                filter: { transInUniqueID: transInRequest.transId },
                 update: {
                   $set: {
                     settle: true,
                     withdrawamount: roundToTwoDecimals(amount),
+                    transOutUniqueID: transId,
                     ...(validBet !== undefined && {
                       transferbetamount: roundToTwoDecimals(validBet),
                     }),
@@ -860,12 +1065,14 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
               },
             });
           } else {
+            // No transIn record found, create new settled record
             newRecords.push({
-              betId: transId,
+              betId: roundId,
+              transOutUniqueID: transId,
               username: playerId,
               transferbetamount: validBet ? roundToTwoDecimals(validBet) : 0,
               transfersettleamount: validWin ? roundToTwoDecimals(validWin) : 0,
-              settleamount: roundToTwoDecimals(amount),
+              withdrawamount: roundToTwoDecimals(amount),
               bet: true,
               settle: true,
               gametype: gameType?.toUpperCase() || "SLOT",
@@ -876,27 +1083,39 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
         }
 
         case "cancel": {
-          if (existingRecord?.cancel) continue;
+          if (existingCancelMap.has(transId)) continue;
 
           walletChange += roundToTwoDecimals(amount);
 
           const targetTransId = referenceId || transId;
           updateOperations.push({
             updateOne: {
-              filter: { betId: targetTransId },
-              update: { $set: { cancel: true } },
+              filter: {
+                $or: [
+                  { betUniqueID: targetTransId },
+                  { transInUniqueID: targetTransId },
+                  { roundId: targetTransId },
+                ],
+              },
+              update: {
+                $set: {
+                  cancel: true,
+                  cancelUniqueID: transId,
+                },
+              },
             },
           });
           break;
         }
 
         case "amend": {
-          if (existingRecord) continue;
+          if (existingAmendMap.has(transId)) continue;
 
           walletChange += roundToTwoDecimals(amount);
 
           newRecords.push({
-            betId: transId,
+            betId: roundId,
+            amendUniqueID: transId,
             username: playerId,
             betamount: amount < 0 ? roundToTwoDecimals(Math.abs(amount)) : 0,
             settleamount: amount > 0 ? roundToTwoDecimals(amount) : 0,
@@ -904,6 +1123,7 @@ router.post("/api/expansestudios/transaction", async (req, res) => {
             settle: true,
             resettle: true,
             gametype: gameType?.toUpperCase() || "SLOT",
+            roundId: roundId,
           });
           break;
         }

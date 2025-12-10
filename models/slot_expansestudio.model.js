@@ -11,6 +11,24 @@ const slotexpansestudioSchema = new mongoose.Schema(
     betId: {
       type: String,
     },
+    betUniqueID: {
+      type: String,
+    },
+    transInUniqueID: {
+      type: String,
+    },
+    winUniqueID: {
+      type: String,
+    },
+    transOutUniqueID: {
+      type: String,
+    },
+    cancelUniqueID: {
+      type: String,
+    },
+    amendUniqueID: {
+      type: String,
+    },
     roundId: {
       type: String,
     },
