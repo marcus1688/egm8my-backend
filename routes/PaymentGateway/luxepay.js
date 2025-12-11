@@ -251,7 +251,7 @@ router.post(
       const maxAttempts = 5;
 
       do {
-        refno = generateTransactionId("bm8my");
+        refno = generateTransactionId("bm8");
 
         const existing = await luxepayModal.findOne({ ourRefNo: refno }).lean();
         if (!existing) break;
