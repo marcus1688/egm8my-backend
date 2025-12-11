@@ -63,15 +63,15 @@ async function getFPayAuth(paymentMethod) {
   try {
     let apiKey, secretKey, merchantName;
     console.log(paymentMethod);
-    if (paymentMethod === "bank") {
+    if (paymentMethod === "Online Banking") {
       apiKey = fpayBankAPIKEY;
       secretKey = fpayBankSecret;
       merchantName = merchantNameOnlineBanking;
-    } else if (paymentMethod === "duitnow") {
+    } else if (paymentMethod === "QR") {
       apiKey = fpayDuitnowAPIKEY;
       secretKey = fpayDuitnowSecret;
       merchantName = merchantNameDuitnow;
-    } else if (paymentMethod === "ewallet") {
+    } else if (paymentMethod === "EWallet") {
       apiKey = fpayEWalletAPIKEY;
       secretKey = fpayEWalletSecret;
       merchantName = merchantNameEWallet;
@@ -251,20 +251,20 @@ router.post("/api/fpay/getpaymentlink", authenticateToken, async (req, res) => {
     }
 
     const PAYMENT_METHOD = {
-      PbeBank: "bank",
-      MayBank: "bank",
-      CimbBank: "bank",
-      RhbBank: "bank",
-      AmBank: "bank",
-      HlbBank: "bank",
-      BSN: "bank",
-      AllianceBank: "bank",
-      AffinBank: "bank",
-      Tng: "ewallet",
-      MayBankQR: "duitnow",
-      DuitNowQR: "duitnow",
-      GrabPay: "ewallet",
-      Boost: "ewallet",
+      PbeBank: "Online Banking",
+      MayBank: "Online Banking",
+      CimbBank: "Online Banking",
+      RhbBank: "Online Banking",
+      AmBank: "Online Banking",
+      HlbBank: "Online Banking",
+      BSN: "Online Banking",
+      AllianceBank: "Online Banking",
+      AffinBank: "Online Banking",
+      Tng: "EWallet",
+      MayBankQR: "QR",
+      DuitNowQR: "QR",
+      GrabPay: "EWallet",
+      Boost: "EWallet",
     };
 
     const fpayAuth = await getFPayAuth(PAYMENT_METHOD[bankCode]);
@@ -389,9 +389,9 @@ const FPAY_CONFIG = {
     withdrawal: "withdraw",
   },
   secretKeyMap: {
-    bank: fpayBankSecret,
-    duitnow: fpayDuitnowSecret,
-    ewallet: fpayEWalletSecret,
+    "Online Banking": fpayBankSecret,
+    QR: fpayDuitnowSecret,
+    EWallet: fpayEWalletSecret,
   },
 };
 
@@ -437,7 +437,6 @@ async function validateFpayCallback(req) {
   const secretKey =
     FPAY_CONFIG.secretKeyMap[paymentTypeToUse] || fpayBankSecret;
   const ourToken = generateFpayCallbackToken(order_id, secretKey);
-
   if (ourToken !== token) {
     return { valid: false, status: 403, error: "Token validation failed" };
   }
@@ -1088,7 +1087,7 @@ async function handleWithdrawReject(
 router.post("/api/fpaymy", async (req, res) => {
   try {
     const { order_id, amount, order_status, charge, type } = req.body;
-    console.log("fpay reqst", req.body);
+
     const roundedAmount = roundToTwoDecimals(amount);
     const platformCharge = roundToTwoDecimals(charge || 0);
     const statusText =
