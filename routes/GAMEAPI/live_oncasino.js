@@ -541,7 +541,9 @@ router.post("/api/oncasino/payout", async (req, res) => {
             update: {
               $set: {
                 settle: true,
-                betamount: roundToTwoDecimals(info.betRecord.validBetAmount),
+                validbetamount: roundToTwoDecimals(
+                  info.betRecord.validBetAmount
+                ),
                 settleamount: roundToTwoDecimals(info.betRecord.grossWin),
               },
             },
@@ -712,7 +714,9 @@ router.post("/api/oncasino/reSettle", async (req, res) => {
               $set: {
                 settle: true,
                 cancel: false,
-                betamount: roundToTwoDecimals(info.betRecord.validBetAmount),
+                validbetamount: roundToTwoDecimals(
+                  info.betRecord.validBetAmount
+                ),
                 settleamount: roundToTwoDecimals(info.betRecord.grossWin),
               },
             },
@@ -956,7 +960,7 @@ router.post("/api/oncasino/getturnoverforrebate", async (req, res) => {
         playerSummary[actualUsername] = { turnover: 0, winloss: 0 };
       }
 
-      playerSummary[actualUsername].turnover += record.betamount || 0;
+      playerSummary[actualUsername].turnover += record.validbetamount || 0;
 
       playerSummary[actualUsername].winloss +=
         (record.settleamount || 0) - (record.betamount || 0);
@@ -1012,7 +1016,7 @@ router.get(
       let totalWinLoss = 0;
 
       records.forEach((record) => {
-        totalTurnover += record.betamount || 0;
+        totalTurnover += record.validbetamount || 0;
 
         totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
       });
@@ -1135,7 +1139,7 @@ router.get(
       let totalWinLoss = 0;
 
       records.forEach((record) => {
-        totalTurnover += record.betamount || 0;
+        totalTurnover += record.validbetamount || 0;
         totalWinLoss += (record.betamount || 0) - (record.settleamount || 0);
       });
 

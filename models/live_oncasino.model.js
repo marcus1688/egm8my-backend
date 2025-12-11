@@ -13,6 +13,9 @@ const liveoncasinoschema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    validbetamount: {
+      type: Number,
+    },
     betamount: {
       type: Number,
     },
