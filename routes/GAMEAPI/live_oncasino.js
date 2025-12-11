@@ -484,7 +484,9 @@ router.post("/api/oncasino/payout", async (req, res) => {
       totalChangeMoney,
       betInfos,
     } = req.body;
-
+    return res
+      .status(404)
+      .json({ success: false, msg: "Invalid Sign", code: 500 });
     if (
       sign !==
       verifyOnCasinoSign({ agent, userName, taskNo, nonceStr }, oncasinoSecret)
