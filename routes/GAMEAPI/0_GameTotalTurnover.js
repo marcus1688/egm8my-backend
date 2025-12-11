@@ -48,6 +48,7 @@ const SlotYellowbatModal = require("../../models/slot_yellowbat.model");
 const LivePrettyGamingModal = require("../../models/live_prettygaming.model");
 const SportSBOBETModal = require("../../models/sport_sbobet.model");
 const slotPussy888Modal = require("../../models/slot_pussy888.model");
+const LiveOnCasinoModal = require("../../models/live_oncasino.model");
 
 const { v4: uuidv4 } = require("uuid");
 const querystring = require("querystring");
@@ -802,6 +803,28 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
           },
         },
       },
+      oncasino: {
+        $match: {
+          cancel: { $ne: true },
+          settle: true,
+        },
+        $group: {
+          _id: null,
+          turnover: {
+            $sum: {
+              $ifNull: [{ $ifNull: ["$validbetamount", "$betamount"] }, 0],
+            },
+          },
+          winLoss: {
+            $sum: {
+              $subtract: [
+                { $ifNull: ["$settleamount", 0] },
+                { $ifNull: ["$betamount", 0] },
+              ],
+            },
+          },
+        },
+      },
     };
 
     // Create an array of promises for all aggregations to match player-report
@@ -1073,6 +1096,13 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
         aggregations.pussy888,
         true
       ),
+      getGameDataSummary(
+        LiveOnCasinoModal,
+        user.gameId,
+        start,
+        end,
+        aggregations.oncasino
+      ),
     ]);
 
     // Create a result map from the resolved promises
@@ -1226,6 +1256,10 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
       pussy888:
         promiseResults[36].status === "fulfilled"
           ? promiseResults[36].value
+          : { turnover: 0, winLoss: 0 },
+      oncasino:
+        promiseResults[37].status === "fulfilled"
+          ? promiseResults[37].value
           : { turnover: 0, winLoss: 0 },
     };
     // Calculate total turnover and win loss

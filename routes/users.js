@@ -79,6 +79,7 @@ const SlotYellowbatModal = require("../models/slot_yellowbat.model");
 const LivePrettyGamingModal = require("../models/live_prettygaming.model");
 const SportSBOBETModal = require("../models/sport_sbobet.model");
 const slotPussy888Modal = require("../models/slot_pussy888.model");
+const LiveOnCasinoModal = require("../models/live_oncasino.model");
 
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
@@ -6517,6 +6518,11 @@ router.get(
             },
             "betTime"
           ),
+
+          getAllUsersTurnover(LiveOnCasinoModal, {
+            cancel: { $ne: true },
+            settle: true,
+          }),
         ];
 
         const todayGameResults = await Promise.allSettled(todayGamePromises);
