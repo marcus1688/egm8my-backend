@@ -1088,7 +1088,7 @@ async function handleWithdrawReject(
 router.post("/api/fpaymy", async (req, res) => {
   try {
     const { order_id, amount, order_status, charge, type } = req.body;
-
+    console.log("fpay reqst", req.body);
     const roundedAmount = roundToTwoDecimals(amount);
     const platformCharge = roundToTwoDecimals(charge || 0);
     const statusText =
