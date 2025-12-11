@@ -67,17 +67,17 @@ router.get(
         await Promise.all([
           Deposit.find(queryCondition)
             .select(
-              "username fullname bankname ownername transfernumber method transactionType amount status remark imageUrl createdAt processBy processtime _id reverted duplicateIP depositname"
+              "username fullname bankname ownername transactionId transfernumber method transactionType amount status remark imageUrl createdAt processBy processtime _id reverted duplicateIP depositname"
             )
             .lean(),
           Withdraw.find(queryCondition)
             .select(
-              "username fullname bankname ownername transfernumber method transactionType amount status remark imageUrl createdAt processBy processtime _id reverted duplicateIP depositname"
+              "username fullname bankname ownername transactionId transfernumber method transactionType amount status remark imageUrl createdAt processBy processtime _id reverted duplicateIP depositname"
             )
             .lean(),
           Bonus.find(queryCondition)
             .select(
-              "username fullname promotionnameEN method transactionType amount status remark createdAt processBy processtime _id reverted duplicateIP"
+              "username fullname promotionnameEN method transactionId transactionType amount status remark createdAt processBy processtime _id reverted duplicateIP"
             )
             .lean(),
           UserWalletCashOut.find(queryCondition)
@@ -106,6 +106,7 @@ router.get(
           processtime: transaction.processtime,
           reverted: transaction.reverted,
           duplicateIP: transaction.duplicateIP,
+          transactionId: transaction.transactionId,
         };
         if (type === "bonus") {
           return {
