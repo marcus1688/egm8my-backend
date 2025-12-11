@@ -884,4 +884,342 @@ router.post("/api/oncasino/cancelReward", async (req, res) => {
     });
   }
 });
+
+router.post("/api/oncasino/getturnoverforrebate", async (req, res) => {
+  try {
+    const { date } = req.body;
+
+    let startDate, endDate;
+    if (date === "today") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    } else if (date === "yesterday") {
+      startDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .startOf("day")
+        .subtract(8, "hours")
+        .toDate();
+
+      endDate = moment
+        .utc()
+        .add(8, "hours")
+        .subtract(1, "days")
+        .endOf("day")
+        .subtract(8, "hours")
+        .toDate();
+    }
+
+    console.log("ONCASINO QUERYING TIME", startDate, endDate);
+
+    const records = await LiveOnCasinoModal.find({
+      createdAt: {
+        $gte: startDate,
+        $lt: endDate,
+      },
+      settle: true,
+      cancel: { $ne: true },
+    });
+
+    const uniqueGameIds = [
+      ...new Set(records.map((record) => record.username)),
+    ];
+
+    const users = await User.find(
+      { gameId: { $in: uniqueGameIds } },
+      { gameId: 1, username: 1 }
+    ).lean();
+
+    const gameIdToUsername = {};
+    users.forEach((user) => {
+      gameIdToUsername[user.gameId] = user.username;
+    });
+
+    let playerSummary = {};
+
+    records.forEach((record) => {
+      const gameId = record.username;
+      const actualUsername = gameIdToUsername[gameId];
+
+      if (!playerSummary[actualUsername]) {
+        playerSummary[actualUsername] = { turnover: 0, winloss: 0 };
+      }
+
+      playerSummary[actualUsername].turnover += record.betamount || 0;
+
+      playerSummary[actualUsername].winloss +=
+        (record.settleamount || 0) - (record.betamount || 0);
+    });
+
+    Object.keys(playerSummary).forEach((playerId) => {
+      playerSummary[playerId].turnover = Number(
+        playerSummary[playerId].turnover.toFixed(2)
+      );
+      playerSummary[playerId].winloss = Number(
+        playerSummary[playerId].winloss.toFixed(2)
+      );
+    });
+    // Return the aggregated results
+    return res.status(200).json({
+      success: true,
+      summary: {
+        gamename: "ONCASINO",
+        gamecategory: "Live Casino",
+        users: playerSummary,
+      },
+    });
+  } catch (error) {
+    console.log("ONCASINO: Failed to fetch win/loss report:", error.message);
+    return res.status(500).json({
+      error: "ONCASINO: Failed to fetch win/loss report",
+    });
+  }
+});
+
+router.get(
+  "/admin/api/oncasino/:userId/dailygamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      const records = await LiveOnCasinoModal.find({
+        username: user.gameId,
+        createdAt: {
+          $gte: startDate,
+          $lt: endDate,
+        },
+        settle: true,
+        cancel: { $ne: true },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        totalTurnover += record.betamount || 0;
+
+        totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
+      });
+
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+
+      // Return the aggregated results
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "ONCASINO",
+          gamecategory: "Live Casino",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("ONCASINO: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        error: "ONCASINO: Failed to fetch win/loss report",
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/oncasino/:userId/gamedata",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const userId = req.params.userId;
+
+      const user = await User.findById(userId);
+
+      const records = await GameDataLog.find({
+        username: user.username,
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
+
+        if (
+          gameCategories &&
+          gameCategories["Live Casino"] &&
+          gameCategories["Live Casino"] instanceof Map
+        ) {
+          const gamecat = Object.fromEntries(gameCategories["Live Casino"]);
+
+          if (gamecat["ONCASINO"]) {
+            totalTurnover += gamecat["ONCASINO"].turnover || 0;
+            totalWinLoss += gamecat["ONCASINO"].winloss || 0;
+          }
+        }
+      });
+
+      // Format the total values to two decimal places
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "ONCASINO",
+          gamecategory: "Live Casino",
+          user: {
+            username: user.username,
+            turnover: totalTurnover,
+            winloss: totalWinLoss,
+          },
+        },
+      });
+    } catch (error) {
+      console.log("ONCASINO: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        error: "ONCASINO: Failed to fetch win/loss report",
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/oncasino/dailykioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const records = await LiveOnCasinoModal.find({
+        createdAt: {
+          $gte: startDate,
+          $lt: endDate,
+        },
+        settle: true,
+        cancel: { $ne: true },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        totalTurnover += record.betamount || 0;
+        totalWinLoss += (record.betamount || 0) - (record.settleamount || 0);
+      });
+
+      totalTurnover = Number(totalTurnover.toFixed(2));
+      totalWinLoss = Number(totalWinLoss.toFixed(2));
+
+      // Return the aggregated results
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "ONCASINO",
+          gamecategory: "Live Casino",
+          totalturnover: totalTurnover,
+          totalwinloss: totalWinLoss,
+        },
+      });
+    } catch (error) {
+      console.log("ONCASINO: Failed to fetch win/loss report:", error.message);
+      return res.status(500).json({
+        error: "ONCASINO: Failed to fetch win/loss report",
+      });
+    }
+  }
+);
+
+router.get(
+  "/admin/api/oncasino/kioskreport",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+
+      const records = await GameDataLog.find({
+        date: {
+          $gte: moment(new Date(startDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+          $lte: moment(new Date(endDate))
+            .utc()
+            .add(8, "hours")
+            .format("YYYY-MM-DD"),
+        },
+      });
+
+      let totalTurnover = 0;
+      let totalWinLoss = 0;
+
+      records.forEach((record) => {
+        const gameCategories =
+          record.gameCategories instanceof Map
+            ? Object.fromEntries(record.gameCategories)
+            : record.gameCategories;
+
+        if (
+          gameCategories &&
+          gameCategories["Live Casino"] &&
+          gameCategories["Live Casino"] instanceof Map
+        ) {
+          const gamecat = Object.fromEntries(gameCategories["Live Casino"]);
+
+          if (gamecat["ONCASINO"]) {
+            totalTurnover += Number(gamecat["ONCASINO"].turnover || 0);
+            totalWinLoss += Number(gamecat["ONCASINO"].winloss || 0);
+          }
+        }
+      });
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          gamename: "ONCASINO",
+          gamecategory: "Live Casino",
+          totalturnover: Number(totalTurnover.toFixed(2)),
+          totalwinloss: Number(totalWinLoss.toFixed(2)),
+        },
+      });
+    } catch (error) {
+      console.error("ONCASINO: Failed to fetch win/loss report:", error);
+      return res.status(500).json({
+        success: false,
+        error: "ONCASINO: Failed to fetch win/loss report",
+      });
+    }
+  }
+);
 module.exports = router;
