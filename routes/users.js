@@ -7290,6 +7290,7 @@ router.get(
           },
         });
       }
+
       if (!user.additionalTurnover || !user.additionalTurnoverAddedAt) {
         return res.status(200).json({
           success: true,
@@ -7297,10 +7298,12 @@ router.get(
           isActive: false,
         });
       }
+
       const latestWithdraw = await Withdraw.findOne({
         userId,
         status: "approved",
       }).sort({ createdAt: -1 });
+
       let effectiveResetDate = null;
       if (latestWithdraw && user.turnoverResetAt) {
         effectiveResetDate =
@@ -7312,7 +7315,9 @@ router.get(
       } else if (user.turnoverResetAt) {
         effectiveResetDate = user.turnoverResetAt;
       }
+
       const addedAt = new Date(user.additionalTurnoverAddedAt);
+
       if (effectiveResetDate && addedAt <= effectiveResetDate) {
         return res.status(200).json({
           success: true,
@@ -7320,6 +7325,70 @@ router.get(
           isActive: false,
         });
       }
+
+      const depositsAfterWithdraw = await Deposit.find({
+        userId,
+        status: "approved",
+        ...(effectiveResetDate && { createdAt: { $gt: effectiveResetDate } }),
+      }).sort({ createdAt: 1 });
+
+      const bonusesAfterWithdraw = await Bonus.find({
+        userId,
+        status: "approved",
+        ...(effectiveResetDate && { createdAt: { $gt: effectiveResetDate } }),
+      }).sort({ createdAt: 1 });
+
+      const allTransactions = [
+        ...depositsAfterWithdraw.map((d) => ({
+          type: "deposit",
+          date: d.createdAt,
+          isNewCycle: d.isNewCycle || false,
+        })),
+        ...bonusesAfterWithdraw.map((b) => ({
+          type: "bonus",
+          date: b.createdAt,
+          isNewCycle: b.isNewCycle || false,
+        })),
+      ].sort((a, b) => a.date - b.date);
+
+      if (allTransactions.length === 0) {
+        return res.status(200).json({
+          success: true,
+          additionalTurnover: user.additionalTurnover,
+          additionalTurnoverAddedAt: user.additionalTurnoverAddedAt,
+          isActive: true,
+        });
+      }
+
+      let startIndex = 0;
+      for (let i = allTransactions.length - 1; i >= 0; i--) {
+        if (
+          allTransactions[i].isNewCycle === true &&
+          allTransactions[i].type === "deposit"
+        ) {
+          startIndex = i;
+          break;
+        }
+      }
+      if (startIndex === 0) {
+        for (let i = allTransactions.length - 1; i >= 0; i--) {
+          if (allTransactions[i].isNewCycle === true) {
+            startIndex = i;
+            break;
+          }
+        }
+      }
+
+      const startDate = allTransactions[startIndex].date;
+
+      if (addedAt < startDate) {
+        return res.status(200).json({
+          success: true,
+          additionalTurnover: 0,
+          isActive: false,
+        });
+      }
+
       res.status(200).json({
         success: true,
         additionalTurnover: user.additionalTurnover,
