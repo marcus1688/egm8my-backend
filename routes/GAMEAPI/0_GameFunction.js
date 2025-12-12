@@ -62,6 +62,7 @@ const LivePrettyGamingModal = require("../../models/live_prettygaming.model");
 const SportSBOBETModal = require("../../models/sport_sbobet.model");
 const slotPussy888Modal = require("../../models/slot_pussy888.model");
 const LiveOnCasinoModal = require("../../models/live_oncasino.model");
+const SlotJDBModal = require("../../models/slot_jdb.model");
 
 require("dotenv").config();
 
@@ -337,6 +338,14 @@ router.post("/admin/api/getAllTurnoverForRebate", async (req, res) => {
         url: `${PUBLIC_APIURL}api/oncasino/getturnoverforrebate`,
         name: "ONCASINO",
       },
+      {
+        url: `${PUBLIC_APIURL}api/jdbslot/getturnoverforrebate`,
+        name: "JDB",
+      },
+      {
+        url: `${PUBLIC_APIURL}api/jdbfish/getturnoverforrebate`,
+        name: "JDB",
+      },
     ];
 
     const routePromises = routes.map((route) =>
@@ -428,6 +437,12 @@ const GAME_CONFIG = [
   {
     model: SlotFachaiModal,
     name: "fachaiSlot",
+    category: CATEGORIES.SLOT,
+    match: { cancel: { $ne: true }, settle: true, gametype: { $ne: "FISH" } },
+  },
+  {
+    model: SlotJDBModal,
+    name: "jdbSlot",
     category: CATEGORIES.SLOT,
     match: { cancel: { $ne: true }, settle: true, gametype: { $ne: "FISH" } },
   },
@@ -672,6 +687,12 @@ const GAME_CONFIG = [
   {
     model: SlotFachaiModal,
     name: "fachaiFish",
+    category: CATEGORIES.FISHING,
+    match: { cancel: { $ne: true }, settle: true, gametype: "FISH" },
+  },
+  {
+    model: SlotJDBModal,
+    name: "jdbFish",
     category: CATEGORIES.FISHING,
     match: { cancel: { $ne: true }, settle: true, gametype: "FISH" },
   },

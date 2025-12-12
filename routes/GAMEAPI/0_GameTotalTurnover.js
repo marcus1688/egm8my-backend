@@ -49,6 +49,7 @@ const LivePrettyGamingModal = require("../../models/live_prettygaming.model");
 const SportSBOBETModal = require("../../models/sport_sbobet.model");
 const slotPussy888Modal = require("../../models/slot_pussy888.model");
 const LiveOnCasinoModal = require("../../models/live_oncasino.model");
+const SlotJDBModal = require("../../models/slot_jdb.model");
 
 const { v4: uuidv4 } = require("uuid");
 const querystring = require("querystring");
@@ -825,6 +826,24 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
           },
         },
       },
+      jdb: {
+        $match: {
+          cancel: { $ne: true },
+          settle: true,
+        },
+        $group: {
+          _id: null,
+          turnover: { $sum: { $ifNull: ["$betamount", 0] } },
+          winLoss: {
+            $sum: {
+              $subtract: [
+                { $ifNull: ["$settleamount", 0] },
+                { $ifNull: ["$betamount", 0] },
+              ],
+            },
+          },
+        },
+      },
     };
 
     // Create an array of promises for all aggregations to match player-report
@@ -1103,6 +1122,13 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
         end,
         aggregations.oncasino
       ),
+      getGameDataSummary(
+        SlotJDBModal,
+        user.gameId.toLowerCase(),
+        start,
+        end,
+        aggregations.jdb
+      ),
     ]);
 
     // Create a result map from the resolved promises
@@ -1260,6 +1286,10 @@ router.get("/api/all/:userId/dailygamedata", async (req, res) => {
       oncasino:
         promiseResults[37].status === "fulfilled"
           ? promiseResults[37].value
+          : { turnover: 0, winLoss: 0 },
+      jdb:
+        promiseResults[38].status === "fulfilled"
+          ? promiseResults[38].value
           : { turnover: 0, winLoss: 0 },
     };
     // Calculate total turnover and win loss
@@ -1562,6 +1592,15 @@ router.post("/api/games/active-games", authenticateToken, async (req, res) => {
         },
         "YELLOWBAT"
       ),
+      queryModel(
+        SlotJDBModal,
+        {
+          $or: [{ settle: false }, { settle: { $exists: false } }],
+          cancel: { $ne: true },
+          gametype: "SLOT",
+        },
+        "JDB"
+      ),
     ]);
 
     // Process results - much faster since we're only getting 1 game per provider
@@ -1856,6 +1895,15 @@ router.post(
           },
           "YELLOWBAT"
         ),
+        queryModel(
+          SlotJDBModal,
+          {
+            $or: [{ settle: false }, { settle: { $exists: false } }],
+            cancel: { $ne: true },
+            gametype: "SLOT",
+          },
+          "JDB"
+        ),
       ]);
 
       // Process results and combine all active games
@@ -1967,6 +2015,7 @@ router.post(
         "Pragmatic Play": SlotLivePPModal,
         IBEX: SlotIBEXModal,
         Yellowbat: SlotYellowbatModal,
+        JDB: SlotJDBModal,
       };
 
       const Model = providerModels[gameName];
@@ -2044,6 +2093,7 @@ router.post(
           case "AceWin":
           case "IBEX":
           case "Yellowbat":
+          case "JDB":
           default:
             isAlreadySettled = gameRecord.settle === true;
             isAlreadyCanceled = gameRecord.cancel === true;
