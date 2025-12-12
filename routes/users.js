@@ -81,6 +81,7 @@ const SportSBOBETModal = require("../models/sport_sbobet.model");
 const slotPussy888Modal = require("../models/slot_pussy888.model");
 const LiveOnCasinoModal = require("../models/live_oncasino.model");
 const SlotJDBModal = require("../models/slot_jdb.model");
+const SportCMDModal = require("../models/sport_cmd368.model");
 
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
@@ -6529,6 +6530,11 @@ router.get(
           getAllUsersTurnover(SlotJDBModal, {
             cancel: { $ne: true },
             settle: true,
+          }),
+
+          // CMD368
+          getAllUsersTurnover(SportCMDModal, {
+            cancel: { $ne: true },
           }),
         ];
 

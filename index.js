@@ -136,6 +136,8 @@ const transferGameFunctionRouter = require("./routes/GAMEAPI/0_CombinedGameFunct
 const adminListRouter = require("./routes/adminlist");
 const notificationRouter = require("./routes/notification");
 
+const { processCMD368Bets } = require("./services/sportsData");
+
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const cookie = require("cookie");
@@ -1004,6 +1006,16 @@ if (process.env.NODE_ENV !== "development") {
           console.log(`   - Duplicates: ${result.totalDuplicates}`);
         } else {
           console.error(`❌ WM Casino sync failed: ${result.error}`);
+        }
+
+        const cmd368Result = await processCMD368Bets();
+
+        if (cmd368Result.success) {
+          console.log(
+            `✅ CMD368: ${cmd368Result.inserted} inserted, ${cmd368Result.updated} updated, ${cmd368Result.filtered} filtered out of ${cmd368Result.total} total`
+          );
+        } else {
+          console.error("❌ CMD368 failed:", cmd368Result.error);
         }
       } catch (error) {
         console.error("❌ WM Casino cron job error:", error.message);

@@ -63,6 +63,7 @@ const SportSBOBETModal = require("../../models/sport_sbobet.model");
 const slotPussy888Modal = require("../../models/slot_pussy888.model");
 const LiveOnCasinoModal = require("../../models/live_oncasino.model");
 const SlotJDBModal = require("../../models/slot_jdb.model");
+const SportsCMD368UnlimitedModal = require("../../models/sport_cmdunlimited.model");
 
 require("dotenv").config();
 
@@ -345,6 +346,10 @@ router.post("/admin/api/getAllTurnoverForRebate", async (req, res) => {
       {
         url: `${PUBLIC_APIURL}api/jdbfish/getturnoverforrebate`,
         name: "JDB",
+      },
+      {
+        url: `${PUBLIC_APIURL}api/cmd368/getturnoverforrebate`,
+        name: "CMD368",
       },
     ];
 
@@ -673,6 +678,12 @@ const GAME_CONFIG = [
     name: "sbobet",
     category: CATEGORIES.SPORTS,
     match: { cancel: { $ne: true }, settle: true },
+  },
+  {
+    model: SportsCMD368UnlimitedModal,
+    name: "cmd368",
+    category: CATEGORIES.SPORTS,
+    match: { iscashout: { $ne: true } },
   },
 
   // ========== ESPORTS ==========
