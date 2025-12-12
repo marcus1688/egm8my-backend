@@ -350,6 +350,7 @@ const userSchema = new mongoose.Schema(
       expansesstudio: { type: gameLockSchema, default: () => ({}) },
       jdbfish: { type: gameLockSchema, default: () => ({}) },
       jdbslot: { type: gameLockSchema, default: () => ({}) },
+      cmd368: { type: gameLockSchema, default: () => ({}) },
     },
 
     gameStatus: {
@@ -565,6 +566,9 @@ const userSchema = new mongoose.Schema(
     additionalTurnoverAddedAt: {
       type: Date,
       default: null,
+    },
+    cmd368GameToken: {
+      type: String,
     },
   },
   {

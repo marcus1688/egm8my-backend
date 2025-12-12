@@ -727,7 +727,7 @@ router.post("/api/jili/getgamelistMissing", async (req, res) => {
 
 router.post("/api/playtech/export-games", async (req, res) => {
   try {
-    const allGames = await GameRelaxGamingGameModal.find().lean(); // lean() for plain JS objects
+    const allGames = await GameRSGGameModal.find().lean(); // lean() for plain JS objects
 
     if (!allGames || allGames.length === 0) {
       return res.status(404).json({
@@ -737,10 +737,7 @@ router.post("/api/playtech/export-games", async (req, res) => {
     }
 
     // Create a temporary file
-    const exportFilePath = path.join(
-      __dirname,
-      "../../exports/relaxgaming.json"
-    );
+    const exportFilePath = path.join(__dirname, "../../exports/rsg.json");
 
     // Ensure export directory exists
     const exportDir = path.dirname(exportFilePath);
