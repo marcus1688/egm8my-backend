@@ -307,13 +307,13 @@ router.post(
         }).save(),
       ]);
 
-      if (
-        parseFloat(req.body.depositAmount) === 30 &&
-        user.luckySpinAmount > 0 &&
-        user.luckySpinClaim === false
-      ) {
-        await submitLuckySpin(userId, deposit._id);
-      }
+      // if (
+      //   parseFloat(req.body.depositAmount) === 30 &&
+      //   user.luckySpinAmount > 0 &&
+      //   user.luckySpinClaim === false
+      // ) {
+      //   await submitLuckySpin(userId, deposit._id);
+      // }
 
       return res.status(200).json({
         success: true,
