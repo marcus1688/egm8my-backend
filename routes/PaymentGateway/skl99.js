@@ -30,6 +30,8 @@ const { updateKioskBalance } = require("../../services/kioskBalanceService");
 const BankTransactionLog = require("../../models/banktransactionlog.model");
 const BankList = require("../../models/banklist.model");
 const LiveTransaction = require("../../models/transaction.model");
+const { checkSportPendingMatch } = require("../../helpers/turnoverHelper");
+
 require("dotenv").config();
 const merchantCheck = "egmsoft1919@gmail.com";
 const skl99SecretServer1 = process.env.SKL99_SECRET_SERVER;
@@ -341,6 +343,7 @@ router.post("/api/skldepositprod", async (req, res) => {
             fullname: 1,
             wallet: 1,
             totaldeposit: 1,
+            gameId: 1,
             firstDepositDate: 1,
             duplicateIP: 1,
             duplicateBank: 1,
@@ -375,6 +378,9 @@ router.post("/api/skldepositprod", async (req, res) => {
         console.error(`Bank not found: 69247c9f7ef1ac832d86e65f`);
         return res.status(200).json(req.body);
       }
+
+      const hasSportPendingMatch = await checkSportPendingMatch(user.gameId);
+      const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
 
       const isNewDeposit = !user.firstDepositDate;
       const oldGatewayBalance = gateway?.balance || 0;
@@ -426,6 +432,7 @@ router.post("/api/skldepositprod", async (req, res) => {
           transactionId: invoice_no,
           duplicateIP: user.duplicateIP,
           duplicateBank: user.duplicateBank,
+          isNewCycle: isNewCycle,
         }),
 
         skl99Modal.findByIdAndUpdate(existingTrx._id, {

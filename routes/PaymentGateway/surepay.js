@@ -30,6 +30,7 @@ const { updateKioskBalance } = require("../../services/kioskBalanceService");
 const BankTransactionLog = require("../../models/banktransactionlog.model");
 const BankList = require("../../models/banklist.model");
 const LiveTransaction = require("../../models/transaction.model");
+const { checkSportPendingMatch } = require("../../helpers/turnoverHelper");
 
 require("dotenv").config();
 const merchantName = "Infinity011";
@@ -422,6 +423,7 @@ router.post("/api/surepay/receivedcalled158291", async (req, res) => {
             wallet: 1,
             totaldeposit: 1,
             firstDepositDate: 1,
+            gameId: 1,
             duplicateIP: 1,
             duplicateBank: 1,
           }
@@ -455,6 +457,9 @@ router.post("/api/surepay/receivedcalled158291", async (req, res) => {
         console.error(`Bank not found: ${bankIDPG}`);
         return res.status(200).json({ status: -1 });
       }
+
+      const hasSportPendingMatch = await checkSportPendingMatch(user.gameId);
+      const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
 
       const isNewDeposit = !user.firstDepositDate;
       const oldGatewayBalance = gateway?.balance || 0;
@@ -506,6 +511,7 @@ router.post("/api/surepay/receivedcalled158291", async (req, res) => {
           transactionId: refid,
           duplicateIP: user.duplicateIP,
           duplicateBank: user.duplicateBank,
+          isNewCycle: isNewCycle,
         }),
 
         surepayModal.findByIdAndUpdate(existingTrx._id, {

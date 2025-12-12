@@ -30,6 +30,7 @@ const { updateKioskBalance } = require("../../services/kioskBalanceService");
 const BankTransactionLog = require("../../models/banktransactionlog.model");
 const BankList = require("../../models/banklist.model");
 const LiveTransaction = require("../../models/transaction.model");
+const { checkSportPendingMatch } = require("../../helpers/turnoverHelper");
 
 require("dotenv").config();
 const merchantNameOnlineBanking = "BM8MYG_inf";
@@ -513,6 +514,7 @@ async function handleDepositApproval(
         firstDepositDate: 1,
         duplicateIP: 1,
         duplicateBank: 1,
+        gameId: 1,
       }
     ).lean(),
     paymentgateway
@@ -532,6 +534,9 @@ async function handleDepositApproval(
   if (!user)
     throw { status: 404, message: `User not found: ${existingTrx.username}` };
   if (!bank) throw { status: 404, message: `Bank not found: ${bankIDPG}` };
+
+  const hasSportPendingMatch = await checkSportPendingMatch(user.gameId);
+  const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
 
   const isNewDeposit = !user.firstDepositDate;
   const oldGatewayBalance = gateway?.balance || 0;
@@ -572,6 +577,7 @@ async function handleDepositApproval(
         transactionId: order_id,
         duplicateIP: user.duplicateIP,
         duplicateBank: user.duplicateBank,
+        isNewCycle: isNewCycle,
       }),
 
       fpayModal.findByIdAndUpdate(existingTrx._id, {
