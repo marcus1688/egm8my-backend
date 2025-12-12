@@ -558,6 +558,14 @@ const userSchema = new mongoose.Schema(
     expansesStudioGameToken: {
       type: String,
     },
+    additionalTurnover: {
+      type: Number,
+      default: 0,
+    },
+    additionalTurnoverAddedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     toJSON: { getters: true },

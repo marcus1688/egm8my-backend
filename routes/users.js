@@ -7217,6 +7217,128 @@ router.get("/api/user/game-locks", authenticateToken, async (req, res) => {
   }
 });
 
+// Admin Add Additional Turnover
+router.post(
+  "/admin/api/user/:userId/add-turnover",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { amount } = req.body;
+
+      if (!amount || amount <= 0) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Please enter a valid turnover amount",
+            zh: "请输入有效的流水金额",
+          },
+        });
+      }
+
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "User not found",
+            zh: "找不到用户",
+          },
+        });
+      }
+
+      user.additionalTurnover =
+        (user.additionalTurnover || 0) + parseFloat(amount);
+      user.additionalTurnoverAddedAt = new Date();
+      await user.save();
+
+      res.status(200).json({
+        success: true,
+        message: {
+          en: `Additional turnover RM${amount} added successfully`,
+          zh: `成功添加额外流水 RM${amount}`,
+        },
+        additionalTurnover: user.additionalTurnover,
+      });
+    } catch (error) {
+      console.error("Error adding turnover:", error);
+      res.status(500).json({
+        success: false,
+        message: {
+          en: "Failed to add turnover",
+          zh: "添加流水失败",
+        },
+      });
+    }
+  }
+);
+
+// Get User Additional Turnover
+router.get(
+  "/admin/api/user/:userId/additional-turnover",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "User not found",
+            zh: "找不到用户",
+          },
+        });
+      }
+      if (!user.additionalTurnover || !user.additionalTurnoverAddedAt) {
+        return res.status(200).json({
+          success: true,
+          additionalTurnover: 0,
+          isActive: false,
+        });
+      }
+      const latestWithdraw = await Withdraw.findOne({
+        userId,
+        status: "approved",
+      }).sort({ createdAt: -1 });
+      let effectiveResetDate = null;
+      if (latestWithdraw && user.turnoverResetAt) {
+        effectiveResetDate =
+          latestWithdraw.createdAt > user.turnoverResetAt
+            ? latestWithdraw.createdAt
+            : user.turnoverResetAt;
+      } else if (latestWithdraw) {
+        effectiveResetDate = latestWithdraw.createdAt;
+      } else if (user.turnoverResetAt) {
+        effectiveResetDate = user.turnoverResetAt;
+      }
+      const addedAt = new Date(user.additionalTurnoverAddedAt);
+      if (effectiveResetDate && addedAt <= effectiveResetDate) {
+        return res.status(200).json({
+          success: true,
+          additionalTurnover: 0,
+          isActive: false,
+        });
+      }
+      res.status(200).json({
+        success: true,
+        additionalTurnover: user.additionalTurnover,
+        additionalTurnoverAddedAt: user.additionalTurnoverAddedAt,
+        isActive: true,
+      });
+    } catch (error) {
+      console.error("Error fetching additional turnover:", error);
+      res.status(500).json({
+        success: false,
+        message: {
+          en: "Failed to fetch additional turnover",
+          zh: "获取额外流水失败",
+        },
+      });
+    }
+  }
+);
+
 module.exports = router;
 module.exports.checkAndUpdateVIPLevel = checkAndUpdateVIPLevel;
 module.exports.updateUserGameLocks = updateUserGameLocks;

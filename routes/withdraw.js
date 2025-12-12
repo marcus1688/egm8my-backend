@@ -512,6 +512,16 @@ const checkTurnoverRequirements = async (userId) => {
         }
       }
     }
+
+    if (user.additionalTurnover > 0 && user.additionalTurnoverAddedAt) {
+      const addedAt = new Date(user.additionalTurnoverAddedAt);
+      if (!effectiveResetDate || addedAt > effectiveResetDate) {
+        if (addedAt >= startDate) {
+          totalTurnoverRequired += user.additionalTurnover;
+        }
+      }
+    }
+
     if (hasWinoverRequirement && winoverDetails) {
       if (user.wallet >= winoverDetails.requiredAmount) {
         return {
@@ -1353,6 +1363,8 @@ router.post(
         });
       }
       user.turnoverResetAt = new Date();
+      user.additionalTurnover = 0;
+      user.additionalTurnoverAddedAt = null;
       await user.save();
       res.status(200).json({
         success: true,
