@@ -124,7 +124,7 @@ router.post("/api/jdb/comparegame", async (req, res) => {
     console.log(encryptedPayload, "hi");
     const response = await axiosInstance.post(
       `${jdbAPIURL}/apiRequest.do`,
-      qs.stringify({ dc: jdbDC, x: encryptedPayload })
+      qs.stringify({ dc: jdbDC, x: encryptedPayload, parent: jdbParent })
     );
 
     const responseData = response.data;
@@ -435,7 +435,7 @@ router.post("/api/jdb/launchGame", authenticateToken, async (req, res) => {
         },
       });
     }
-    const { gameLang, gameCode, isDouble } = req.body;
+    const { gameLang, gameCode } = req.body;
 
     let lang = "cn";
 
@@ -450,9 +450,6 @@ router.post("/api/jdb/launchGame", authenticateToken, async (req, res) => {
     } else if (gameLang === "id") {
       lang = "id";
     }
-
-    const gameusername =
-      isDouble === true ? `${user.gameId}2X` : `${user.gameId}`;
 
     const gameInfo = await GameJDBGameModal.findOne(
       { gameID: gameCode },
@@ -477,7 +474,7 @@ router.post("/api/jdb/launchGame", authenticateToken, async (req, res) => {
       action: 21,
       ts: getCurrentTimestamp(),
       parent: jdbParent,
-      uid: gameusername,
+      uid: user.gameId,
       lang: lang,
       gType,
       mType: gameCode,
@@ -495,7 +492,7 @@ router.post("/api/jdb/launchGame", authenticateToken, async (req, res) => {
 
     const response = await axiosInstance.post(
       `${jdbAPIURL}/apiRequest.do`,
-      qs.stringify({ dc: jdbDC, x: encryptedPayload })
+      qs.stringify({ dc: jdbDC, x: encryptedPayload, parent: jdbParent })
     );
 
     const responseData = response.data;
@@ -527,14 +524,12 @@ router.post("/api/jdb/launchGame", authenticateToken, async (req, res) => {
       });
     }
 
-    const gameName = isDouble === true ? "JDB 2X" : "JDB";
-
     await GameWalletLogAttempt(
       user.username,
       "Transfer In",
       "Seamless",
       roundToTwoDecimals(user.wallet),
-      gameName
+      "JDB"
     );
 
     return res.status(200).json({
@@ -563,7 +558,7 @@ router.post("/api/jdb/launchGame", authenticateToken, async (req, res) => {
   }
 });
 
-router.post("/api/jdb", async (req, res) => {
+router.post("/api/jdbmy", async (req, res) => {
   let currentUser = null;
   try {
     const { x } = req.body;
@@ -580,10 +575,7 @@ router.post("/api/jdb", async (req, res) => {
     const requestData = JSON.parse(decryptedData);
 
     const { action, uid } = requestData;
-    const isDoubleBetting = uid.endsWith("2x");
-    const actualGameId = isDoubleBetting
-      ? uid.slice(0, -2).toUpperCase()
-      : uid.toUpperCase();
+    const actualGameId = uid.toUpperCase();
 
     // Find current user first
     const currentUser = await User.findOne(
@@ -628,13 +620,7 @@ router.post("/api/jdb", async (req, res) => {
       });
     }
 
-    return await handler(
-      currentUser,
-      requestData,
-      res,
-      isDoubleBetting,
-      actualGameId
-    );
+    return await handler(currentUser, requestData, res, actualGameId);
   } catch (error) {
     console.error(
       "JDB: Error in game provider calling stash88 api:",
@@ -648,18 +634,10 @@ router.post("/api/jdb", async (req, res) => {
   }
 });
 
-async function handleBalanceCheck(
-  currentUser,
-  requestData,
-  res,
-  isDoubleBetting,
-  actualGameId
-) {
-  const walletMultiplier = isDoubleBetting ? 0.5 : 1;
-
+async function handleBalanceCheck(currentUser, requestData, res, actualGameId) {
   return res.status(200).json({
     status: "0000",
-    balance: roundToTwoDecimals(currentUser.wallet * walletMultiplier),
+    balance: roundToTwoDecimals(currentUser.wallet),
     err_text: "",
   });
 }
@@ -668,18 +646,12 @@ async function handleWalletUpdate(
   currentUser,
   { netWin, uid, mb, transferId, bet, win, gType },
   res,
-  isDoubleBetting,
   actualGameId
 ) {
-  const multiplier = isDoubleBetting ? 2 : 1;
-  const walletMultiplier = isDoubleBetting ? 0.5 : 1;
-
   if (currentUser.gameLock?.jdb?.lock) {
     return res.status(200).json({
       status: "1001",
-      balance: roundToTwoDecimals(
-        (currentUser?.wallet || 0) * walletMultiplier
-      ),
+      balance: roundToTwoDecimals(currentUser?.wallet || 0),
       err_text: "Player locked",
     });
   }
@@ -692,22 +664,17 @@ async function handleWalletUpdate(
   if (existingTransaction) {
     return res.status(200).json({
       status: "0000",
-      balance: roundToTwoDecimals(
-        (currentUser?.wallet || 0) * walletMultiplier
-      ),
+      balance: roundToTwoDecimals(currentUser?.wallet || 0),
       err_text: "Bet and Settled Existed",
     });
   }
 
-  const actualRequiredAmt = Math.abs(mb) * multiplier;
-  const actualUpdateBalance = roundToTwoDecimals(netWin) * multiplier;
-
   const updatedUserBalance = await User.findOneAndUpdate(
     {
       gameId: actualGameId,
-      wallet: { $gte: actualRequiredAmt },
+      wallet: { $gte: Math.abs(mb) },
     },
-    { $inc: { wallet: actualUpdateBalance } },
+    { $inc: { wallet: roundToTwoDecimals(netWin) } },
     { new: true, projection: { wallet: 1 } }
   ).lean();
 
@@ -719,13 +686,11 @@ async function handleWalletUpdate(
 
     return res.status(200).json({
       status: "6006",
-      balance: roundToTwoDecimals((latestUser?.wallet || 0) * walletMultiplier),
+      balance: roundToTwoDecimals(latestUser?.wallet || 0),
       err_text: "Player balance is insufficient",
     });
   }
 
-  const actualBetAmt = roundToTwoDecimals(Math.abs(bet)) * multiplier;
-  const actualWinAmt = roundToTwoDecimals(win) * multiplier;
   const gametype = gType === 7 ? "FISH" : "SLOT";
 
   await SlotJDBModal.create({
@@ -733,14 +698,14 @@ async function handleWalletUpdate(
     betId: transferId,
     bet: true,
     settle: true,
-    betamount: actualBetAmt,
-    settleamount: actualWinAmt,
+    betamount: roundToTwoDecimals(Math.abs(bet)),
+    settleamount: roundToTwoDecimals(win),
     gametype,
   });
 
   return res.status(200).json({
     status: "0000",
-    balance: roundToTwoDecimals(updatedUserBalance.wallet * walletMultiplier),
+    balance: roundToTwoDecimals(updatedUserBalance.wallet),
     err_text: "",
   });
 }
@@ -749,11 +714,8 @@ async function handleRecoveringGame(
   currentUser,
   { transferId },
   res,
-  isDoubleBetting,
   actualGameId
 ) {
-  const walletMultiplier = isDoubleBetting ? 0.5 : 1;
-
   const existingTransaction = await SlotJDBModal.findOne(
     { betId: transferId, cancel: true },
     { _id: 1 }
@@ -762,7 +724,7 @@ async function handleRecoveringGame(
   if (existingTransaction) {
     return res.status(200).json({
       status: "0000",
-      balance: roundToTwoDecimals(currentUser.wallet * walletMultiplier),
+      balance: roundToTwoDecimals(currentUser.wallet),
       err_text: "",
     });
   }
@@ -775,7 +737,7 @@ async function handleRecoveringGame(
 
   return res.status(200).json({
     status: "6101",
-    balance: roundToTwoDecimals(currentUser.wallet * walletMultiplier),
+    balance: roundToTwoDecimals(currentUser.wallet),
     err_text: "Can not cancel, transaction need to be settled",
   });
 }
@@ -784,18 +746,12 @@ async function handleBetPlacement(
   currentUser,
   { transferId, uid, amount, gType },
   res,
-  isDoubleBetting,
   actualGameId
 ) {
-  const multiplier = isDoubleBetting ? 2 : 1;
-  const walletMultiplier = isDoubleBetting ? 0.5 : 1;
-
   if (currentUser.gameLock?.jdb?.lock) {
     return res.status(200).json({
       status: "1001",
-      balance: roundToTwoDecimals(
-        (currentUser?.wallet || 0) * walletMultiplier
-      ),
+      balance: roundToTwoDecimals(currentUser?.wallet || 0),
       err_text: "Player locked",
     });
   }
@@ -808,12 +764,12 @@ async function handleBetPlacement(
   if (existingTransaction) {
     return res.status(200).json({
       status: "0000",
-      balance: roundToTwoDecimals(currentUser.wallet * walletMultiplier),
+      balance: roundToTwoDecimals(currentUser.wallet),
       err_text: "Bet Existed",
     });
   }
 
-  const actualUpdateBalance = roundToTwoDecimals(amount) * multiplier;
+  const actualUpdateBalance = roundToTwoDecimals(amount);
 
   const updatedUserBalance = await User.findOneAndUpdate(
     {
@@ -832,7 +788,7 @@ async function handleBetPlacement(
 
     return res.status(200).json({
       status: "6006",
-      balance: roundToTwoDecimals((latestUser?.wallet || 0) * walletMultiplier),
+      balance: roundToTwoDecimals(latestUser?.wallet || 0),
       err_text: "Player balance is insufficient",
     });
   }
@@ -849,7 +805,7 @@ async function handleBetPlacement(
 
   return res.status(200).json({
     status: "0000",
-    balance: roundToTwoDecimals(updatedUserBalance.wallet * walletMultiplier),
+    balance: roundToTwoDecimals(updatedUserBalance.wallet),
     err_text: "",
   });
 }
@@ -858,12 +814,8 @@ async function handleBetSettlement(
   currentUser,
   { refTransferIds, uid, amount },
   res,
-  isDoubleBetting,
   actualGameId
 ) {
-  const multiplier = isDoubleBetting ? 2 : 1;
-  const walletMultiplier = isDoubleBetting ? 0.5 : 1;
-
   const [existingBet, existingCancelBet, existingSettleBet] = await Promise.all(
     [
       SlotJDBModal.findOne({ betId: refTransferIds }, { _id: 1 }).lean(),
@@ -881,7 +833,7 @@ async function handleBetSettlement(
   if (!existingBet) {
     return res.status(200).json({
       status: "9999",
-      balance: roundToTwoDecimals(currentUser.wallet * walletMultiplier),
+      balance: roundToTwoDecimals(currentUser.wallet),
       err_text: "No Bet Found",
     });
   }
@@ -889,7 +841,7 @@ async function handleBetSettlement(
   if (existingCancelBet) {
     return res.status(200).json({
       status: "0000",
-      balance: roundToTwoDecimals(currentUser.wallet * walletMultiplier),
+      balance: roundToTwoDecimals(currentUser.wallet),
       err_text: "Bet has already been cancelled",
     });
   }
@@ -897,12 +849,12 @@ async function handleBetSettlement(
   if (existingSettleBet) {
     return res.status(200).json({
       status: "0000",
-      balance: roundToTwoDecimals(currentUser.wallet * walletMultiplier),
+      balance: roundToTwoDecimals(currentUser.wallet),
       err_text: "Bet has already been settled",
     });
   }
 
-  const actualUpdateBalance = roundToTwoDecimals(amount) * multiplier;
+  const actualUpdateBalance = roundToTwoDecimals(amount);
 
   const [updatedUserBalance] = await Promise.all([
     User.findOneAndUpdate(
@@ -920,7 +872,7 @@ async function handleBetSettlement(
 
   return res.status(200).json({
     status: "0000",
-    balance: roundToTwoDecimals(updatedUserBalance.wallet * walletMultiplier),
+    balance: roundToTwoDecimals(updatedUserBalance.wallet),
     err_text: "",
   });
 }
@@ -929,7 +881,6 @@ async function handleBetCancellation(
   currentUser,
   { refTransferIds, uid, amount },
   res,
-  isDoubleBetting,
   actualGameId
 ) {
   const [existingBet, existingSettleBet, existingCancelBet] = await Promise.all(
@@ -947,49 +898,33 @@ async function handleBetCancellation(
   );
 
   if (!existingBet) {
-    const actualAmount = isDoubleBetting
-      ? currentUser.wallet * 0.5
-      : currentUser.wallet;
-
     return res.status(200).json({
       status: "9999",
-      balance: roundToTwoDecimals(actualAmount),
+      balance: roundToTwoDecimals(currentUser.wallet),
       err_text: "No Bet Found",
     });
   }
 
   if (existingSettleBet) {
-    const actualAmount = isDoubleBetting
-      ? currentUser.wallet * 0.5
-      : currentUser.wallet;
-
     return res.status(200).json({
       status: "0000",
-      balance: roundToTwoDecimals(actualAmount),
+      balance: roundToTwoDecimals(currentUser.wallet),
       err_text: "Bet has already been settled",
     });
   }
 
   if (existingCancelBet) {
-    const actualAmount = isDoubleBetting
-      ? currentUser.wallet * 0.5
-      : currentUser.wallet;
-
     return res.status(200).json({
       status: "0000",
-      balance: roundToTwoDecimals(actualAmount),
+      balance: roundToTwoDecimals(currentUser.wallet),
       err_text: "Bet has already been cancelled",
     });
   }
 
-  const actualUpdateBalance = isDoubleBetting
-    ? roundToTwoDecimals(amount) * 2
-    : roundToTwoDecimals(amount);
-
   const [updatedUserBalance] = await Promise.all([
     User.findOneAndUpdate(
       { gameId: actualGameId },
-      { $inc: { wallet: actualUpdateBalance } },
+      { $inc: { wallet: roundToTwoDecimals(amount) } },
       { new: true, projection: { wallet: 1 } }
     ).lean(),
 
@@ -1000,13 +935,9 @@ async function handleBetCancellation(
     ),
   ]);
 
-  const finalActualAmount = isDoubleBetting
-    ? updatedUserBalance.wallet * 0.5
-    : updatedUserBalance.wallet;
-
   return res.status(200).json({
     status: "0000",
-    balance: roundToTwoDecimals(finalActualAmount),
+    balance: roundToTwoDecimals(updatedUserBalance.wallet),
     err_text: "",
   });
 }
@@ -1015,7 +946,6 @@ async function handleReward(
   currentUser,
   { transferId, uid, amount },
   res,
-  isDoubleBetting,
   actualGameId
 ) {
   const existingTransaction = await SlotJDBModal.findOne(
@@ -1024,24 +954,17 @@ async function handleReward(
   ).lean();
 
   if (existingTransaction) {
-    const actualAmount = isDoubleBetting
-      ? currentUser.wallet * 0.5
-      : currentUser.wallet;
-
     return res.status(200).json({
       status: "0000",
-      balance: roundToTwoDecimals(actualAmount),
+      balance: roundToTwoDecimals(currentUser.wallet),
       err_text: "Reward Existed",
     });
   }
-  const actualUpdateBalance = isDoubleBetting
-    ? roundToTwoDecimals(amount) * 2
-    : roundToTwoDecimals(amount);
 
   const [updatedUserBalance] = await Promise.all([
     User.findOneAndUpdate(
       { gameId: actualGameId },
-      { $inc: { wallet: actualUpdateBalance } },
+      { $inc: { wallet: roundToTwoDecimals(amount) } },
       { new: true, projection: { wallet: 1 } }
     ).lean(),
 
@@ -1049,20 +972,16 @@ async function handleReward(
       username: currentUser.gameId,
       betId: transferId,
       reward: true,
-      settleamount: actualUpdateBalance,
+      settleamount: roundToTwoDecimals(amount),
       settle: true,
       bet: true,
       gametype: "SLOT",
     }),
   ]);
 
-  const finalActualAmount = isDoubleBetting
-    ? updatedUserBalance.wallet * 0.5
-    : updatedUserBalance.wallet;
-
   return res.status(200).json({
     status: "0000",
-    balance: roundToTwoDecimals(finalActualAmount),
+    balance: roundToTwoDecimals(updatedUserBalance.wallet),
     err_text: "",
   });
 }
@@ -1071,17 +990,12 @@ async function handleDeposit(
   currentUser,
   { transferId, uid, amount, gType },
   res,
-  isDoubleBetting,
   actualGameId
 ) {
   if (currentUser.gameLock?.jdb?.lock) {
-    const actualAmount = isDoubleBetting
-      ? (currentUser?.wallet || 0) * 0.5
-      : currentUser?.wallet || 0;
-
     return res.status(200).json({
       status: "1001",
-      balance: roundToTwoDecimals(actualAmount),
+      balance: roundToTwoDecimals(currentUser?.wallet || 0),
       err_text: "Player locked",
     });
   }
@@ -1092,27 +1006,19 @@ async function handleDeposit(
   ).lean();
 
   if (existingTransaction) {
-    const actualAmount = isDoubleBetting
-      ? currentUser.wallet * 0.5
-      : currentUser.wallet;
-
     return res.status(200).json({
       status: "0000",
-      balance: roundToTwoDecimals(actualAmount),
+      balance: roundToTwoDecimals(currentUser.wallet),
       err_text: "Deposit Existed",
     });
   }
 
-  const actualUpdateBalance = isDoubleBetting
-    ? roundToTwoDecimals(amount) * 2
-    : roundToTwoDecimals(amount);
-
   const updatedUserBalance = await User.findOneAndUpdate(
     {
       gameId: actualGameId,
-      wallet: { $gte: actualUpdateBalance },
+      wallet: { $gte: roundToTwoDecimals(amount) },
     },
-    { $inc: { wallet: -actualUpdateBalance } },
+    { $inc: { wallet: -roundToTwoDecimals(amount) } },
     { new: true, projection: { wallet: 1 } }
   ).lean();
   if (!updatedUserBalance) {
@@ -1121,13 +1027,9 @@ async function handleDeposit(
       { wallet: 1 }
     ).lean();
 
-    const actualAmount = isDoubleBetting
-      ? (latestUser?.wallet || 0) * 0.5
-      : latestUser?.wallet || 0;
-
     return res.status(200).json({
       status: "6006",
-      balance: roundToTwoDecimals(actualAmount),
+      balance: roundToTwoDecimals(latestUser?.wallet || 0),
       err_text: "Player balance is insufficient",
     });
   }
@@ -1141,13 +1043,9 @@ async function handleDeposit(
     gametype,
   });
 
-  const finalActualAmount = isDoubleBetting
-    ? updatedUserBalance.wallet * 0.5
-    : updatedUserBalance.wallet;
-
   return res.status(200).json({
     status: "0000",
-    balance: roundToTwoDecimals(finalActualAmount),
+    balance: roundToTwoDecimals(updatedUserBalance.wallet),
     err_text: "",
   });
 }
@@ -1156,7 +1054,6 @@ async function handleWithdraw(
   currentUser,
   { refTransferIds, uid, amount, totalBet, totalWin },
   res,
-  isDoubleBetting,
   actualGameId
 ) {
   const [existingDeposit, existingCancelDeposit, existingWithdraw] =
@@ -1173,56 +1070,33 @@ async function handleWithdraw(
     ]);
 
   if (!existingDeposit) {
-    const actualAmount = isDoubleBetting
-      ? currentUser.wallet * 0.5
-      : currentUser.wallet;
-
     return res.status(200).json({
       status: "9999",
-      balance: roundToTwoDecimals(actualAmount),
+      balance: roundToTwoDecimals(currentUser.wallet),
       err_text: "No Deposit Found",
     });
   }
 
   if (existingCancelDeposit) {
-    const actualAmount = isDoubleBetting
-      ? currentUser.wallet * 0.5
-      : currentUser.wallet;
-
     return res.status(200).json({
       status: "0000",
-      balance: roundToTwoDecimals(actualAmount),
+      balance: roundToTwoDecimals(currentUser.wallet),
       err_text: "Deposit has already been cancelled",
     });
   }
 
   if (existingWithdraw) {
-    const actualAmount = isDoubleBetting
-      ? currentUser.wallet * 0.5
-      : currentUser.wallet;
-
     return res.status(200).json({
       status: "0000",
-      balance: roundToTwoDecimals(actualAmount),
+      balance: roundToTwoDecimals(currentUser.wallet),
       err_text: "Withdrawal has already been completed",
     });
   }
-  const actualUpdateBalance = isDoubleBetting
-    ? roundToTwoDecimals(amount) * 2
-    : roundToTwoDecimals(amount);
-
-  const actualTotalBet = isDoubleBetting
-    ? roundToTwoDecimals(Math.abs(totalBet)) * 2
-    : roundToTwoDecimals(Math.abs(totalBet));
-
-  const actualTotalWin = isDoubleBetting
-    ? roundToTwoDecimals(totalWin) * 2
-    : roundToTwoDecimals(totalWin);
 
   const [updatedUserBalance] = await Promise.all([
     User.findOneAndUpdate(
       { gameId: actualGameId },
-      { $inc: { wallet: actualUpdateBalance } },
+      { $inc: { wallet: roundToTwoDecimals(amount) } },
       { new: true, projection: { wallet: 1 } }
     ).lean(),
 
@@ -1230,20 +1104,16 @@ async function handleWithdraw(
       { betId: refTransferIds },
       {
         settle: true,
-        betamount: actualTotalBet,
-        settleamount: actualTotalWin,
+        betamount: roundToTwoDecimals(Math.abs(totalBet)),
+        settleamount: roundToTwoDecimals(totalWin),
       },
       { new: false }
     ),
   ]);
 
-  const finalActualAmount = isDoubleBetting
-    ? updatedUserBalance.wallet * 0.5
-    : updatedUserBalance.wallet;
-
   return res.status(200).json({
     status: "0000",
-    balance: roundToTwoDecimals(finalActualAmount),
+    balance: roundToTwoDecimals(updatedUserBalance.wallet),
     err_text: "",
   });
 }
@@ -1252,7 +1122,6 @@ async function handleDepositCancellation(
   currentUser,
   { refTransferIds, uid, amount },
   res,
-  isDoubleBetting,
   actualGameId
 ) {
   const [existingDeposit, existingWithdraw, existingCancelDeposit] =
@@ -1269,49 +1138,33 @@ async function handleDepositCancellation(
     ]);
 
   if (!existingDeposit) {
-    const actualAmount = isDoubleBetting
-      ? currentUser.wallet * 0.5
-      : currentUser.wallet;
-
     return res.status(200).json({
       status: "9999",
-      balance: roundToTwoDecimals(actualAmount),
+      balance: roundToTwoDecimals(currentUser.wallet),
       err_text: "No Deposit Found",
     });
   }
 
   if (existingWithdraw) {
-    const actualAmount = isDoubleBetting
-      ? currentUser.wallet * 0.5
-      : currentUser.wallet;
-
     return res.status(200).json({
       status: "0000",
-      balance: roundToTwoDecimals(actualAmount),
+      balance: roundToTwoDecimals(currentUser.wallet),
       err_text: "Withdrawal has already been completed",
     });
   }
 
   if (existingCancelDeposit) {
-    const actualAmount = isDoubleBetting
-      ? currentUser.wallet * 0.5
-      : currentUser.wallet;
-
     return res.status(200).json({
       status: "0000",
-      balance: roundToTwoDecimals(actualAmount),
+      balance: roundToTwoDecimals(currentUser.wallet),
       err_text: "Deposit has already been cancelled",
     });
   }
 
-  const actualUpdateBalance = isDoubleBetting
-    ? roundToTwoDecimals(amount) * 2
-    : roundToTwoDecimals(amount);
-
   const [updatedUserBalance] = await Promise.all([
     User.findOneAndUpdate(
       { gameId: actualGameId },
-      { $inc: { wallet: actualUpdateBalance } },
+      { $inc: { wallet: roundToTwoDecimals(amount) } },
       { new: true, projection: { wallet: 1 } }
     ).lean(),
 
@@ -1322,13 +1175,9 @@ async function handleDepositCancellation(
     ),
   ]);
 
-  const finalActualAmount = isDoubleBetting
-    ? updatedUserBalance.wallet * 0.5
-    : updatedUserBalance.wallet;
-
   return res.status(200).json({
     status: "0000",
-    balance: roundToTwoDecimals(finalActualAmount),
+    balance: roundToTwoDecimals(updatedUserBalance.wallet),
     err_text: "",
   });
 }
@@ -1337,7 +1186,6 @@ async function handleFreeSpinReward(
   currentUser,
   { transferId, uid, amount },
   res,
-  isDoubleBetting,
   actualGameId
 ) {
   const existingTransaction = await SlotJDBModal.findOne(
@@ -1346,25 +1194,17 @@ async function handleFreeSpinReward(
   ).lean();
 
   if (existingTransaction) {
-    const actualAmount = isDoubleBetting
-      ? currentUser.wallet * 0.5
-      : currentUser.wallet;
-
     return res.status(200).json({
       status: "0000",
-      balance: roundToTwoDecimals(actualAmount),
+      balance: roundToTwoDecimals(currentUser.wallet),
       err_text: "Free Spin Reward Existed",
     });
   }
 
-  const actualUpdateBalance = isDoubleBetting
-    ? roundToTwoDecimals(amount) * 2
-    : roundToTwoDecimals(amount);
-
   const [updatedUserBalance] = await Promise.all([
     User.findOneAndUpdate(
       { gameId: actualGameId },
-      { $inc: { wallet: actualUpdateBalance } },
+      { $inc: { wallet: roundToTwoDecimals(amount) } },
       { new: true, projection: { wallet: 1 } }
     ).lean(),
 
@@ -1374,18 +1214,14 @@ async function handleFreeSpinReward(
       reward: true,
       settle: true,
       bet: true,
-      settleamount: actualUpdateBalance,
+      settleamount: roundToTwoDecimals(amount),
       gametype: "SLOT",
     }),
   ]);
 
-  const finalActualAmount = isDoubleBetting
-    ? updatedUserBalance.wallet * 0.5
-    : updatedUserBalance.wallet;
-
   return res.status(200).json({
     status: "0000",
-    balance: roundToTwoDecimals(finalActualAmount),
+    balance: roundToTwoDecimals(updatedUserBalance.wallet),
     err_text: "",
   });
 }
@@ -1436,7 +1272,6 @@ router.post("/api/jdbslot/getturnoverforrebate", async (req, res) => {
       gametype: "SLOT",
       cancel: { $ne: true },
       settle: true,
-      username: { $not: /2[xX]$/i },
     });
 
     const uniqueGameIds = [
@@ -1501,122 +1336,6 @@ router.post("/api/jdbslot/getturnoverforrebate", async (req, res) => {
   }
 });
 
-router.post("/api/jdbslot2x/getturnoverforrebate", async (req, res) => {
-  try {
-    const { date } = req.body;
-
-    let startDate, endDate;
-    if (date === "today") {
-      startDate = moment
-        .utc()
-        .add(8, "hours")
-        .startOf("day")
-        .subtract(8, "hours")
-        .toDate();
-      endDate = moment
-        .utc()
-        .add(8, "hours")
-        .endOf("day")
-        .subtract(8, "hours")
-        .toDate();
-    } else if (date === "yesterday") {
-      startDate = moment
-        .utc()
-        .add(8, "hours")
-        .subtract(1, "days")
-        .startOf("day")
-        .subtract(8, "hours")
-        .toDate();
-
-      endDate = moment
-        .utc()
-        .add(8, "hours")
-        .subtract(1, "days")
-        .endOf("day")
-        .subtract(8, "hours")
-        .toDate();
-    }
-
-    console.log("JDB SLOT QUERYING TIME", startDate, endDate);
-
-    const records = await SlotJDBModal.find({
-      createdAt: {
-        $gte: startDate,
-        $lt: endDate,
-      },
-      gametype: "SLOT",
-      cancel: { $ne: true },
-      settle: true,
-      username: /2[xX]$/,
-    });
-
-    const uniqueGameIds = [
-      ...new Set(
-        records.map((record) => record.username.slice(0, -2).toUpperCase())
-      ),
-    ];
-
-    const users = await User.find(
-      { gameId: { $in: uniqueGameIds } },
-      { gameId: 1, username: 1 }
-    ).lean();
-
-    const gameIdToUsername = {};
-    users.forEach((user) => {
-      gameIdToUsername[user.gameId] = user.username;
-    });
-
-    // Aggregate turnover and win/loss for each player
-    let playerSummary = {};
-
-    records.forEach((record) => {
-      const gameId = record.username.slice(0, -2).toUpperCase();
-      const actualUsername = gameIdToUsername[gameId];
-
-      if (!actualUsername) {
-        console.warn(`JDB2X User not found for gameId: ${gameId}`);
-        return;
-      }
-
-      if (!playerSummary[actualUsername]) {
-        playerSummary[actualUsername] = { turnover: 0, winloss: 0 };
-      }
-
-      playerSummary[actualUsername].turnover += record.betamount || 0;
-
-      playerSummary[actualUsername].winloss +=
-        (record.settleamount || 0) - (record.betamount || 0);
-    });
-    // Format the turnover and win/loss for each player to two decimal places
-    Object.keys(playerSummary).forEach((playerId) => {
-      playerSummary[playerId].turnover = Number(
-        playerSummary[playerId].turnover.toFixed(2)
-      );
-      playerSummary[playerId].winloss = Number(
-        playerSummary[playerId].winloss.toFixed(2)
-      );
-    });
-    // Return the aggregated results
-    return res.status(200).json({
-      success: true,
-      summary: {
-        gamename: "JDB2X",
-        gamecategory: "Slot Games",
-        users: playerSummary,
-      },
-    });
-  } catch (error) {
-    console.log("JDB: Failed to fetch win/loss report:", error.message);
-    return res.status(500).json({
-      success: false,
-      message: {
-        en: "JDB: Failed to fetch win/loss report",
-        zh: "JDB: 获取盈亏报告失败",
-      },
-    });
-  }
-});
-
 router.get(
   "/admin/api/jdbslot/:userId/dailygamedata",
   authenticateAdminToken,
@@ -1655,66 +1374,6 @@ router.get(
         success: true,
         summary: {
           gamename: "JDB",
-          gamecategory: "Slot Games",
-          user: {
-            username: user.username,
-            turnover: totalTurnover,
-            winloss: totalWinLoss,
-          },
-        },
-      });
-    } catch (error) {
-      console.log("JDB: Failed to fetch win/loss report:", error.message);
-      return res.status(500).json({
-        success: false,
-        message: {
-          en: "JDB: Failed to fetch win/loss report",
-          zh: "JDB: 获取盈亏报告失败",
-        },
-      });
-    }
-  }
-);
-
-router.get(
-  "/admin/api/jdbslot2x/:userId/dailygamedata",
-  authenticateAdminToken,
-  async (req, res) => {
-    try {
-      const { startDate, endDate } = req.query;
-
-      const userId = req.params.userId;
-
-      const user = await User.findById(userId);
-
-      const records = await SlotJDBModal.find({
-        username: new RegExp(`^${user.gameId}2X$`, "i"),
-        // username: `${user.gameId}2X`,
-        createdAt: {
-          $gte: moment(new Date(startDate)).utc().toDate(),
-          $lte: moment(new Date(endDate)).utc().toDate(),
-        },
-        gametype: "SLOT",
-        cancel: { $ne: true },
-        settle: true,
-      });
-
-      // Aggregate turnover and win/loss for each player
-      let totalTurnover = 0;
-      let totalWinLoss = 0;
-
-      records.forEach((record) => {
-        totalTurnover += record.betamount || 0;
-        totalWinLoss += (record.settleamount || 0) - (record.betamount || 0);
-      });
-
-      totalTurnover = Number(totalTurnover.toFixed(2));
-      totalWinLoss = Number(totalWinLoss.toFixed(2));
-      // Return the aggregated results
-      return res.status(200).json({
-        success: true,
-        summary: {
-          gamename: "JDB2X",
           gamecategory: "Slot Games",
           user: {
             username: user.username,
@@ -1816,85 +1475,6 @@ router.get(
 );
 
 router.get(
-  "/admin/api/jdbslot2x/:userId/gamedata",
-  authenticateAdminToken,
-  async (req, res) => {
-    try {
-      const { startDate, endDate } = req.query;
-
-      const userId = req.params.userId;
-
-      const user = await User.findById(userId);
-
-      const records = await GameDataLog.find({
-        username: user.username,
-        date: {
-          $gte: moment(new Date(startDate))
-            .utc()
-            .add(8, "hours")
-            .format("YYYY-MM-DD"),
-          $lte: moment(new Date(endDate))
-            .utc()
-            .add(8, "hours")
-            .format("YYYY-MM-DD"),
-        },
-      });
-
-      let totalTurnover = 0;
-      let totalWinLoss = 0;
-
-      // Sum up the values for EVOLUTION under Live Casino
-      records.forEach((record) => {
-        // Convert Mongoose Map to Plain Object
-        const gameCategories =
-          record.gameCategories instanceof Map
-            ? Object.fromEntries(record.gameCategories)
-            : record.gameCategories;
-
-        if (
-          gameCategories &&
-          gameCategories["Slot Games"] &&
-          gameCategories["Slot Games"] instanceof Map
-        ) {
-          const gameCat = Object.fromEntries(gameCategories["Slot Games"]);
-
-          if (gameCat["JDB2X"]) {
-            totalTurnover += gameCat["JDB2X"].turnover || 0;
-            totalWinLoss += gameCat["JDB2X"].winloss || 0;
-          }
-        }
-      });
-
-      // Format the total values to two decimal places
-      totalTurnover = Number(totalTurnover.toFixed(2));
-      totalWinLoss = Number(totalWinLoss.toFixed(2));
-
-      return res.status(200).json({
-        success: true,
-        summary: {
-          gamename: "JDB2X",
-          gamecategory: "Slot Games",
-          user: {
-            username: user.username,
-            turnover: totalTurnover,
-            winloss: totalWinLoss,
-          },
-        },
-      });
-    } catch (error) {
-      console.log("JDB: Failed to fetch win/loss report:", error.message);
-      return res.status(500).json({
-        success: false,
-        message: {
-          en: "JDB: Failed to fetch win/loss report",
-          zh: "JDB: 获取盈亏报告失败",
-        },
-      });
-    }
-  }
-);
-
-router.get(
   "/admin/api/jdbslot/dailykioskreport",
   authenticateAdminToken,
   async (req, res) => {
@@ -1909,7 +1489,6 @@ router.get(
         gametype: "SLOT",
         cancel: { $ne: true },
         settle: true,
-        username: { $not: /2[xX]$/i },
       });
 
       let totalTurnover = 0;
@@ -1925,56 +1504,6 @@ router.get(
         success: true,
         summary: {
           gamename: "JDB",
-          gamecategory: "Slot Games",
-          totalturnover: Number(totalTurnover.toFixed(2)),
-          totalwinloss: Number(totalWinLoss.toFixed(2)),
-        },
-      });
-    } catch (error) {
-      console.error("JDB: Failed to fetch win/loss report:", error);
-      return res.status(500).json({
-        success: false,
-        message: {
-          en: "JDB: Failed to fetch win/loss report",
-          zh: "JDB: 获取盈亏报告失败",
-        },
-      });
-    }
-  }
-);
-
-router.get(
-  "/admin/api/jdbslot2x/dailykioskreport",
-  authenticateAdminToken,
-  async (req, res) => {
-    try {
-      const { startDate, endDate } = req.query;
-
-      const records = await SlotJDBModal.find({
-        createdAt: {
-          $gte: moment(new Date(startDate)).utc().toDate(),
-          $lte: moment(new Date(endDate)).utc().toDate(),
-        },
-        gametype: "SLOT",
-        cancel: { $ne: true },
-        refund: { $ne: true },
-        settle: true,
-        username: /2[xX]$/,
-      });
-
-      let totalTurnover = 0;
-      let totalWinLoss = 0;
-
-      records.forEach((record) => {
-        totalTurnover += record.betamount || 0;
-
-        totalWinLoss += (record.betamount || 0) - (record.settleamount || 0);
-      });
-
-      return res.status(200).json({
-        success: true,
-        summary: {
-          gamename: "JDB2X",
           gamecategory: "Slot Games",
           totalturnover: Number(totalTurnover.toFixed(2)),
           totalwinloss: Number(totalWinLoss.toFixed(2)),
@@ -2040,71 +1569,6 @@ router.get(
         success: true,
         summary: {
           gamename: "JDB",
-          gamecategory: "Slot Games",
-          totalturnover: Number(totalTurnover.toFixed(2)),
-          totalwinloss: Number(totalWinLoss.toFixed(2)),
-        },
-      });
-    } catch (error) {
-      console.error("JDB: Failed to fetch win/loss report:", error);
-      return res.status(500).json({
-        success: false,
-        message: {
-          en: "JDB: Failed to fetch win/loss report",
-          zh: "JDB: 获取盈亏报告失败",
-        },
-      });
-    }
-  }
-);
-
-router.get(
-  "/admin/api/jdbslot2x/kioskreport",
-  authenticateAdminToken,
-  async (req, res) => {
-    try {
-      const { startDate, endDate } = req.query;
-
-      const records = await GameDataLog.find({
-        date: {
-          $gte: moment(new Date(startDate))
-            .utc()
-            .add(8, "hours")
-            .format("YYYY-MM-DD"),
-          $lte: moment(new Date(endDate))
-            .utc()
-            .add(8, "hours")
-            .format("YYYY-MM-DD"),
-        },
-      });
-
-      let totalTurnover = 0;
-      let totalWinLoss = 0;
-
-      records.forEach((record) => {
-        const gameCategories =
-          record.gameCategories instanceof Map
-            ? Object.fromEntries(record.gameCategories)
-            : record.gameCategories;
-
-        if (
-          gameCategories &&
-          gameCategories["Slot Games"] &&
-          gameCategories["Slot Games"] instanceof Map
-        ) {
-          const gameCat = Object.fromEntries(gameCategories["Slot Games"]);
-
-          if (gameCat["JDB2X"]) {
-            totalTurnover += Number(gameCat["JDB2X"].turnover || 0);
-            totalWinLoss += Number(gameCat["JDB2X"].winloss || 0) * -1;
-          }
-        }
-      });
-
-      return res.status(200).json({
-        success: true,
-        summary: {
-          gamename: "JDB2X",
           gamecategory: "Slot Games",
           totalturnover: Number(totalTurnover.toFixed(2)),
           totalwinloss: Number(totalWinLoss.toFixed(2)),
