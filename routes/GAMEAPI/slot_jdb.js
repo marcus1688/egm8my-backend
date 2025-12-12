@@ -423,7 +423,14 @@ router.post("/api/jdb/launchGame", authenticateToken, async (req, res) => {
       });
     }
 
-    if (user.gameLock.jdb.lock) {
+    const { gameLang, gameCode, gameType } = req.body;
+
+    const isLocked =
+      gameType === "Fishing"
+        ? user.gameLock?.jdbfish?.lock
+        : user.gameLock?.jdbslot?.lock;
+
+    if (isLocked) {
       return res.status(200).json({
         success: false,
         message: {
@@ -435,9 +442,8 @@ router.post("/api/jdb/launchGame", authenticateToken, async (req, res) => {
         },
       });
     }
-    const { gameLang, gameCode } = req.body;
 
-    let lang = "cn";
+    let lang = "en";
 
     if (gameLang === "en") {
       lang = "en";
@@ -584,7 +590,8 @@ router.post("/api/jdbmy", async (req, res) => {
         gameId: 1,
         wallet: 1,
         _id: 1,
-        "gameLock.jdb.lock": 1,
+        "gameLock.jdbfish.lock": 1,
+        "gameLock.jdbslot.lock": 1,
       }
     ).lean();
 
@@ -648,7 +655,12 @@ async function handleWalletUpdate(
   res,
   actualGameId
 ) {
-  if (currentUser.gameLock?.jdb?.lock) {
+  const isFish = gType === 7;
+  const isLocked = isFish
+    ? currentUser.gameLock?.jdbfish?.lock
+    : currentUser.gameLock?.jdbslot?.lock;
+
+  if (isLocked) {
     return res.status(200).json({
       status: "1001",
       balance: roundToTwoDecimals(currentUser?.wallet || 0),
@@ -748,7 +760,12 @@ async function handleBetPlacement(
   res,
   actualGameId
 ) {
-  if (currentUser.gameLock?.jdb?.lock) {
+  const isFish = gType === 7;
+  const isLocked = isFish
+    ? currentUser.gameLock?.jdbfish?.lock
+    : currentUser.gameLock?.jdbslot?.lock;
+
+  if (isLocked) {
     return res.status(200).json({
       status: "1001",
       balance: roundToTwoDecimals(currentUser?.wallet || 0),
@@ -992,7 +1009,12 @@ async function handleDeposit(
   res,
   actualGameId
 ) {
-  if (currentUser.gameLock?.jdb?.lock) {
+  const isFish = gType === 7;
+  const isLocked = isFish
+    ? currentUser.gameLock?.jdbfish?.lock
+    : currentUser.gameLock?.jdbslot?.lock;
+
+  if (isLocked) {
     return res.status(200).json({
       status: "1001",
       balance: roundToTwoDecimals(currentUser?.wallet || 0),

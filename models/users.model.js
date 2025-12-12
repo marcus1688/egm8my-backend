@@ -348,7 +348,8 @@ const userSchema = new mongoose.Schema(
       yellowbatslot: { type: gameLockSchema, default: () => ({}) },
       yellowbatfish: { type: gameLockSchema, default: () => ({}) },
       expansesstudio: { type: gameLockSchema, default: () => ({}) },
-      jdb: { type: gameLockSchema, default: () => ({}) },
+      jdbfish: { type: gameLockSchema, default: () => ({}) },
+      jdbslot: { type: gameLockSchema, default: () => ({}) },
     },
 
     gameStatus: {
