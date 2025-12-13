@@ -1622,10 +1622,10 @@ router.get(
           (record.betamount || 0) + (record.transferbetamount || 0);
 
         totalWinLoss +=
-          (record.settleamount || 0) +
-          (record.transfersettleamount || 0) -
-          (record.betamount || 0) -
-          (record.transferbetamount || 0);
+          (record.betamount || 0) +
+          (record.transferbetamount || 0) -
+          (record.settleamount || 0) -
+          (record.transfersettleamount || 0);
       });
 
       return res.status(200).json({
