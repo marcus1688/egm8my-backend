@@ -400,7 +400,7 @@ const mapM9BetToSchema = (ticket) => {
     username: ticket.u,
 
     betId: ticket.id,
-    fetchId: ticket.fid,
+    fetchId: ticket.fid?.toString() || null,
     transactionId: ticket.ventransid,
 
     betamount: ticket.b || 0,
@@ -409,10 +409,10 @@ const mapM9BetToSchema = (ticket) => {
     commission: ticket.c || 0,
 
     settle: ticket.res !== "P",
-    cancel: ticket.res === "C",
-    refund: ticket.res === "R",
+    cancel: ticket.res === "C" || ticket.status === "C",
+    refund: ticket.res === "R" || ticket.status === "R",
 
-    currency: "MYR",
+    currency: ticket.curcode || "MYR",
     ipAddress: ticket.ip || null,
     deviceType: ticket.webtype || null,
 
@@ -420,32 +420,58 @@ const mapM9BetToSchema = (ticket) => {
     transactionDate: parseDate(ticket.trandate),
 
     sports: {
+      // Odds
       odds: ticket.odds || null,
       oddsType: ticket.oddstype || null,
+
+      // Sports type
       sportsType: ticket.sportstype || null,
+
+      // Game type
       gameType: ticket.game || null,
+
+      // League
       leagueId: ticket.league || null,
       leagueName: ticket.leaguename || null,
+
+      // Teams
       homeId: ticket.home || null,
       homeName: ticket.homename || null,
       awayId: ticket.away || null,
       awayName: ticket.awayname || null,
+
+      // Bet selection
       side: ticket.side || null,
       handicapInfo: ticket.info || null,
       half: ticket.half || null,
+
+      // Scores
       score: ticket.score || null,
       halfTimeScore: ticket.htscore || null,
       runningScore: ticket.runscore || null,
+
+      // Status & Result
       status: ticket.status || null,
       result: ticket.res || null,
+
+      // First/Last Goal
+      firstLastGoal: ticket.flg || null,
+
+      // Dates
       matchDate: ticket.matchdate || null,
       matchDateTime: parseDate(ticket.matchdatetime),
       matchOverDate: parseDate(ticket.matchoverdate),
       workDate: parseDate(ticket.workdate),
+
+      // Parlay
       groupId: ticket.groupid || null,
       comboInfo: ticket.combinfo || null,
-      isParlay: !!ticket.groupid,
+      isParlay: !!ticket.groupid || ticket.game === "PAR",
+
+      // Other
       result4d: ticket.result4d || null,
+      transSerial: ticket.transserial || null,
+      commissionAmount: ticket.a || null,
     },
   };
 };

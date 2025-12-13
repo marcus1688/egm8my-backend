@@ -120,6 +120,9 @@ const GameGeneralSchema = new mongoose.Schema(
       parlayLegs: { type: Number, default: null },
       isCashOut: { type: Boolean, default: false },
       result4d: { type: String, default: null },
+      firstLastGoal: { type: String, default: null },
+      transSerial: { type: String, default: null },
+      commissionAmount: { type: Number, default: null },
     },
 
     // ========== SLOT SPECIFIC ==========
