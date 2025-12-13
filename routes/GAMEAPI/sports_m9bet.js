@@ -15,6 +15,7 @@ const { adminUser, adminLog } = require("../../models/adminuser.model");
 const GameWalletLog = require("../../models/gamewalletlog.model");
 const Decimal = require("decimal.js");
 const SportM9BetModal = require("../../models/sport_m9bet.model");
+const GameGeneralDetailDataModal = require("../../models/gameDetail.model");
 const cron = require("node-cron");
 require("dotenv").config();
 
@@ -222,6 +223,7 @@ async function fetchAndProcessResult() {
     }
 
     const tickets = response.data.result?.ticket || [];
+
     if (!tickets.length) {
       console.log("No tickets to process");
       return {
@@ -282,27 +284,47 @@ async function fetchAndProcessResult() {
 
         const winAmount = roundToTwoDecimals(b + w);
 
-        const [updatedUser, updatedBet] = await Promise.all([
-          // Update user balance
-          User.findOneAndUpdate(
-            { gameId: u },
-            { $inc: { wallet: winAmount } },
-            { new: true, projection: { wallet: 1 } }
-          ).lean(),
+        const [updatedUser, updatedBet, updatedGeneralData] = await Promise.all(
+          [
+            // Update user balance
+            User.findOneAndUpdate(
+              { gameId: u },
+              { $inc: { wallet: winAmount } },
+              { new: true, projection: { wallet: 1 } }
+            ).lean(),
 
-          // Update bet record
-          SportM9BetModal.findOneAndUpdate(
-            { betId: ventransid },
-            {
-              $set: {
-                settle: true,
-                settleamount: winAmount,
-                tranId: id,
+            // Update bet record
+            SportM9BetModal.findOneAndUpdate(
+              { betId: ventransid },
+              {
+                $set: {
+                  settle: true,
+                  settleamount: winAmount,
+                  tranId: id,
+                },
               },
-            },
-            { new: true }
-          ),
-        ]);
+              { new: true }
+            ),
+
+            GameGeneralDetailDataModal.findOneAndUpdate(
+              { betId: id },
+              {
+                $set: {
+                  settle: true,
+                  settleamount: winAmount,
+                  winlossamount: w,
+                  settleTime: moment.tz("Asia/Kuala_Lumpur").utc().toDate(),
+                  "sports.result": res,
+                  "sports.score": ticket.score || null,
+                  "sports.halfTimeScore": ticket.htscore || null,
+                  "sports.runningScore": ticket.runscore || null,
+                  "sports.status": ticket.status || null,
+                },
+              },
+              { new: true }
+            ),
+          ]
+        );
 
         console.log(
           `✅ Processed ${ventransid}: User ${u}, Amount: ${winAmount} ${
@@ -362,6 +384,156 @@ async function fetchAndProcessResult() {
   }
 }
 
+const parseDate = (dateStr) => {
+  if (!dateStr || dateStr.startsWith("1900-01-01")) return null;
+
+  return moment
+    .tz(dateStr, "YYYY-MM-DD HH:mm:ss", "Asia/Kuala_Lumpur")
+    .utc()
+    .toDate();
+};
+
+const mapM9BetToSchema = (ticket) => {
+  return {
+    provider: "M9BET",
+    category: "Sports",
+    username: ticket.u,
+
+    betId: ticket.id,
+    fetchId: ticket.fid,
+    transactionId: ticket.ventransid,
+
+    betamount: ticket.b || 0,
+    winlossamount: ticket.w || 0,
+    settleamount: (ticket.b || 0) + (ticket.w || 0),
+    commission: ticket.c || 0,
+
+    settle: ticket.res !== "P",
+    cancel: ticket.res === "C",
+    refund: ticket.res === "R",
+
+    currency: "MYR",
+    ipAddress: ticket.ip || null,
+    deviceType: ticket.webtype || null,
+
+    betTime: parseDate(ticket.t),
+    transactionDate: parseDate(ticket.trandate),
+
+    sports: {
+      odds: ticket.odds || null,
+      oddsType: ticket.oddstype || null,
+      sportsType: ticket.sportstype || null,
+      gameType: ticket.game || null,
+      leagueId: ticket.league || null,
+      leagueName: ticket.leaguename || null,
+      homeId: ticket.home || null,
+      homeName: ticket.homename || null,
+      awayId: ticket.away || null,
+      awayName: ticket.awayname || null,
+      side: ticket.side || null,
+      handicapInfo: ticket.info || null,
+      half: ticket.half || null,
+      score: ticket.score || null,
+      halfTimeScore: ticket.htscore || null,
+      runningScore: ticket.runscore || null,
+      status: ticket.status || null,
+      result: ticket.res || null,
+      matchDate: ticket.matchdate || null,
+      matchDateTime: parseDate(ticket.matchdatetime),
+      matchOverDate: parseDate(ticket.matchoverdate),
+      workDate: parseDate(ticket.workdate),
+      groupId: ticket.groupid || null,
+      comboInfo: ticket.combinfo || null,
+      isParlay: !!ticket.groupid,
+      result4d: ticket.result4d || null,
+    },
+  };
+};
+
+async function fetchData() {
+  try {
+    const params = new URLSearchParams({
+      action: "fetch",
+      secret: m9betSecret,
+      agent: m9betAccount,
+    });
+
+    const response = await axios.post(
+      `${m9betAPIURL}/apijs.aspx?${params.toString()}`,
+      {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
+      }
+    );
+
+    if (response.data.errcode !== 0) {
+      console.error("M9BET fetch error:", response.data.errtext);
+      return {
+        success: false,
+        error: response.data.errtext,
+        maintenance: response.data.errcode === -1,
+      };
+    }
+
+    const tickets = response.data.result?.ticket || [];
+
+    if (!tickets.length) {
+      console.log("No tickets to process");
+      return { success: true, inserted: 0, updated: 0 };
+    }
+
+    console.log(`Processing ${tickets.length} M9BET tickets...`);
+
+    let insertedCount = 0;
+    let updatedCount = 0;
+    const errors = [];
+
+    for (const ticket of tickets) {
+      try {
+        const mappedData = mapM9BetToSchema(ticket);
+
+        const result = await GameGeneralDetailDataModal.findOneAndUpdate(
+          { betId: ticket.id },
+          { $set: mappedData },
+          { upsert: true, new: true, rawResult: true }
+        );
+
+        if (result.lastErrorObject?.updatedExisting) {
+          updatedCount++;
+          console.log(`🔄 Updated: ${ticket.id}`);
+        } else {
+          insertedCount++;
+          console.log(
+            `✅ Inserted: ${ticket.id} | User: ${ticket.u} | Bet: ${ticket.b}`
+          );
+        }
+      } catch (error) {
+        console.error(`❌ Error: ${ticket.id}:`, error.message);
+        errors.push({ betId: ticket.id, error: error.message });
+      }
+    }
+
+    console.log(`\n=== Summary ===`);
+    console.log(`✅ Inserted: ${insertedCount}`);
+    console.log(`🔄 Updated: ${updatedCount}`);
+    console.log(`❌ Errors: ${errors.length}`);
+
+    return {
+      success: true,
+      inserted: insertedCount,
+      updated: updatedCount,
+      errors: errors.length > 0 ? errors : undefined,
+    };
+  } catch (error) {
+    console.error("M9BET fetch error:", error.message);
+    return {
+      success: false,
+      error: error.response?.data || error.message,
+    };
+  }
+}
 router.post("/api/m9bet/launchGame", authenticateToken, async (req, res) => {
   try {
     const { gameLang, clientPlatform } = req.body;
