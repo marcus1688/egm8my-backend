@@ -138,6 +138,8 @@ const notificationRouter = require("./routes/notification");
 
 const { processCMD368Bets } = require("./services/sportsData");
 
+const { fetchData } = require("./routes/GAMEAPI/sports_m9bet");
+
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const cookie = require("cookie");
@@ -1019,6 +1021,25 @@ if (process.env.NODE_ENV !== "development") {
         }
       } catch (error) {
         console.error("❌ WM Casino cron job error:", error.message);
+      }
+    },
+    {
+      timezone: "Asia/Kuala_Lumpur",
+    }
+  );
+
+  cron.schedule(
+    "*/10 * * * *",
+    async () => {
+      try {
+        const result = await fetchData();
+
+        if (result.success) {
+        } else {
+          console.error(`❌ M9BET Fetch failed:`, result.error);
+        }
+      } catch (error) {
+        console.error(`❌ M9BET Cron error:`, error.message);
       }
     },
     {

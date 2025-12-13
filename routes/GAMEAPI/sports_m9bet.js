@@ -560,6 +560,7 @@ async function fetchData() {
     };
   }
 }
+
 router.post("/api/m9bet/launchGame", authenticateToken, async (req, res) => {
   try {
     const { gameLang, clientPlatform } = req.body;
@@ -1372,3 +1373,4 @@ if (process.env.NODE_ENV !== "development") {
 }
 
 module.exports = router;
+module.exports.fetchData = fetchData;
