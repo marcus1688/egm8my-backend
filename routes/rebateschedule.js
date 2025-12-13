@@ -3,6 +3,7 @@ const router = express.Router();
 const schedule = require("node-schedule");
 const { RebateSchedule } = require("../models/rebateSchedule.model");
 const { RebateLog } = require("../models/rebate.model");
+const { RescueLog } = require("../models/rescue.model");
 const Deposit = require("../models/deposit.model");
 const Withdraw = require("../models/withdraw.model");
 const { checkSportPendingMatch } = require("../helpers/turnoverHelper");
@@ -84,6 +85,81 @@ router.get(
         };
       }
       const rebateLogs = await RebateLog.find(dateFilter).sort({
+        createdAt: -1,
+      });
+      const currentType = rebateLogs[0]?.type || "winlose";
+      const formattedLogs = rebateLogs.map((log, index) => {
+        if (currentType === "turnover") {
+          return {
+            type: "turnover",
+            id: log.id,
+            claimed: log.claimed,
+            claimedBy: log.claimedBy,
+            claimedAt: log.claimedAt,
+            username: log.username,
+            liveCasino: log.livecasino,
+            sports: log.sports,
+            slotGames: log.slot,
+            fishing: log.fishing,
+            poker: log.poker,
+            mahjong: log.mahjong,
+            eSports: log.esports,
+            horse: log.horse,
+            lottery: log.lottery,
+            formula: log.formula,
+            totalRebate: log.totalRebate,
+            totalTurnover: log.totalturnover,
+            rebateissuesdate: log.createdAt,
+          };
+        } else {
+          return {
+            type: "winlose",
+            id: log.id,
+            claimed: log.claimed,
+            claimedBy: log.claimedBy,
+            claimedAt: log.claimedAt,
+            username: log.username,
+            totaldeposit: log.totaldeposit,
+            totalwithdraw: log.totalwithdraw,
+            totalbonus: log.totalbonus,
+            totalwinlose: log.totalwinlose,
+            formula: log.formula,
+            totalRebate: log.totalRebate,
+            rebateissuesdate: log.createdAt,
+          };
+        }
+      });
+      res.json({
+        success: true,
+        data: formattedLogs,
+        type: currentType,
+      });
+    } catch (error) {
+      console.error("Error fetching rebate report:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch rebate report",
+        error: error.message,
+      });
+    }
+  }
+);
+
+// Admin Get Rescue Report
+router.get(
+  "/admin/api/rescue-report",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const dateFilter = {};
+      if (startDate && endDate) {
+        dateFilter.createdAt = {
+          $gte: moment(new Date(startDate)).utc().toDate(),
+          $lte: moment(new Date(endDate)).utc().toDate(),
+        };
+      }
+      const rebateLogs = await RescueLog.find(dateFilter).sort({
         createdAt: -1,
       });
       const currentType = rebateLogs[0]?.type || "winlose";
@@ -239,7 +315,7 @@ router.post(
 // Admin Manual Action Route (If Needed)
 router.post(
   "/admin/api/rebate-calculate/manual",
-  // authenticateAdminToken,
+  authenticateAdminToken,
   async (req, res) => {
     try {
       await runRebateCalculation();
@@ -279,6 +355,144 @@ router.post(
         });
       }
       const rebateLog = await RebateLog.findById(rebateLogId);
+      if (!rebateLog) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Rebate record not found",
+            zh: "返水记录未找到",
+          },
+        });
+      }
+      if (rebateLog.claimed) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Rescue already claimed",
+            zh: "复活分已被领取",
+          },
+        });
+      }
+      const user = await User.findOne({ username: username });
+      if (!user) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "User not found",
+            zh: "用户未找到",
+          },
+        });
+      }
+      const kioskSettings = await kioskbalance.findOne({});
+      if (kioskSettings && kioskSettings.status) {
+        const kioskResult = await updateKioskBalance(
+          "subtract",
+          rebateLog.totalRebate,
+          {
+            username: username,
+            transactionType: "rescue claim",
+            remark: `Manual rescue claim by ${adminuser.username}`,
+            processBy: adminuser.username,
+          }
+        );
+        if (!kioskResult.success) {
+          return res.status(200).json({
+            success: false,
+            message: {
+              en: "Failed to update kiosk balance",
+              zh: "更新Kiosk余额失败",
+            },
+          });
+        }
+      }
+      const updatedUser = await User.findByIdAndUpdate(
+        user._id,
+        { $inc: { wallet: rebateLog.totalRebate } },
+        { new: true }
+      );
+      await user.save();
+      const dataDate = moment(rebateLog.rebateissuesdate)
+        .tz("Asia/Kuala_Lumpur")
+        .subtract(1, "day")
+        .format("DD-MM-YYYY");
+      const hasSportPendingMatch = await checkSportPendingMatch(user.gameId);
+      const isNewCycle = !hasSportPendingMatch && user.wallet <= 5;
+      const NewBonusTransaction = new Bonus({
+        transactionId: transactionId,
+        userId: user._id,
+        username: user.username,
+        fullname: user.fullname,
+        transactionType: "bonus",
+        processBy: adminuser.username,
+        amount: rebateLog.totalRebate,
+        walletamount: user.wallet,
+        status: "approved",
+        method: "manual",
+        remark: `Rescue ${dataDate}`,
+        promotionname: promotion.maintitle,
+        promotionnameEN: promotion.maintitleEN,
+        promotionId: promotion._id,
+        processtime: "00:00:00",
+        isNewCycle: isNewCycle,
+      });
+      await NewBonusTransaction.save();
+
+      const walletLog = new UserWalletLog({
+        userId: user._id,
+        transactionid: NewBonusTransaction.transactionId,
+        transactiontime: new Date(),
+        transactiontype: "rescue",
+        amount: rebateLog.totalRebate,
+        status: "approved",
+        promotionnameEN: dataDate,
+      });
+      await walletLog.save();
+
+      rebateLog.claimed = true;
+      rebateLog.claimedBy = adminuser.username;
+      rebateLog.claimedAt = new Date();
+      await rebateLog.save();
+      res.status(200).json({
+        success: true,
+        message: {
+          en: `Rescue claimed successfully for ${username}`,
+          zh: `${username} 的复活分已成功领取`,
+        },
+      });
+    } catch (error) {
+      console.error("Error claiming rescue:", error);
+      res.status(500).json({
+        success: false,
+        message: {
+          en: "Internal server error",
+          zh: "服务器内部错误",
+        },
+      });
+    }
+  }
+);
+
+// Admin Claim Rescue for User
+router.post(
+  "/admin/api/claim-rescue",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { username, rebateLogId } = req.body;
+      const promotion = await Promotion.findById(global.REBATE_PROMOTION_ID);
+      const transactionId = uuidv4();
+      const userId = req.user.userId;
+      const adminuser = await adminUser.findById(userId);
+      if (!adminuser) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Admin User not found",
+            zh: "未找到管理员用户",
+          },
+        });
+      }
+      const rebateLog = await RescueLog.findById(rebateLogId);
       if (!rebateLog) {
         return res.status(200).json({
           success: false,
@@ -501,16 +715,28 @@ async function calculateWinLoseRebate(
 
     for (const [username, stats] of Object.entries(userStats)) {
       stats.totalwinlose = stats.totaldeposit - stats.totalwithdraw;
-      if (stats.totalwinlose > 0) {
+      if (stats.totalwinlose >= 1500) {
+        const user = await User.findOne({ username: username });
+        if (!user) {
+          console.log(`User not found: ${username}`);
+          continue;
+        }
         stats.totalRebate = Math.abs(stats.totalwinlose) * (percentage / 100);
+        const maxBonusByVip = {
+          Bronze: 168,
+          Silver: 268,
+          Gold: 388,
+          Platinum: 588,
+          Diamond: 888,
+          "BM8 Elite VIP": 1888,
+        };
+        const maxBonus = maxBonusByVip[user.viplevel] || 168;
+        if (stats.totalRebate > maxBonus) {
+          stats.totalRebate = maxBonus;
+        }
         if (stats.totalRebate >= 1) {
-          const user = await User.findOne({ username: username });
-          if (!user) {
-            console.log(`User not found: ${username}`);
-            continue;
-          }
           const shouldClaim = user.wallet > 0;
-          const rebateLog = await RebateLog.create({
+          const rebateLog = await RescueLog.create({
             username,
             totaldeposit: stats.totaldeposit,
             totalwithdraw: stats.totalwithdraw,
@@ -518,9 +744,15 @@ async function calculateWinLoseRebate(
             totalbonus: stats.totalbonus,
             totalRebate: parseFloat(stats.totalRebate.toFixed(2)),
             rebateissuesdate: moment().utc().toDate(),
-            formula: `${Math.abs(stats.totalwinlose).toFixed(
-              2
-            )} * ${percentage}% = ${stats.totalRebate.toFixed(2)}`,
+            formula:
+              stats.totalRebate === maxBonus
+                ? `${stats.totalwinlose.toFixed(2)} * ${percentage}% = ${(
+                    (stats.totalwinlose * percentage) /
+                    100
+                  ).toFixed(2)} → capped at ${maxBonus} (${user.viplevel})`
+                : `${stats.totalwinlose.toFixed(
+                    2
+                  )} * ${percentage}% = ${stats.totalRebate.toFixed(2)}`,
             type: "winlose",
             claimed: !shouldClaim,
             claimedBy: shouldClaim ? null : "auto",
@@ -552,7 +784,6 @@ async function calculateWinLoseRebate(
               { $inc: { wallet: stats.totalRebate } },
               { new: true }
             );
-            await user.save();
             const userTransactionId = uuidv4();
             const hasSportPendingMatch = await checkSportPendingMatch(
               user.gameId
