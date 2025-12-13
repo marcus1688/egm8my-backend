@@ -82,6 +82,7 @@ const slotPussy888Modal = require("../models/slot_pussy888.model");
 const LiveOnCasinoModal = require("../models/live_oncasino.model");
 const SlotJDBModal = require("../models/slot_jdb.model");
 const SportCMDModal = require("../models/sport_cmd368.model");
+const SlotExpanseStudioModal = require("../models/slot_expansestudio.model");
 
 const UserWalletLog = require("../models/userwalletlog.model");
 const Bonus = require("../models/bonus.model");
@@ -6536,6 +6537,20 @@ router.get(
           getAllUsersTurnover(SportCMDModal, {
             cancel: { $ne: true },
           }),
+
+          getAllUsersTurnover(
+            SlotExpanseStudioModal,
+            {
+              cancel: { $ne: true },
+              settle: true,
+            },
+            {
+              $add: [
+                { $ifNull: ["$betamount", 0] },
+                { $ifNull: ["$transferbetamount", 0] },
+              ],
+            }
+          ),
         ];
 
         const todayGameResults = await Promise.allSettled(todayGamePromises);
