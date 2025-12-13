@@ -20,9 +20,9 @@ const { HttpsProxyAgent } = require("https-proxy-agent");
 require("dotenv").config();
 
 const webURL = "https://www.bm8my.vip/";
-const sabasportAPIURL = "http://u5r2tsa.bw6688.com/api";
-const sabasportAccount = "b1d8s62lkw";
-const sabasportOperatorID = "EGM8MYR";
+const sabasportAPIURL = "http://s975api.bw6688.com/api";
+const sabasportAccount = "3eusvs5130";
+const sabasportOperatorID = "BM8MY";
 
 const PROXY_URL = process.env.PROXY_URL;
 const proxyAgent = new HttpsProxyAgent(PROXY_URL);
