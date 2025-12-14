@@ -139,7 +139,7 @@ const notificationRouter = require("./routes/notification");
 const { processCMD368Bets } = require("./services/sportsData");
 
 const { fetchData } = require("./routes/GAMEAPI/sports_m9bet");
-
+const { fetchSBOBETData } = require("./routes/GAMEAPI/sport_sbobet");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const cookie = require("cookie");
@@ -1264,14 +1264,27 @@ if (process.env.NODE_ENV !== "development") {
     "*/10 * * * *",
     async () => {
       try {
-        const result = await fetchData();
-
-        if (result.success) {
+        // M9BET
+        const m9betResult = await fetchData();
+        if (m9betResult.success) {
+          console.log(
+            `✅ M9BET completed - Inserted: ${m9betResult.inserted}, Updated: ${m9betResult.updated}, Skipped: ${m9betResult.skipped}`
+          );
         } else {
-          console.error(`❌ M9BET Fetch failed:`, result.error);
+          console.error(`❌ M9BET Fetch failed:`, m9betResult.error);
+        }
+
+        // SBOBET
+        const sbobetResult = await fetchSBOBETData();
+        if (sbobetResult.success) {
+          console.log(
+            `✅ SBOBET completed - Inserted: ${sbobetResult.inserted}, Updated: ${sbobetResult.updated}, Settled: ${sbobetResult.settled}, Skipped: ${sbobetResult.skipped}`
+          );
+        } else {
+          console.error(`❌ SBOBET Fetch failed:`, sbobetResult.error);
         }
       } catch (error) {
-        console.error(`❌ M9BET Cron error:`, error.message);
+        console.error(`❌ Sports Cron error:`, error.message);
       }
     },
     {

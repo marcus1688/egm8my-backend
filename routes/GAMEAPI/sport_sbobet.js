@@ -14,6 +14,14 @@ const jwt = require("jsonwebtoken");
 const moment = require("moment");
 const GameWalletLog = require("../../models/gamewalletlog.model");
 const SportSBOBETModal = require("../../models/sport_sbobet.model");
+const GameSyncLog = require("../../models/game_syncdata.model");
+const GameGeneralDetailDataModal = require("../../models/gameDetail.model");
+const {
+  mapSBOBETToUnified,
+  mapResult,
+  mapStatus,
+  isSBOBETSettled,
+} = require("../../services/unifiedSportData");
 const Decimal = require("decimal.js");
 require("dotenv").config();
 
@@ -1635,4 +1643,279 @@ router.get(
   }
 );
 
+router.post("/api/sbobet/test", async (req, res) => {
+  try {
+    const requestData = {
+      companyKey: sbobetSecret,
+      serverId: generateTraceCode(),
+      username: sbobetCreatedAgent,
+      portfolio: "SportsBook",
+      startDate: "2025-12-13T00:00:18.587Z",
+      endDate: "2025-12-15T10:45:18.587Z",
+    };
+
+    const response = await axios.post(
+      `${sbobetAPIURL}/web-root/restricted/report/get-bet-list-by-modify-date.aspx`,
+      requestData,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    console.log(response.data);
+
+    if (response.data.error.id !== 0) {
+      console.log("SBOBET error in launching game", response.data);
+
+      if (response.data.ErrorCode === 104) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Game under maintenance. Please try again later.",
+            zh: "游戏正在维护中，请稍后再试。",
+            ms: "Permainan sedang diselenggara, sila cuba lagi nanti.",
+            zh_hk: "遊戲正在維護中，請稍後再試。",
+            id: "Permainan sedang dalam pemeliharaan. Silakan coba lagi nanti.",
+          },
+        });
+      }
+
+      return res.status(200).json({
+        success: false,
+        message: {
+          en: "SBOBET: Game launch failed. Please try again or customer service for assistance.",
+          zh: "SBOBET: 游戏启动失败，请重试或联系客服以获得帮助。",
+          ms: "SBOBET: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+          zh_hk: "SBOBET: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+          id: "SBOBET: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+        },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      gameLobby: response.data.url,
+      message: {
+        en: "Game launched successfully.",
+        zh: "游戏启动成功。",
+        ms: "Permainan berjaya dimulakan.",
+        zh_hk: "遊戲啟動成功。",
+        id: "Permainan berhasil diluncurkan.",
+      },
+    });
+  } catch (error) {
+    console.log("SBOBET error in launching game", error);
+    return res.status(200).json({
+      success: false,
+      message: {
+        en: "SBOBET: Game launch failed. Please try again or customer service for assistance.",
+        zh: "SBOBET: 游戏启动失败，请重试或联系客服以获得帮助。",
+        ms: "SBOBET: Pelancaran permainan gagal. Sila cuba lagi atau hubungi khidmat pelanggan untuk bantuan.",
+        zh_hk: "SBOBET: 遊戲啟動失敗，請重試或聯絡客服以獲得幫助。",
+        id: "SBOBET: Peluncuran permainan gagal. Silakan coba lagi atau hubungi layanan pelanggan untuk bantuan.",
+      },
+    });
+  }
+});
+
+const getCurrentUTC = () => moment.tz("Asia/Kuala_Lumpur").utc().toDate();
+
+async function fetchSBOBETData() {
+  try {
+    console.log(`\n⏰ [${moment.utc().format()}] SBOBET Fetch Started`);
+
+    // Get last sync time
+    const lastSync = await GameSyncLog.findOne({ provider: "SBOBET" })
+      .sort({ syncTime: -1 })
+      .lean();
+
+    // Calculate time range
+    // SBOBET API uses UTC-4, so we need to convert our UTC+0 to UTC-4 for the request
+    let startDate;
+    if (lastSync?.syncTime) {
+      // lastSync.syncTime is already in UTC+0, subtract 12 hours buffer
+      startDate = moment.utc(lastSync.syncTime).subtract(12, "hours");
+    } else {
+      // First time - get last 36 hours from now (UTC+0)
+      startDate = moment.utc().subtract(36, "hours");
+    }
+
+    // End date is current UTC time
+    const endDate = moment.utc();
+
+    // Convert to UTC-4 for SBOBET API request
+    const requestData = {
+      companyKey: sbobetSecret,
+      serverId: generateTraceCode(),
+      username: sbobetCreatedAgent,
+      portfolio: "SportsBook",
+      startDate:
+        startDate
+          .clone()
+          .subtract(4, "hours")
+          .format("YYYY-MM-DDTHH:mm:ss.SSS") + "Z",
+      endDate:
+        endDate.clone().subtract(4, "hours").format("YYYY-MM-DDTHH:mm:ss.SSS") +
+        "Z",
+    };
+
+    console.log(
+      `📅 Date Range (UTC-4): ${requestData.startDate} to ${requestData.endDate}`
+    );
+
+    const response = await axios.post(
+      `${sbobetAPIURL}/web-root/restricted/report/get-bet-list-by-modify-date.aspx`,
+      requestData,
+      { headers: { "Content-Type": "application/json" } }
+    );
+
+    if (response.data.error?.id !== 0) {
+      console.error("SBOBET fetch error:", response.data.error);
+      return { success: false, error: response.data.error };
+    }
+
+    const bets = response.data.result || [];
+
+    if (!bets.length) {
+      console.log("No bets to process");
+
+      // Save sync time in UTC+0
+      await GameSyncLog.create({
+        provider: "SBOBET",
+        syncTime: getCurrentUTC(),
+      });
+
+      return { success: true, inserted: 0, updated: 0, settled: 0, skipped: 0 };
+    }
+
+    console.log(`Processing ${bets.length} SBOBET bets...`);
+
+    let insertedCount = 0;
+    let updatedCount = 0;
+    let settledCount = 0;
+    let skippedCount = 0;
+    const errors = [];
+
+    for (const bet of bets) {
+      const { refNo, username, status, stake, winLost } = bet;
+      const isSettled = isSBOBETSettled(status);
+
+      try {
+        // Check existing record
+        const existingRecord = await GameGeneralDetailDataModal.findOne(
+          { betId: refNo, provider: "SBOBET" },
+          { settle: 1 }
+        ).lean();
+
+        // If already settled in our DB, skip
+        if (existingRecord?.settle === true) {
+          skippedCount++;
+          console.log(`⏭️ Skipped (already settled): ${refNo}`);
+          continue;
+        }
+
+        // Map the data (dates inside mapper are already converted to UTC+0)
+        const mappedData = mapSBOBETToUnified(bet);
+
+        // If bet is settled and not yet processed, update user wallet
+        if (isSettled && !existingRecord?.settle) {
+          // Verify user exists
+          const user = await User.findOne(
+            { gameId: username },
+            { _id: 1, wallet: 1 }
+          ).lean();
+
+          if (!user) {
+            console.error(`❌ User not found: ${username} for bet ${refNo}`);
+            errors.push({ refNo, error: `User not found: ${username}` });
+            continue;
+          }
+
+          // Calculate settle amount (stake + winLost)
+          const settleAmount = roundToTwoDecimals(stake + winLost);
+
+          // Update user wallet + save bet (all dates in UTC+0)
+          const [updatedUser] = await Promise.all([
+            User.findOneAndUpdate(
+              { gameId: username },
+              { $inc: { wallet: settleAmount } },
+              { new: true, projection: { wallet: 1 } }
+            ).lean(),
+
+            GameGeneralDetailDataModal.findOneAndUpdate(
+              { betId: refNo, provider: "SBOBET" },
+              {
+                $set: {
+                  ...mappedData,
+                  settle: true,
+                  settleamount: settleAmount,
+                  settleTime: getCurrentUTC(), // UTC+0
+                },
+              },
+              { upsert: true, new: true }
+            ),
+          ]);
+
+          const resultText =
+            winLost > 0 ? "(WIN)" : winLost < 0 ? "(LOSS)" : "(DRAW/VOID)";
+          console.log(
+            `💰 Settled ${refNo}: User ${username}, Amount: ${settleAmount} ${resultText}, Status: ${status}, New Balance: ${roundToTwoDecimals(
+              updatedUser.wallet
+            )}`
+          );
+
+          settledCount++;
+        } else {
+          // Just save/update the bet (running/waiting)
+          const result = await GameGeneralDetailDataModal.findOneAndUpdate(
+            { betId: refNo, provider: "SBOBET" },
+            { $set: mappedData },
+            { upsert: true, new: true, rawResult: true }
+          );
+
+          if (result.lastErrorObject?.updatedExisting) {
+            updatedCount++;
+            console.log(`🔄 Updated: ${refNo} | Status: ${status}`);
+          } else {
+            insertedCount++;
+            console.log(
+              `✅ Inserted: ${refNo} | User: ${username} | Stake: ${stake} | Status: ${status}`
+            );
+          }
+        }
+      } catch (error) {
+        console.error(`❌ Error: ${refNo}:`, error.message);
+        errors.push({ refNo, error: error.message });
+      }
+    }
+
+    // Save sync time in UTC+0
+    await GameSyncLog.create({
+      provider: "SBOBET",
+      syncTime: getCurrentUTC(),
+    });
+
+    console.log(`\n=== SBOBET Summary ===`);
+    console.log(`✅ Inserted: ${insertedCount}`);
+    console.log(`🔄 Updated: ${updatedCount}`);
+    console.log(`💰 Settled: ${settledCount}`);
+    console.log(`⏭️ Skipped: ${skippedCount}`);
+    console.log(`❌ Errors: ${errors.length}`);
+
+    return {
+      success: true,
+      inserted: insertedCount,
+      updated: updatedCount,
+      settled: settledCount,
+      skipped: skippedCount,
+      errors: errors.length > 0 ? errors : undefined,
+    };
+  } catch (error) {
+    console.error("SBOBET fetch error:", error.message);
+    return { success: false, error: error.response?.data || error.message };
+  }
+}
+
 module.exports = router;
+module.exports.fetchSBOBETData = fetchSBOBETData;
