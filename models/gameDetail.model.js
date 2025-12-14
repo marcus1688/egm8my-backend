@@ -62,6 +62,12 @@ const GameGeneralSchema = new mongoose.Schema(
     },
 
     // ========== STATUS FLAGS ==========
+    status: {
+      type: String,
+      enum: ["accepted", "rejected", "cancelled", null],
+      default: null,
+    },
+
     settle: {
       type: Boolean,
       default: false,

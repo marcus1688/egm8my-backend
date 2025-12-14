@@ -393,6 +393,28 @@ const parseDate = (dateStr) => {
     .toDate();
 };
 
+const mapBetStatus = (status) => {
+  if (!status) return null;
+
+  const statusMap = {
+    // Accepted
+    N: "accepted", // Auto-Accept
+    A: "accepted", // Accepted
+
+    // Rejected
+    R: "rejected", // Reject
+    RG: "rejected", // RejectGoal
+    RP: "rejected", // RejectPenalty
+    RR: "rejected", // RejectRedCard
+    RA: "rejected", // RejectAbnormalBet
+
+    // Cancelled
+    C: "cancelled", // Cancel
+  };
+
+  return statusMap[status.toUpperCase()] || null;
+};
+
 const mapM9BetToSchema = (ticket) => {
   return {
     provider: "M9BET",
@@ -408,6 +430,7 @@ const mapM9BetToSchema = (ticket) => {
     settleamount: (ticket.b || 0) + (ticket.w || 0),
     commission: ticket.c || 0,
 
+    status: mapBetStatus(ticket.status),
     settle: ticket.res !== "P",
     cancel: ticket.res === "C" || ticket.status === "C",
     refund: ticket.res === "R" || ticket.status === "R",
