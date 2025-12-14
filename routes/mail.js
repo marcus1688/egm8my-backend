@@ -211,7 +211,7 @@ router.delete(
 // Admin Delete Mails by Title
 router.delete(
   "/api/mails/bulk-delete",
-  // authenticateAdminToken,
+  authenticateAdminToken,
   async (req, res) => {
     try {
       const { titleEN } = req.body;
