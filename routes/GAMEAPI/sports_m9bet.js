@@ -507,33 +507,54 @@ async function fetchData() {
 
     if (!tickets.length) {
       console.log("No tickets to process");
-      return { success: true, inserted: 0, updated: 0 };
+      return { success: true, inserted: 0, updated: 0, skipped: 0 };
     }
 
     console.log(`Processing ${tickets.length} M9BET tickets...`);
 
     let insertedCount = 0;
     let updatedCount = 0;
+    let skippedCount = 0;
     const errors = [];
 
     for (const ticket of tickets) {
       try {
         const mappedData = mapM9BetToSchema(ticket);
 
+        // Only update if: record doesn't exist OR result is still "P"
         const result = await GameGeneralDetailDataModal.findOneAndUpdate(
-          { betId: ticket.id },
+          {
+            betId: ticket.id,
+            $or: [
+              { "sports.result": "P" }, // Still pending
+              { "sports.result": null }, // No result yet
+              { "sports.result": { $exists: false } }, // Field doesn't exist
+            ],
+          },
           { $set: mappedData },
-          { upsert: true, new: true, rawResult: true }
+          { upsert: false, new: true } // upsert: false - don't create if not matched
         );
 
-        if (result.lastErrorObject?.updatedExisting) {
+        if (result) {
           updatedCount++;
           console.log(`🔄 Updated: ${ticket.id}`);
         } else {
-          insertedCount++;
-          console.log(
-            `✅ Inserted: ${ticket.id} | User: ${ticket.u} | Bet: ${ticket.b}`
-          );
+          // Check if it's a new record or already settled
+          const exists = await GameGeneralDetailDataModal.exists({
+            betId: ticket.id,
+          });
+
+          if (exists) {
+            skippedCount++;
+            console.log(`⏭️ Skipped (already settled): ${ticket.id}`);
+          } else {
+            // Insert new record
+            await GameGeneralDetailDataModal.create(mappedData);
+            insertedCount++;
+            console.log(
+              `✅ Inserted: ${ticket.id} | User: ${ticket.u} | Bet: ${ticket.b}`
+            );
+          }
         }
       } catch (error) {
         console.error(`❌ Error: ${ticket.id}:`, error.message);
@@ -544,12 +565,14 @@ async function fetchData() {
     console.log(`\n=== Summary ===`);
     console.log(`✅ Inserted: ${insertedCount}`);
     console.log(`🔄 Updated: ${updatedCount}`);
+    console.log(`⏭️ Skipped: ${skippedCount}`);
     console.log(`❌ Errors: ${errors.length}`);
 
     return {
       success: true,
       inserted: insertedCount,
       updated: updatedCount,
+      skipped: skippedCount,
       errors: errors.length > 0 ? errors : undefined,
     };
   } catch (error) {
