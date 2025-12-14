@@ -1070,6 +1070,19 @@ app.use(myPromotionRouter);
 
 // app.use(sportSabaRouter);
 
+function getNextRunTime(hour, minute) {
+  const now = moment().tz("Asia/Kuala_Lumpur");
+  const nextRun = moment()
+    .tz("Asia/Kuala_Lumpur")
+    .hour(hour)
+    .minute(minute)
+    .second(0);
+  if (nextRun.isBefore(now)) {
+    nextRun.add(1, "day");
+  }
+  return nextRun.format("YYYY-MM-DD HH:mm:ss");
+}
+
 async function sendBirthdayWishes() {
   try {
     const today = moment().tz("Asia/Kuala_Lumpur");
