@@ -1133,14 +1133,14 @@ async function sendBirthdayWishes() {
         sendNotificationToUser(
           user._id,
           {
-            en: "Happy Birthday! 🎂 BM8 wishes you a wonderful day!",
-            zh: "生日快乐！🎂 BM8 祝您度过美好的一天！",
-            ms: "Selamat Hari Lahir! 🎂 BM8 mengucapkan selamat!",
-          },
-          {
             en: "🎂 Happy Birthday!",
             zh: "🎂 生日快乐！",
             ms: "🎂 Selamat Hari Lahir!",
+          },
+          {
+            en: "Happy Birthday! 🎂 BM8 wishes you a wonderful day!",
+            zh: "生日快乐！🎂 BM8 祝您度过美好的一天！",
+            ms: "Selamat Hari Lahir! 🎂 BM8 mengucapkan selamat!",
           }
         );
 
