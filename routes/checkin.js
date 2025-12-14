@@ -14,6 +14,7 @@ const cron = require("node-cron");
 const { updateKioskBalance } = require("../services/kioskBalanceService");
 const kioskbalance = require("../models/kioskbalance.model");
 const axios = require("axios");
+const { Mail } = require("../models/mail.model");
 
 const getMalaysiaTime = () => moment().tz("Asia/Kuala_Lumpur");
 
@@ -442,6 +443,38 @@ router.post("/api/checkin", authenticateToken, async (req, res) => {
     checkin.markModified("monthlyCheckIns");
     checkin.markModified("pendingRewards");
     await checkin.save();
+
+    let totalPendingReward =
+      dailyRewardAmount + weeklyRewardAmount + monthlyRewardAmount;
+    let rewardDetails = [];
+    if (dailyRewardAmount > 0)
+      rewardDetails.push(`Daily: RM${dailyRewardAmount}`);
+    if (weeklyRewardAmount > 0)
+      rewardDetails.push(`Weekly: RM${weeklyRewardAmount}`);
+    if (monthlyRewardAmount > 0)
+      rewardDetails.push(`Monthly: RM${monthlyRewardAmount}`);
+
+    await Mail.create({
+      recipientId: userId,
+      username: user.username,
+      titleEN: "Check-in Successful!",
+      titleCN: "签到成功！",
+      titleMS: "Daftar Masuk Berjaya!",
+      contentEN: `Congratulations! You have successfully checked in today.\n\nYour rewards (${rewardDetails.join(
+        ", "
+      )}) will be distributed tomorrow at 1:00 AM.\n\nCurrent Streak: ${
+        checkin.currentStreak
+      } days`,
+      contentCN: `恭喜！您今天签到成功。\n\n您的奖励（${rewardDetails.join(
+        ", "
+      )}）将于明天凌晨1点发放。\n\n当前连续签到：${checkin.currentStreak} 天`,
+      contentMS: `Tahniah! Anda telah berjaya mendaftar masuk hari ini.\n\nGanjaran anda (${rewardDetails.join(
+        ", "
+      )}) akan diagihkan esok pada 1:00 Pagi.\n\nStreak Semasa: ${
+        checkin.currentStreak
+      } hari`,
+      isRead: false,
+    });
 
     res.status(200).json({
       success: true,

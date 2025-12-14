@@ -7,7 +7,7 @@ const { RescueLog } = require("../models/rescue.model");
 const Deposit = require("../models/deposit.model");
 const Withdraw = require("../models/withdraw.model");
 const { checkSportPendingMatch } = require("../helpers/turnoverHelper");
-
+const { Mail } = require("../models/mail.model");
 const Bonus = require("../models/bonus.model");
 const { authenticateAdminToken } = require("../auth/adminAuth");
 const { User, UserGameData } = require("../models/users.model");
@@ -590,6 +590,25 @@ router.post(
       rebateLog.claimedBy = adminuser.username;
       rebateLog.claimedAt = new Date();
       await rebateLog.save();
+
+      await Mail.create({
+        recipientId: user._id,
+        username: user.username,
+        titleEN: "Rescue Bonus Claimed!",
+        titleCN: "复活分已领取！",
+        titleMS: "Bonus Penyelamat Dituntut!",
+        contentEN: `Your rescue bonus of RM${rebateLog.totalRebate.toFixed(
+          2
+        )} for ${dataDate} has been credited to your wallet.`,
+        contentCN: `您 ${dataDate} 的复活分 RM${rebateLog.totalRebate.toFixed(
+          2
+        )} 已发放到您的钱包。`,
+        contentMS: `Bonus penyelamat anda sebanyak RM${rebateLog.totalRebate.toFixed(
+          2
+        )} untuk ${dataDate} telah dikreditkan ke dompet anda.`,
+        isRead: false,
+      });
+
       res.status(200).json({
         success: true,
         message: {

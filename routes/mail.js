@@ -208,4 +208,46 @@ router.delete(
   }
 );
 
+// Admin Delete Mails by Title
+router.delete(
+  "/api/mails/bulk-delete",
+  // authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { titleEN } = req.body;
+
+      if (!titleEN) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Title is required",
+            zh: "标题为必填项",
+            ms: "Tajuk diperlukan",
+          },
+        });
+      }
+      const result = await Mail.deleteMany({ titleEN: titleEN });
+      res.status(200).json({
+        success: true,
+        message: {
+          en: `Deleted ${result.deletedCount} mails with title "${titleEN}"`,
+          zh: `已删除 ${result.deletedCount} 封标题为 "${titleEN}" 的邮件`,
+          ms: `${result.deletedCount} mel dengan tajuk "${titleEN}" telah dipadam`,
+        },
+        data: { deletedCount: result.deletedCount },
+      });
+    } catch (error) {
+      console.error("Bulk delete mails error:", error);
+      res.status(500).json({
+        success: false,
+        message: {
+          en: "Failed to delete mails",
+          zh: "删除邮件失败",
+          ms: "Gagal memadam mel",
+        },
+      });
+    }
+  }
+);
+
 module.exports = router;

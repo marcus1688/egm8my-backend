@@ -669,6 +669,116 @@ app.post(
   }
 );
 
+async function sendMailToAllUsers(
+  titleEN,
+  titleCN,
+  titleMS,
+  contentEN,
+  contentCN,
+  contentMS
+) {
+  try {
+    const users = await User.find({ status: true }).select("_id username");
+    if (users.length === 0) {
+      return { success: false, message: "No users found", count: 0 };
+    }
+    const mailDocs = users.map((user) => ({
+      recipientId: user._id,
+      username: user.username,
+      titleEN,
+      titleCN: titleCN || titleEN,
+      titleMS: titleMS || titleEN,
+      contentEN,
+      contentCN: contentCN || contentEN,
+      contentMS: contentMS || contentEN,
+      isRead: false,
+    }));
+    await Mail.insertMany(mailDocs);
+    for (const user of users) {
+      sendNotificationToUser(
+        user._id,
+        {
+          en: "You have received a new mail",
+          zh: "您收到一条新邮件",
+          ms: "Anda telah menerima mel baru",
+        },
+        {
+          en: "New Mail",
+          zh: "新邮件",
+          ms: "Mel Baru",
+        }
+      );
+    }
+    console.log(`Broadcast mail sent to ${users.length} users`);
+    return { success: true, count: users.length };
+  } catch (error) {
+    console.error("Send mail to all users error:", error);
+    throw error;
+  }
+}
+
+app.post(
+  "/admin/api/mails/broadcast",
+  authenticateAdminToken,
+  async (req, res) => {
+    try {
+      const { titleEN, titleCN, titleMS, contentEN, contentCN, contentMS } =
+        req.body;
+
+      if (!titleEN || !contentEN) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: "Title and content are required",
+            zh: "标题和内容为必填项",
+            ms: "Tajuk dan kandungan diperlukan",
+          },
+        });
+      }
+
+      const result = await sendMailToAllUsers(
+        titleEN,
+        titleCN,
+        titleMS,
+        contentEN,
+        contentCN,
+        contentMS
+      );
+
+      if (!result.success) {
+        return res.status(200).json({
+          success: false,
+          message: {
+            en: result.message,
+            zh: "找不到用户",
+            ms: "Tiada pengguna dijumpai",
+          },
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        message: {
+          en: `Mail sent to ${result.count} users successfully`,
+          zh: `邮件已成功发送给 ${result.count} 位用户`,
+          ms: `Mel berjaya dihantar kepada ${result.count} pengguna`,
+        },
+        data: { totalSent: result.count },
+      });
+    } catch (error) {
+      console.error("Broadcast mail error:", error);
+      res.status(500).json({
+        success: false,
+        message: {
+          en: "Failed to send broadcast mail",
+          zh: "群发邮件失败",
+          ms: "Gagal menghantar mel siaran",
+        },
+      });
+    }
+  }
+);
+
 app.post("/admin/api/mails", authenticateAdminToken, async (req, res) => {
   try {
     const {
@@ -959,6 +1069,115 @@ app.use(notificationRouter);
 app.use(myPromotionRouter);
 
 // app.use(sportSabaRouter);
+
+async function sendBirthdayWishes() {
+  try {
+    const today = moment().tz("Asia/Kuala_Lumpur");
+    const todayDay = today.format("DD");
+    const todayMonth = today.format("MM");
+    const todayDateString = `${todayDay}-${todayMonth}`;
+    const users = await User.find({
+      dob: { $exists: true, $ne: null, $ne: "" },
+    });
+    let birthdayCount = 0;
+    for (const user of users) {
+      if (!user.dob || typeof user.dob !== "string") {
+        continue;
+      }
+      const dobParts = user.dob.split("-");
+      if (dobParts.length < 2) {
+        continue;
+      }
+      const userBirthday = `${dobParts[0]}-${dobParts[1]}`;
+      if (userBirthday === todayDateString) {
+        const todayStart = today.clone().startOf("day").toDate();
+        const todayEnd = today.clone().endOf("day").toDate();
+
+        const alreadySent = await Mail.findOne({
+          recipientId: user._id,
+          titleEN: "🎂 Happy Birthday from BM8!",
+          createdAt: {
+            $gte: todayStart,
+            $lte: todayEnd,
+          },
+        });
+        if (alreadySent) {
+          console.log(`Birthday mail already sent to ${user.username} today`);
+          continue;
+        }
+        await Mail.create({
+          recipientId: user._id,
+          username: user.username,
+          titleEN: "🎂 Happy Birthday from BM8!",
+          titleCN: "🎂 BM8 祝您生日快乐！",
+          titleMS: "🎂 Selamat Hari Lahir dari BM8!",
+          contentEN: `Dear ${user.username},\n\nHappy Birthday! 🎉🎁\n\nOn this special day, BM8 wishes you all the best! May luck and fortune be with you always.\n\nThank you for being part of the BM8 family. Enjoy your special day and may all your wishes come true!\n\nBest regards,\nBM8 Team`,
+          contentCN: `亲爱的 ${user.username}，\n\n生日快乐！🎉🎁\n\n在这个特别的日子里，BM8 祝您万事如意、好运连连！\n\n感谢您成为 BM8 大家庭的一员。祝您生日愉快，心想事成！\n\nBM8 团队敬上`,
+          contentMS: `${user.username} yang dihormati,\n\nSelamat Hari Lahir! 🎉🎁\n\nPada hari istimewa ini, BM8 mengucapkan selamat dan semoga tuah sentiasa bersama anda!\n\nTerima kasih kerana menjadi sebahagian daripada keluarga BM8. Nikmati hari istimewa anda dan semoga segala impian anda menjadi kenyataan!\n\nSalam hormat,\nPasukan BM8`,
+          isRead: false,
+        });
+
+        sendNotificationToUser(
+          user._id,
+          {
+            en: "Happy Birthday! 🎂 BM8 wishes you a wonderful day!",
+            zh: "生日快乐！🎂 BM8 祝您度过美好的一天！",
+            ms: "Selamat Hari Lahir! 🎂 BM8 mengucapkan selamat!",
+          },
+          {
+            en: "🎂 Happy Birthday!",
+            zh: "🎂 生日快乐！",
+            ms: "🎂 Selamat Hari Lahir!",
+          }
+        );
+
+        birthdayCount++;
+        console.log(
+          `Birthday wish sent to ${user.username} (DOB: ${user.dob})`
+        );
+      }
+    }
+    console.log(
+      `Birthday check completed. Total birthday wishes sent: ${birthdayCount}`
+    );
+  } catch (error) {
+    console.error("Send birthday wishes error:", error);
+    throw error;
+  }
+}
+
+if (process.env.NODE_ENV !== "development") {
+  cron.schedule(
+    "0 0 * * *",
+    async () => {
+      console.log(
+        `Starting birthday check at: ${moment()
+          .tz("Asia/Kuala_Lumpur")
+          .format("YYYY-MM-DD HH:mm:ss")}`
+      );
+      try {
+        await sendBirthdayWishes();
+      } catch (error) {
+        console.error(
+          `Birthday check error at ${moment()
+            .tz("Asia/Kuala_Lumpur")
+            .format("YYYY-MM-DD HH:mm:ss")}:`,
+          error
+        );
+      }
+    },
+    {
+      scheduled: true,
+      timezone: "Asia/Kuala_Lumpur",
+    }
+  );
+  console.log(
+    `Birthday check job scheduled for 12:00 AM (Asia/Kuala_Lumpur). Next run: ${getNextRunTime(
+      0,
+      0
+    )}`
+  );
+}
 
 if (process.env.NODE_ENV !== "development") {
   cron.schedule("*/15 * * * *", async () => {
