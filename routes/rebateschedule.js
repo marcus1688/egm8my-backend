@@ -609,6 +609,20 @@ router.post(
         isRead: false,
       });
 
+      global.sendNotificationToUser(
+        user._id,
+        {
+          en: "💰 Rescue",
+          zh: "💰 复活分",
+          ms: "💰 Rescue",
+        },
+        {
+          en: `Rescue RM${rebateLog.totalRebate.toFixed(2)} credited!`,
+          zh: `复活分 RM${rebateLog.totalRebate.toFixed(2)} 已发放！`,
+          ms: `Rescue RM${rebateLog.totalRebate.toFixed(2)} dikreditkan!`,
+        }
+      );
+
       res.status(200).json({
         success: true,
         message: {

@@ -476,6 +476,20 @@ router.post("/api/checkin", authenticateToken, async (req, res) => {
       isRead: false,
     });
 
+    global.sendNotificationToUser(
+      userId,
+      {
+        en: "✅ Check-in",
+        zh: "✅ 签到",
+        ms: "✅ Daftar Masuk",
+      },
+      {
+        en: "Check-in successful!",
+        zh: "签到成功！",
+        ms: "Daftar masuk berjaya!",
+      }
+    );
+
     res.status(200).json({
       success: true,
       message: {
